@@ -522,16 +522,29 @@ mod cwd_tests {
             "launch directory should be readable from the foreground process group",
         );
 
+        // A directory made for this test, and the path the OS will actually
+        // report for it: `/tmp` is a symlink to `/private/tmp` on macOS but is
+        // itself on Linux, so the expected value has to be resolved, not
+        // written down.
+        let target = std::env::temp_dir().join(format!("muster-cd-{}", std::process::id()));
+        std::fs::create_dir_all(&target).expect("mkdir");
+        let resolved = std::fs::canonicalize(&target)
+            .expect("canonicalize")
+            .to_string_lossy()
+            .into_owned();
+
         let mut writer = pair.master.take_writer().expect("writer");
-        writer.write_all(b"cd /tmp\n").expect("write");
+        writer
+            .write_all(format!("cd '{}'\n", target.to_string_lossy()).as_bytes())
+            .expect("write");
         writer.flush().expect("flush");
 
-        // macOS resolves /tmp through a symlink to /private/tmp.
-        let moved = wait_for_cwd(&*pair.master, "/private/tmp");
+        let moved = wait_for_cwd(&*pair.master, &resolved);
         let _ = child.kill();
+        let _ = std::fs::remove_dir(&target);
         assert_eq!(
             moved.as_deref(),
-            Some("/private/tmp"),
+            Some(resolved.as_str()),
             "a `cd` typed into the terminal should move the reported directory",
         );
     }

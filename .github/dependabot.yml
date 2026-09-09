@@ -1,0 +1,37 @@
+# Version updates. Security updates are on by default and are not configured
+# here; this is the routine bumps.
+#
+# Grouped on purpose: one pull request per ecosystem per week is reviewable,
+# where twenty separate ones are not — and this project's Rust tree alone has
+# over five hundred crates.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # Actions drift silently: a workflow keeps working on an old major for years
+  # until the runner drops it.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

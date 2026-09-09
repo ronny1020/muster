@@ -1,0 +1,20 @@
+name: labeler
+
+on:
+  # `pull_request_target` so the label can be applied to a fork's pull request,
+  # which `pull_request` has no write token for. Safe here because this workflow
+  # never checks out or runs the contributor's code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          sync-labels: true

@@ -1,0 +1,55 @@
+# Path-based labels, so a pull request says what it touches before anyone opens
+# it. Matched by actions/labeler v5, whose keys are its own schema.
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          ['src/**', 'index.html', 'build.ts', 'bunfig.toml']
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: ['src-tauri/src/**', 'src-tauri/Cargo.*']
+
+terminal:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src-tauri/src/pty.rs'
+          - 'src-tauri/src/platform.rs'
+          - 'src/components/TerminalView.tsx'
+          - 'src/termlinks.ts'
+          - 'src/termcells.ts'
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src-tauri/capabilities/**'
+          - 'src-tauri/src/link.rs'
+          - 'src-tauri/src/image.rs'
+          - 'src-tauri/tauri.conf.json'
+          - 'SECURITY.md'
+
+agents:
+  - changed-files:
+      - any-glob-to-any-file: ['src/agents.ts', 'src-tauri/src/sessions.rs']
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md', 'docs/**']
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          ['.github/**', '.husky/**', 'lint-staged.config.js', '.prettier*']
+
+packaging:
+  - changed-files:
+      - any-glob-to-any-file:
+          [
+            'dist-packaging/**',
+            'src-tauri/tauri.conf.json',
+            'src-tauri/icons/**',
+          ]
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          ['bun.lock', 'src-tauri/Cargo.lock', 'package.json']

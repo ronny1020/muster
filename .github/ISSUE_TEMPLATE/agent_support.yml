@@ -1,0 +1,48 @@
+name: Add an agent CLI
+description: Ask for another agent CLI to be supported
+labels: [enhancement, agents]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adding one is mostly a single entry in `src/agents.ts`. The details
+        below are what cannot be guessed — getting a flag wrong ships a mode
+        that only ever errors.
+
+  - type: input
+    id: command
+    attributes:
+      label: The command
+      placeholder: mycli
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: How it is installed
+      placeholder: npm i -g mycli
+    validations:
+      required: true
+
+  - type: input
+    id: continue
+    attributes:
+      label: Flag that resumes the most recent session
+      description: Leave blank if it has none. From the CLI's own --help, please.
+      placeholder: --continue
+
+  - type: input
+    id: picker
+    attributes:
+      label: Flag that opens a session picker
+      placeholder: --resume
+
+  - type: input
+    id: sessions
+    attributes:
+      label: Where it stores past sessions
+      description: >
+        Muster greys out Continue when a directory has no history. Without this
+        it cannot, and the mode is offered even when it will fail.
+      placeholder: ~/.mycli/sessions, or a SQLite file

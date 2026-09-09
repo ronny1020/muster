@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in Muster behaves differently than it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful thing you can give us is the agent's own output. Muster
+        is a terminal — when a session misbehaves, the reason is usually printed
+        in the tab.
+
+  - type: input
+    id: version
+    attributes:
+      label: Muster version
+      description: From the installer filename, or the tag you built from.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows
+        - Windows, in a WSL tab
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Which agent
+      options: [Claude Code, Codex, Antigravity, Shell, Not agent-specific]
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      placeholder: |
+        1. Open a tab in a git repository
+        2. Click the branch name
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Terminal output
+      description: Whatever the tab printed. Redact anything private first.
+      render: text
+
+  - type: checkboxes
+    id: cli-check
+    attributes:
+      label: Confirmed outside Muster
+      options:
+        - label: The same command works when I run it in my own terminal

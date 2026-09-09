@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/ronny1020/muster/security/advisories/new
+    about: Report privately rather than opening an issue. See SECURITY.md.
+  - name: A problem with the agent CLI itself
+    url: https://github.com/ronny1020/muster/blob/main/README.md#if-something-looks-wrong
+    about: Muster runs these CLIs, it does not implement them — check here first.

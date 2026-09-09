@@ -11,6 +11,11 @@ on:
   push:
     tags: ['v*']
 
+# Two tags pushed together would otherwise race for the same draft release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   bundle:
     permissions:
