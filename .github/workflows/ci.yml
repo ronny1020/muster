@@ -18,7 +18,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           # Pinned, not `latest`: a newer Bun rewrites `bun.lock`, and
@@ -44,7 +44,7 @@ jobs:
         platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the webview toolkit
         if: matrix.platform == 'ubuntu-latest'
         run: |

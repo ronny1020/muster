@@ -35,7 +35,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the webview toolkit (Linux only)
         if: matrix.platform == 'ubuntu-22.04'
@@ -64,7 +64,7 @@ jobs:
 
       # `beforeBuildCommand` typechecks and bundles the frontend, so this is the
       # only build step.
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
