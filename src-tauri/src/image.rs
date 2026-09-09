@@ -148,6 +148,9 @@ mod tests {
         assert!(error.contains("not a file"), "{error}");
     }
 
+    // `std::os::unix::fs::symlink` does not exist on Windows, and a test module
+    // is compiled there too.
+    #[cfg(unix)]
     #[test]
     fn refuses_a_symlink_however_it_is_named() {
         let dir = std::env::temp_dir().join(format!("muster-symlink-{}", std::process::id()));

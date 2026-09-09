@@ -56,9 +56,11 @@ jobs:
           # Only the macOS runners build for two architectures.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
+      # Deliberately uncached. `generate_context!` compiles tauri.conf.json
+      # into the binary, and a restored target directory let that go stale:
+      # v0.1.0 shipped an app whose bundle identifier was the previous
+      # commit's, from a tag that contained the new one. A release is rare and
+      # has to match its source; the cache only saved minutes.
 
       - run: bun install --frozen-lockfile
 
