@@ -38,7 +38,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest, macos-latest]
+        # Windows is here because it compiles a different `cfg` path:
+        # `MasterPty::process_group_leader` is unix-only, and a call to it
+        # reached a release before this job existed.
+        platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4

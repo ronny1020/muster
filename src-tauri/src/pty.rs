@@ -7,8 +7,10 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc,
     },
-    time::Duration,
 };
+
+#[cfg(unix)]
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
@@ -290,11 +292,7 @@ pub async fn pty_cwd(
 ) -> Result<Option<String>, String> {
     // An async command holding a `State` reference has to return `Result`, so
     // "no directory to report" is `Ok(None)` rather than an error.
-    let Some(leader) = sessions
-        .get(&id)
-        .ok()
-        .and_then(|session| session.master.lock().process_group_leader())
-    else {
+    let Some(leader) = sessions.get(&id).ok().and_then(foreground_group) else {
         return Ok(None);
     };
     // Reading it costs a subprocess on macOS, once per tab per poll, so it
@@ -326,6 +324,20 @@ fn end(session: &Session) {
     // Whatever the group signal reached, the leader still gets the library's
     // own hangup — this is the only path on hosts with no process groups.
     let _ = session.killer.lock().kill();
+}
+
+/// The process currently holding the terminal, where the host has the concept.
+///
+/// `MasterPty::process_group_leader` is itself `#[cfg(unix)]` in portable-pty,
+/// so this cannot merely return `None` on Windows — the call has to be absent.
+#[cfg(unix)]
+fn foreground_group(session: Arc<Session>) -> Option<i32> {
+    session.master.lock().process_group_leader()
+}
+
+#[cfg(not(unix))]
+fn foreground_group(_session: Arc<Session>) -> Option<i32> {
+    None
 }
 
 #[cfg(unix)]

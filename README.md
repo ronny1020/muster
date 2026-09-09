@@ -53,8 +53,8 @@ user, so no admin prompt.
 | File        | Install                                             |
 | ----------- | --------------------------------------------------- |
 | `.AppImage` | `chmod +x Muster_*.AppImage && ./Muster_*.AppImage` |
-| `.deb`      | `sudo apt install ./muster_*.deb`                   |
-| `.rpm`      | `sudo dnf install ./muster-*.rpm`                   |
+| `.deb`      | `sudo apt install ./Muster_*_amd64.deb`             |
+| `.rpm`      | `sudo dnf install ./Muster-*.x86_64.rpm`            |
 
 ### Why the warnings
 
