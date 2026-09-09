@@ -19,8 +19,9 @@ cask "muster" do
     strategy :github_latest
   end
 
-  # The build is ad-hoc signed rather than notarized, so Gatekeeper needs
-  # either `--no-quarantine` on install or `xattr -cr` afterwards.
+  # The build is ad-hoc signed rather than notarized, so Gatekeeper refuses a
+  # quarantined copy. Homebrew 6 removed `--no-quarantine`, which leaves
+  # `xattr -cr /Applications/Muster.app` after installing as the only route.
   app "Muster.app"
 
   zap trash: [

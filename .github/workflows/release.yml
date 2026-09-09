@@ -46,7 +46,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pinned, not `latest`: a newer Bun rewrites `bun.lock`, and
+          # `--frozen-lockfile` then fails on a lockfile that is perfectly
+          # valid for the version the project actually uses.
+          bun-version-file: .bun-version
 
       - uses: dtolnay/rust-toolchain@stable
         with:

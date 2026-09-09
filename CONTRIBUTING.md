@@ -20,7 +20,10 @@ frontend — there is no Vite, and no bundler config beyond `build.ts`.
 bun install
 ```
 
-You need [Bun](https://bun.sh) 1.3+ and a [Rust toolchain](https://rustup.rs).
+You need [Bun](https://bun.sh) and a [Rust toolchain](https://rustup.rs). The
+exact Bun version is in `.bun-version`, which is what CI installs — a newer Bun
+rewrites `bun.lock` and would fail CI's `--frozen-lockfile` on a lockfile that
+is fine locally. Bump that file and the lockfile together.
 On Debian or Ubuntu also install `libwebkit2gtk-4.1-dev`, `build-essential`,
 `libssl-dev`, `libappindicator3-dev`, `librsvg2-dev` and `patchelf`. CI installs
 a subset of these (see `.github/workflows/ci.yml`); a local build wants them all.

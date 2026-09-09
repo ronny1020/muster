@@ -24,17 +24,18 @@ fetches Microsoft's WebView2 runtime if the machine does not already have it.
 **macOS**
 
 ```bash
-brew install --cask --no-quarantine ronny1020/tap/muster
-```
-
-`--no-quarantine` is what saves you the Gatekeeper dance below. If you would
-rather take the `.dmg` from the
-[Releases page](https://github.com/ronny1020/muster/releases), clear the
-quarantine flag yourself once it is in place:
-
-```bash
+brew install --cask ronny1020/tap/muster
 xattr -cr /Applications/Muster.app
 ```
+
+The second line is not optional. Homebrew quarantines every cask, and because
+these builds are not notarized macOS will refuse to open a quarantined copy.
+There used to be a `--no-quarantine` flag that skipped it; Homebrew 6 removed
+it, so clearing the attribute afterwards is now the only route.
+
+Taking the `.dmg` from the
+[Releases page](https://github.com/ronny1020/muster/releases) instead needs the
+same `xattr -cr`, or a right-click → _Open_ the first time.
 
 **Windows**
 
