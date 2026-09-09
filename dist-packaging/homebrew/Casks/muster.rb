@@ -25,9 +25,9 @@ cask "muster" do
   app "Muster.app"
 
   zap trash: [
-    "~/Library/Application Support/dev.muster.app",
-    "~/Library/Caches/dev.muster.app",
-    "~/Library/Preferences/dev.muster.app.plist",
-    "~/Library/WebKit/dev.muster.app",
+    "~/Library/Application Support/io.github.ronny1020.muster",
+    "~/Library/Caches/io.github.ronny1020.muster",
+    "~/Library/Preferences/io.github.ronny1020.muster.plist",
+    "~/Library/WebKit/io.github.ronny1020.muster",
   ]
 end
