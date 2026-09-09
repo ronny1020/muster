@@ -1,0 +1,74 @@
+# Builds the installers users download. Tagging is the whole release process:
+# push `v0.2.0` and every platform's artifact lands on a draft release for
+# review before publishing.
+#
+# Nothing here is code-signed. macOS is ad-hoc signed (`signingIdentity: "-"`
+# in tauri.conf.json) and Windows is unsigned, so no Apple or Windows signing
+# secrets are needed — only the automatic GITHUB_TOKEN.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  bundle:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple silicon
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest # Intel
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the webview toolkit (Linux only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Only the macOS runners build for two architectures.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: bun install --frozen-lockfile
+
+      # `beforeBuildCommand` typechecks and bundles the frontend, so this is the
+      # only build step.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Muster ${{ github.ref_name }}
+          releaseBody: |
+            Download the installer for your platform below.
+
+            These builds are not code-signed. macOS wants right-click → Open
+            the first time; Windows SmartScreen wants "More info → Run anyway".
+            See the README for the Homebrew and Scoop routes, which handle it
+            for you.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

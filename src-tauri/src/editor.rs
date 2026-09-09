@@ -1,0 +1,264 @@
+//! Opening a session's directory in the user's editor.
+//!
+//! Editors are found by their launcher command rather than by looking for an
+//! installed application, because the command is what can open a directory —
+//! and it is the same thing the user would type themselves.
+
+use std::path::Path;
+
+use crate::platform;
+
+/// An editor the user could open a directory with.
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Editor {
+    pub command: String,
+    pub name: String,
+}
+
+/// Editor launchers worth looking for, most common first. The order decides
+/// which one a tab offers when the user has not picked a favourite.
+const KNOWN: &[(&str, &str)] = &[
+    ("code", "VS Code"),
+    ("cursor", "Cursor"),
+    ("antigravity", "Antigravity"),
+    ("windsurf", "Windsurf"),
+    ("zed", "Zed"),
+    ("subl", "Sublime Text"),
+    ("idea", "IntelliJ IDEA"),
+    ("webstorm", "WebStorm"),
+    ("pycharm", "PyCharm"),
+    ("code-insiders", "VS Code Insiders"),
+    ("codium", "VSCodium"),
+    ("nvim", "Neovim"),
+    ("vim", "Vim"),
+];
+
+/// Which of the known editors this machine can actually launch.
+///
+/// One login shell answers for all of them: a shell per candidate would mean a
+/// dozen profile evaluations, and the profile is exactly what puts an editor's
+/// command on `PATH` in the first place.
+#[tauri::command]
+pub async fn editors() -> Vec<Editor> {
+    tauri::async_runtime::spawn_blocking(available)
+        .await
+        .unwrap_or_default()
+}
+
+/// Spawns a whole login shell, so it belongs on the blocking pool.
+fn available() -> Vec<Editor> {
+    let found = probe(
+        &KNOWN
+            .iter()
+            .map(|(command, _)| *command)
+            .collect::<Vec<_>>(),
+    );
+    KNOWN
+        .iter()
+        .filter(|(command, _)| found.iter().any(|name| name == command))
+        .map(|(command, name)| Editor {
+            command: (*command).into(),
+            name: (*name).into(),
+        })
+        .collect()
+}
+
+/// Editors that take `-g path:line:column` to open at a position. They are all
+/// VS Code derivatives, which is also why they share the flag.
+const GOTO_FLAG: &[&str] = &["code", "code-insiders", "codium", "cursor", "windsurf"];
+
+/// Arguments that open `target` in `command`, at `line` where the editor can.
+///
+/// A line number is dropped rather than guessed at: an editor given a flag it
+/// does not know would refuse to open the file at all, which is worse than
+/// landing on line 1.
+fn open_args(command: &str, target: &str, line: Option<u32>) -> Vec<String> {
+    match line {
+        Some(line) if GOTO_FLAG.contains(&command) => {
+            vec!["-g".into(), format!("{target}:{line}")]
+        }
+        _ => vec![target.to_string()],
+    }
+}
+
+/// The directory to run the editor from: `target` itself when it is one, else
+/// its parent. Handing a file to `current_dir` fails outright.
+fn working_dir(target: &str) -> String {
+    let path = Path::new(target);
+    let dir = if path.is_dir() {
+        Some(path)
+    } else {
+        path.parent()
+    };
+    dir.filter(|dir| !dir.as_os_str().is_empty())
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ".".into())
+}
+
+/// Opens `target` — a file or a directory — in `command`, detached, so the
+/// editor outlives this call and a slow launch never blocks the window.
+#[tauri::command(async)]
+pub fn open_in_editor(target: String, command: String, line: Option<u32>) -> Result<(), String> {
+    if !KNOWN.iter().any(|(known, _)| *known == command) {
+        // Only ever run a command from the table, never one that arrived as data.
+        return Err(format!("unknown editor {command}"));
+    }
+
+    let args = open_args(&command, &target, line);
+    let cwd = working_dir(&target);
+    let argv = platform::argv(&platform::Launch {
+        backend: platform::Backend::Native,
+        distro: None,
+        cwd: &cwd,
+        program: &command,
+        args: &args,
+        via_shell: true,
+    });
+
+    platform::command(&argv.program)
+        .args(&argv.args)
+        .current_dir(&argv.cwd)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("could not start {command}: {error}"))
+}
+
+/// Asks one login shell which of `candidates` it can resolve.
+fn probe(candidates: &[&str]) -> Vec<String> {
+    let script = format!(
+        "for c in {}; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done",
+        candidates.join(" ")
+    );
+    let output = platform::command(platform::default_shell())
+        .args(shell_args(&script))
+        .output();
+
+    match output {
+        Ok(out) => parse_probe(&String::from_utf8_lossy(&out.stdout)),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// PowerShell needs its own spelling of "run this script and exit".
+#[cfg(windows)]
+fn shell_args(script: &str) -> Vec<String> {
+    let powershell = format!(
+        "foreach ($c in @({})) {{ if (Get-Command $c -ErrorAction SilentlyContinue) {{ $c }} }}",
+        script_names(script)
+            .iter()
+            .map(|name| format!("'{name}'"))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    vec!["-NoLogo".into(), "-Command".into(), powershell]
+}
+
+/// The candidate names back out of the POSIX script, so the two shells stay
+/// driven by one list.
+#[cfg(windows)]
+fn script_names(script: &str) -> Vec<&str> {
+    script
+        .split_once("for c in ")
+        .and_then(|(_, rest)| rest.split_once(';'))
+        .map(|(names, _)| names.split_whitespace().collect())
+        .unwrap_or_default()
+}
+
+/// `-i` for the same reason a session needs it: an editor's launcher command is
+/// usually on a `PATH` that only `.zshrc` sets.
+#[cfg(unix)]
+fn shell_args(script: &str) -> Vec<String> {
+    vec!["-l".into(), "-i".into(), "-c".into(), script.into()]
+}
+
+/// One resolved command per line; anything else the profile printed is noise.
+fn parse_probe(out: &str) -> Vec<String> {
+    out.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.contains(char::is_whitespace))
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_one_command_per_line() {
+        assert_eq!(parse_probe("code\ncursor\n"), ["code", "cursor"]);
+    }
+
+    #[test]
+    fn ignores_chatter_a_login_profile_prints() {
+        let out = "Welcome to your shell\ncode\n\n  zed  \nnvm: version 20\n";
+        assert_eq!(parse_probe(out), ["code", "zed"]);
+    }
+
+    #[test]
+    fn an_empty_answer_means_no_editor_was_found() {
+        assert!(parse_probe("").is_empty());
+        assert!(parse_probe("\n\n").is_empty());
+    }
+
+    #[test]
+    fn refuses_a_command_that_is_not_in_the_table() {
+        let error = open_in_editor("/tmp".into(), "rm -rf /".into(), None).unwrap_err();
+        assert!(error.contains("unknown editor"));
+    }
+
+    #[test]
+    fn opens_a_vs_code_derivative_at_the_line() {
+        assert_eq!(open_args("code", "/a/b.ts", Some(42)), ["-g", "/a/b.ts:42"]);
+        assert_eq!(open_args("cursor", "/a/b.ts", Some(7)), ["-g", "/a/b.ts:7"]);
+    }
+
+    #[test]
+    fn drops_the_line_for_an_editor_that_has_no_flag_for_it() {
+        // Better to open at line 1 than to be refused over an unknown flag.
+        assert_eq!(open_args("zed", "/a/b.ts", Some(42)), ["/a/b.ts"]);
+        assert_eq!(open_args("idea", "/a/b.ts", Some(42)), ["/a/b.ts"]);
+    }
+
+    #[test]
+    fn passes_a_bare_target_when_there_is_no_line() {
+        assert_eq!(open_args("code", "/a/b.ts", None), ["/a/b.ts"]);
+    }
+
+    #[test]
+    fn runs_from_a_directory_target_itself() {
+        assert_eq!(
+            working_dir(env!("CARGO_MANIFEST_DIR")),
+            env!("CARGO_MANIFEST_DIR")
+        );
+    }
+
+    #[test]
+    fn runs_from_a_file_targets_parent() {
+        let file = format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(working_dir(&file), env!("CARGO_MANIFEST_DIR"));
+    }
+
+    #[test]
+    fn falls_back_to_the_current_directory_for_a_bare_name() {
+        assert_eq!(working_dir("notes.md"), ".");
+    }
+
+    #[test]
+    fn every_known_editor_is_listed_once() {
+        let commands: Vec<&str> = KNOWN.iter().map(|(command, _)| *command).collect();
+        let unique: std::collections::HashSet<_> = commands.iter().collect();
+        assert_eq!(unique.len(), commands.len());
+    }
+
+    #[test]
+    fn detection_answers_without_erroring_on_this_machine() {
+        // Which editors exist is the machine's business; that the probe returns
+        // a well-formed answer is ours.
+        for editor in available() {
+            assert!(!editor.command.is_empty());
+            assert!(KNOWN.iter().any(|(command, _)| *command == editor.command));
+        }
+    }
+}

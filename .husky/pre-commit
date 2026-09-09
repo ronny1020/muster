@@ -1,0 +1,15 @@
+# Formats what is being committed, then checks the whole tree still holds
+# together. Fast on purpose: the Rust suite only runs when Rust changed, since
+# its compile step is the one slow part.
+set -e
+
+bunx lint-staged
+
+bun run check
+bun test
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '\.rs$'; then
+  cd src-tauri
+  cargo test --lib
+  cargo clippy --all-targets -- -D warnings
+fi

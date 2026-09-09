@@ -1,0 +1,87 @@
+# Pushes a published release's version and checksums into the Homebrew tap and
+# the Scoop bucket, so a release is one action rather than three.
+#
+# DISABLED. `if: false` on the job below keeps it from running. Before enabling:
+#
+#   1. Create both repositories:
+#        ronny1020/homebrew-tap   with Casks/muster.rb   (copy from
+#                                 dist-packaging/homebrew/Casks/muster.rb)
+#        ronny1020/scoop-bucket   with bucket/muster.json (copy from
+#                                 dist-packaging/scoop/bucket/muster.json)
+#   2. Create a fine-grained PAT with Contents: read and write on those two
+#      repositories only, and save it as the PACKAGES_PAT secret here.
+#   3. Delete the `if: false` line from the job.
+#
+# Until then, update the two manifests by hand — docs/RELEASE.md says how.
+name: update-packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-manifests:
+    if: false # remove to enable; see the header
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Download the release assets
+        run: |
+          # The tag carries a leading v; the manifests do not.
+          echo "PLAIN_VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+          gh release download "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.dmg' --pattern '*-setup.exe' \
+            --dir assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute the checksums
+        run: |
+          cd assets
+          {
+            echo "SHA_AARCH64=$(sha256sum ./*_aarch64.dmg | cut -d' ' -f1)"
+            echo "SHA_X64_DMG=$(sha256sum ./*_x64.dmg | cut -d' ' -f1)"
+            echo "SHA_X64_EXE=$(sha256sum ./*-setup.exe | cut -d' ' -f1)"
+          } >> "$GITHUB_ENV"
+
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: ronny1020/homebrew-tap
+          token: ${{ secrets.PACKAGES_PAT }}
+          path: homebrew-tap
+
+      - name: Rewrite the cask
+        working-directory: homebrew-tap
+        run: |
+          cask=Casks/muster.rb
+          sed -i -E "s/^  version \".*\"/  version \"$PLAIN_VERSION\"/" "$cask"
+          sed -i -E "s/(arm: +)\"[^\"]*\"/\1\"$SHA_AARCH64\"/" "$cask"
+          sed -i -E "s/(intel: +)\"[^\"]*\"/\1\"$SHA_X64_DMG\"/" "$cask"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "muster $PLAIN_VERSION" && git push
+
+      - name: Check out the Scoop bucket
+        uses: actions/checkout@v4
+        with:
+          repository: ronny1020/scoop-bucket
+          token: ${{ secrets.PACKAGES_PAT }}
+          path: scoop-bucket
+
+      - name: Rewrite the manifest
+        working-directory: scoop-bucket
+        run: |
+          manifest=bucket/muster.json
+          # jq rather than sed: the version appears inside the URL too.
+          jq --arg v "$PLAIN_VERSION" --arg hash "$SHA_X64_EXE" '
+            .version = $v
+            | .architecture."64bit".hash = $hash
+            | .architecture."64bit".url =
+                "https://github.com/ronny1020/muster/releases/download/v\($v)/Muster_\($v)_x64-setup.exe#/setup.exe"
+          ' "$manifest" > tmp && mv tmp "$manifest"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "muster $PLAIN_VERSION" && git push
