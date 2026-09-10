@@ -118,3 +118,16 @@ test("labels are written in each platform's own notation", () => {
   expect(shortcutLabels(true).next).toBe('⌘⇧]')
   expect(shortcutLabels(false).next).toBe('Ctrl+PageDown')
 })
+
+test('find is ⌘F on macOS and Ctrl+Shift+F elsewhere', () => {
+  expect(matchShortcut(press({ key: 'f', metaKey: true }), true)).toEqual({
+    type: 'find',
+  })
+  expect(
+    matchShortcut(press({ key: 'f', ctrlKey: true, shiftKey: true }), false),
+  ).toEqual({ type: 'find' })
+})
+
+test('plain Ctrl+F stays with the program, which uses it to page forward', () => {
+  expect(matchShortcut(press({ key: 'f', ctrlKey: true }), false)).toBeNull()
+})

@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 import type { LinkMeta } from '../ipc'
+import { report } from '../ipc'
 
 export interface LinkCardProps {
   /** The URL being previewed, known before the fetch returns. */
@@ -78,7 +79,7 @@ export function LinkCard({ url, meta, error, onClose }: LinkCardProps) {
             <button
               type="button"
               onClick={() => {
-                void openUrl(url)
+                void openUrl(url).catch(report)
                 onClose()
               }}
               className="h-7 flex-1 rounded-lg border border-line bg-surface text-xs hover:bg-surface-hover"

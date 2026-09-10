@@ -1,19 +1,43 @@
 # Muster
 
-Run your AI agent CLIs in one window, in tabs, the way a browser holds pages.
+**A terminal built for AI agent CLIs.**
 
-Every tab is a real terminal in its own directory, so `claude`, `codex` and
-`agy` behave exactly as they do in your usual terminal — full TUI, colours,
-keyboard and all. What the app adds is everything around them: tabs across the
-top, the directory and its git state along the bottom, a commit history you can
-pull open, and a notification when an agent finishes and wants you back.
+<!-- Screenshot goes here, as docs/screenshot.png:
+![Muster on macOS: the launcher, with the agent roster and the New / Continue / Resume choice](docs/screenshot.png)
+-->
+
+`claude`, `codex` and `agy` run exactly as they do in your usual terminal — a
+real PTY, full TUI, colours, keyboard and all. What Muster adds is the part a
+terminal has no way to know: which agent a tab is running, whether it has a
+conversation worth resuming, when it has stopped and wants you back, and what it
+did to your working tree while you were reading another tab.
+
+Tabs are not the point — Windows Terminal and PowerShell have had those for
+years. The point is that Muster knows what is _in_ the tab:
+
+- 🎯 **The launcher asks which agent**, then offers New, Continue or Resume — and
+  greys out the ones that would fail, because it checks for a recorded
+  conversation in that directory first instead of letting the CLI print
+  `No conversation found to continue`.
+- 🧹 **Agent session markers are stripped from every tab**, so an agent launched
+  from inside another agent still records its own transcript. Without that,
+  `--continue` later finds nothing.
+- 🐚 **Sessions run through a login shell**, so a CLI installed by your own profile
+  — mise, nvm, `~/.local/bin` — is found. A GUI app otherwise inherits a bare
+  `PATH` and none of them exist.
+- 🔔 **A finished agent raises a dot on its tab and a desktop notification**,
+  because the reason to run several is that you are not watching this one.
+- 🌿 **The footer follows the directory and its git state** as the agent changes
+  it, and the drawer switches branches without leaving the tab.
+- 🖱️ **Paths, URLs and images in the output are clickable.** Agent output is full
+  of them.
 
 _To muster:_ to assemble a force, and to look it over. The launcher musters an
 agent; the status bar and the history drawer are the looking over.
 
 Runs on macOS, Windows and Linux. On Windows a tab can run inside WSL.
 
-## Install
+## 📦 Install
 
 The download is the whole app on macOS and Linux. On Windows the installer
 fetches Microsoft's WebView2 runtime if the machine does not already have it.
@@ -55,7 +79,7 @@ user, so no admin prompt.
 | `.deb`      | `sudo apt install ./Muster_*_amd64.deb`             |
 | `.rpm`      | `sudo dnf install ./Muster-*.x86_64.rpm`            |
 
-### Why the warnings
+### ⚠️ Why the warnings
 
 This project has not bought a code-signing certificate — an Apple Developer
 membership and a Windows certificate cost real money, and it has no users yet
@@ -72,7 +96,7 @@ Actions from the tag it claims to be, in a workflow you can read
 ([`.github/workflows/release.yml`](.github/workflows/release.yml)). The Homebrew
 and Scoop routes additionally verify a checksum recorded in their manifests.
 
-### Privacy
+### 🕶️ Privacy
 
 Muster makes no network requests of its own. It has no telemetry, no update
 check, and no accounts — it reads your filesystem and git state, and runs the
@@ -86,7 +110,7 @@ your own terminal first; Muster finds them exactly the way your shell does.
 Building from source instead is a few commands, and needs a Bun and Rust
 toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Using it
+## 🚀 Using it
 
 A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent**, and how the session should open.
@@ -113,7 +137,7 @@ Quoted values stay in one piece.
 scrollback is lost, so leaving an agent to work and coming back later is the
 normal way to use this.
 
-## The status bar
+## 📊 The status bar
 
 Along the bottom of each tab:
 
@@ -129,17 +153,27 @@ Along the bottom of each tab:
   Text, the JetBrains IDEs, VSCodium, Neovim or Vim you have, and Settings picks
   between them.
 
+Quitting with an agent still working asks first, and says how many sessions are
+running — then ends them, and anything they started, rather than leaving a dev
+server behind.
+
+Tabs come back when you reopen the app: each one returns as a launcher with its
+directory and agent already chosen, one click from going. The session itself is
+not resumed — that would restart the agent mid-thought — so `Continue` is right
+there when the conversation is what you want back.
+
 `cd` somewhere else in the terminal and all of it follows you. Not on Windows,
 which offers no way to read another process's directory: a tab there stays on
 the folder it started in, and the tooltip says so.
 
-## Clicking things in the output
+## 🖱️ Clicking things in the output
 
 Agents print paths and URLs constantly, and all of them are live:
 
 | You click                          | Muster does                                                                                     |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
 | An image path — `/tmp/shot.png`    | Opens it in a preview overlay                                                                   |
+| A directory — `~/work/api`         | Reveals it in Finder or your file manager                                                       |
 | Any other path — `src/deck.ts:187` | Opens it in your editor; VS Code, Cursor, Windsurf, VSCodium and Insiders also jump to the line |
 | A URL                              | Shows a card with the page's title, description and preview image, and a button to open it      |
 
@@ -161,7 +195,7 @@ refused.
 > redirect, so a public page can still redirect the fetch to a private address.
 > Treat clicking an untrusted link as a request that may reach your own network.
 
-## History
+## 🌿 History and branches
 
 Click the branch name, or press the history shortcut, for a drawer on the right
 listing that directory's commits — subject, branch and tag badges, short sha,
@@ -169,7 +203,27 @@ author and age. A dot marks commits that are not on the remote yet. It reloads
 when the directory or branch changes, and there is a refresh button for when you
 want it sooner.
 
-## Notifications
+**Switch** in the same drawer lists branches instead, most recently committed to
+first, with a filter box. Pick one and it checks out. Branches only a remote has
+are listed too, marked `remote`; picking one starts a local branch from it.
+
+If the tree has uncommitted work the drawer says so before you pick, because a
+checkout can fail on it — though only when the two branches differ in the files
+you have touched, so it does not stop you trying. When git refuses, it names the
+files in the way and the drawer shows that as it came.
+
+## 🔎 Searching the scrollback
+
+`⌘F`, or `Ctrl+Shift+F`, opens a find bar over the terminal. Type to jump to
+the first match as you go; Enter and `⇧Enter` walk the rest, the count reads
+`3 of 17`, and Escape closes it and hands the keyboard back to the agent.
+Matches are highlighted in the grid and marked down the scrollbar, so a match
+far above the fold is still findable.
+
+Agents print hundreds of lines and the interesting error is always the one that
+has scrolled away.
+
+## 🔔 Notifications
 
 Agents ring the terminal bell when they finish a turn and hand control back, so
 that is the moment you hear about:
@@ -181,14 +235,17 @@ Nothing fires while you are already looking at that tab, and a burst of bells
 becomes a single notification. Sessions that end are announced the same way,
 with the exit code when they failed. All of it is adjustable, including off.
 
-## Settings
+## ⚙️ Settings
 
 Press the settings shortcut or click the gear at the right of the tab strip.
 Settings open as a tab, and changes take effect immediately — including in
 terminals that are already running.
 
 - **New tabs** — which agent and directory to start on.
-- **Terminal** — font, size, line height, scrollback, blinking cursor.
+- **Terminal** — theme, font, size, line height, scrollback, blinking cursor.
+- **Background** — an image behind the terminal, with a brightness slider and a
+  preview that shows sample output over it, since brightness is only ever
+  judged against the text it sits behind.
 - **Editor** — which editor the status bar's button opens.
 - **Notifications** — whether to notify, whether to stay quiet on the tab you
   are watching, whether to play a sound.
@@ -198,21 +255,26 @@ terminals that are already running.
 On Windows with WSL installed, **New tabs** also chooses between Windows and a
 distro.
 
-## Shortcuts
+## ⌨️ Shortcuts
 
 | Action              | macOS         | Windows / Linux                 |
 | ------------------- | ------------- | ------------------------------- |
 | New tab             | `⌘T`          | `Ctrl+Shift+T`                  |
 | Close tab           | `⌘W`          | `Ctrl+Shift+W`                  |
 | Toggle git history  | `⌘Y`          | `Ctrl+Shift+Y`                  |
+| Find in scrollback  | `⌘F`          | `Ctrl+Shift+F`                  |
+| Copy selection      | `⌘C`          | `Ctrl+Shift+C`                  |
+| Paste               | `⌘V`          | `Ctrl+Shift+V`                  |
 | Settings            | `⌘,`          | `Ctrl+,`                        |
 | Jump to tab 1–8     | `⌘1`–`⌘8`     | `Ctrl+1`–`Ctrl+8`               |
 | Jump to last tab    | `⌘9`          | `Ctrl+9`                        |
 | Previous / next tab | `⌘⇧[` / `⌘⇧]` | `Ctrl+PageUp` / `Ctrl+PageDown` |
 
-Middle-click a tab to close it. Every other key goes to the agent untouched.
+Middle-click a tab to close it. Every other key goes to the agent untouched —
+which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
+SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 
-## If something looks wrong
+## 🩹 If something looks wrong
 
 **Warnings about taps you have never heard of.** Homebrew 6 refuses to load
 third-party taps until they are trusted, and it lists _every_ untrusted tap on
@@ -252,16 +314,17 @@ asks, or later in system settings. The tab dot works either way.
 **A tab says `exited 1` immediately.** The agent itself refused to start —
 scroll up in that tab, its own output says why.
 
-## Your data
+## 🔒 Your data
 
 Settings and remembered directories are stored by the app; there is no config
 file to edit yet. Nothing leaves your machine — the app only runs the CLIs you
 pick, locally.
 
-## Contributing
+## 🤝 Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout, the checks, and how to add
 another agent. [AGENTS.md](AGENTS.md) holds the conventions, for people and
 coding agents alike.
 
-MIT licensed — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 Muster
+contributors.

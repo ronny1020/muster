@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 import { type Tab, tabSession } from '../deck'
 import { IS_MAC } from '../platform'
 import { SHORTCUTS } from '../shortcuts'
@@ -20,6 +22,16 @@ export function TabStrip({
   onOpen,
   onOpenSettings,
 }: TabStripProps) {
+  const strip = useRef<HTMLDivElement>(null)
+
+  // A tab reached by shortcut or by cycling can be scrolled out of sight, and
+  // the strip scrolls rather than shrinking past 100px per tab.
+  useEffect(() => {
+    strip.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeId, tabs.length])
+
   return (
     <header
       data-tauri-drag-region
@@ -32,8 +44,9 @@ export function TabStrip({
       )}
 
       <div
+        ref={strip}
         role="tablist"
-        className="flex min-w-0 items-end gap-0.5 overflow-hidden"
+        className="flex min-w-0 items-end gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => (
           <TabButton

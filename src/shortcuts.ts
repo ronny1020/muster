@@ -4,6 +4,7 @@ export type ShortcutAction =
   | { type: 'open' }
   | { type: 'openSettings' }
   | { type: 'toggleHistory' }
+  | { type: 'find' }
   | { type: 'closeActive' }
   | { type: 'cycle'; step: number }
   | { type: 'activateIndex'; index: number }
@@ -64,6 +65,7 @@ const LETTER_ACTIONS: Record<string, ShortcutAction> = {
   t: { type: 'open' },
   w: { type: 'closeActive' },
   y: { type: 'toggleHistory' },
+  f: { type: 'find' },
 }
 
 /** The same bindings written out, for tooltips and docs. */
@@ -75,6 +77,7 @@ export function shortcutLabels(isMac: boolean) {
     open: letter('T'),
     closeActive: letter('W'),
     toggleHistory: letter('Y'),
+    find: letter('F'),
     openSettings: isMac ? '⌘,' : 'Ctrl+,',
     previous: isMac ? '⌘⇧[' : 'Ctrl+PageUp',
     next: isMac ? '⌘⇧]' : 'Ctrl+PageDown',

@@ -326,3 +326,44 @@ test('going back keeps the tab in place rather than opening a new one', () => {
 
   expect(deck.tabs.map((tab) => tab.id)).toEqual(['tab-1', 'tab-2', 'tab-3'])
 })
+
+test('a new tab opens with the search bar closed', () => {
+  expect(initialDeck('tab-1').tabs[0].findOpen).toBe(false)
+})
+
+test('opening search on an already-open bar leaves it open, so the shortcut refocuses', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: true })
+  deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: true })
+  expect(deck.tabs[0].findOpen).toBe(true)
+})
+
+test('closing search leaves the history drawer alone', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: true })
+  deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: false })
+  expect(deck.tabs[0].findOpen).toBe(false)
+  expect(deck.tabs[0].historyOpen).toBe(true)
+})
+
+test('a search opened on the launcher does not carry into the session it starts', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: true })
+  deck = deckReducer(deck, {
+    type: 'start',
+    id: 'tab-1',
+    session: {
+      agentId: 'claude',
+      agentName: 'Claude Code',
+      accent: '#d97757',
+      program: 'claude',
+      args: [],
+      cwd: '/work',
+      backend: 'native',
+      distro: '',
+    },
+    title: 'work',
+  })
+  expect(deck.tabs[0].findOpen).toBe(false)
+})

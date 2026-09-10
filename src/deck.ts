@@ -18,9 +18,21 @@ export interface Session {
   distro: string
 }
 
+/**
+ * What a launcher tab should open with, when it is restoring a tab from the
+ * last run rather than starting blank.
+ */
+export interface LauncherStart {
+  agentId: string
+  cwd: string
+  backend: Backend
+  distro: string
+  flags: string
+}
+
 /** What a tab is showing. A tab starts as a launcher and becomes a session. */
 export type TabContent =
-  | { type: 'launcher' }
+  | { type: 'launcher'; start?: LauncherStart }
   | { type: 'settings' }
   | { type: 'session'; session: Session }
 
@@ -34,6 +46,8 @@ export interface Tab {
   exitCode: number | null
   /** Whether this tab's git history drawer is open. */
   historyOpen: boolean
+  /** Whether this tab's scrollback search bar is open. */
+  findOpen: boolean
   /** The session signalled it is done while the user was looking elsewhere. */
   attention: boolean
   content: TabContent
@@ -63,6 +77,7 @@ export type DeckAction =
       dirty: boolean
     }
   | { type: 'toggleHistory'; id: string }
+  | { type: 'setFind'; id: string; open: boolean }
   | { type: 'attention'; id: string }
   | { type: 'relaunch'; id: string }
   | { type: 'exited'; id: string; code: number }
@@ -72,14 +87,32 @@ export const newTab = (
   content: TabContent = { type: 'launcher' },
 ): Tab => ({
   id,
-  title: content.type === 'settings' ? 'Settings' : 'New session',
+  title: tabTitle(content),
   detail: '',
   dirty: false,
   exitCode: null,
   historyOpen: false,
+  findOpen: false,
   attention: false,
   content,
 })
+
+/**
+ * What the tab strip says before a session starts.
+ *
+ * A restored tab is named after its directory: several restored tabs all
+ * reading "New session" is the state the tab strip is least able to help with.
+ */
+function tabTitle(content: TabContent): string {
+  if (content.type === 'settings') return 'Settings'
+  if (content.type === 'launcher' && content.start?.cwd) {
+    return basename(content.start.cwd)
+  }
+  return 'New session'
+}
+
+const basename = (path: string) =>
+  path.split(/[/\\]/).filter(Boolean).pop() ?? path
 
 export const initialDeck = (id: string): Deck => ({
   tabs: [newTab(id)],
@@ -122,6 +155,9 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         title: action.title,
         exitCode: null,
         detail: '',
+        // The find bar only exists once a terminal does, so a search opened on
+        // the launcher would otherwise appear unbidden over the new session.
+        findOpen: false,
       }))
 
     case 'workspace':
@@ -151,6 +187,13 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return patch(deck, action.id, (tab) => ({
         historyOpen: !tab.historyOpen,
       }))
+
+    // Set rather than toggled: the shortcut always opens and Escape always
+    // closes, so neither can leave the bar in the state the user did not ask
+    // for. Opening an already-open bar is a no-op — it does not refocus the
+    // input, because the bar is never remounted.
+    case 'setFind':
+      return patch(deck, action.id, () => ({ findOpen: action.open }))
 
     case 'exited':
       return patch(deck, action.id, () => ({

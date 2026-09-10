@@ -72,26 +72,30 @@ building.
 
 ## Where things are
 
-| Piece                                       | Where                             |
-| ------------------------------------------- | --------------------------------- |
-| PTY sessions, one per tab                   | `src-tauri/src/pty.rs`            |
-| Shells, WSL and process inspection per host | `src-tauri/src/platform.rs`       |
-| Path, git status and git log                | `src-tauri/src/workspace.rs`      |
-| Commands exposed to the frontend            | `src-tauri/src/lib.rs`            |
-| Typed wrappers over those commands          | `src/ipc.ts`                      |
-| Tab state, as a pure reducer                | `src/deck.ts`                     |
-| Settings model and validation               | `src/settings.ts`                 |
-| Shortcut bindings per platform              | `src/shortcuts.ts`                |
-| Notification policy                         | `src/notify.ts`                   |
-| Editor detection and launching              | `src-tauri/src/editor.rs`         |
-| Paths and URLs in terminal output           | `src/termlinks.ts`                |
-| Local image reads                           | `src-tauri/src/image.rs`          |
-| URL metadata fetching                       | `src-tauri/src/link.rs`           |
-| Agent session history                       | `src-tauri/src/sessions.rs`       |
-| Agent registry                              | `src/agents.ts`                   |
-| Terminal ↔ PTY binding                      | `src/components/TerminalView.tsx` |
-| New-tab start screen                        | `src/components/Launcher.tsx`     |
-| One tab's contents                          | `src/components/Pane.tsx`         |
+| Piece                                        | Where                             |
+| -------------------------------------------- | --------------------------------- |
+| PTY sessions, one per tab                    | `src-tauri/src/pty.rs`            |
+| Shells, WSL and process inspection per host  | `src-tauri/src/platform.rs`       |
+| Path, git status, log, branches and checkout | `src-tauri/src/workspace.rs`      |
+| Commands exposed to the frontend             | `src-tauri/src/lib.rs`            |
+| Typed wrappers over those commands           | `src/ipc.ts`                      |
+| Tab state, as a pure reducer                 | `src/deck.ts`                     |
+| Settings model and validation                | `src/settings.ts`                 |
+| Shortcut bindings per platform               | `src/shortcuts.ts`                |
+| Notification policy                          | `src/notify.ts`                   |
+| Editor detection and launching               | `src-tauri/src/editor.rs`         |
+| Terminal colour schemes                      | `src/themes.ts`                   |
+| Clipboard key decisions                      | `src/clipboard.ts`                |
+| Remembering tabs across a restart            | `src/persist.ts`                  |
+| Branch filtering and switch warnings         | `src/branches.ts`                 |
+| Paths and URLs in terminal output            | `src/termlinks.ts`                |
+| Local image reads                            | `src-tauri/src/image.rs`          |
+| URL metadata fetching                        | `src-tauri/src/link.rs`           |
+| Agent session history                        | `src-tauri/src/sessions.rs`       |
+| Agent registry                               | `src/agents.ts`                   |
+| Terminal ↔ PTY binding                       | `src/components/TerminalView.tsx` |
+| New-tab start screen                         | `src/components/Launcher.tsx`     |
+| One tab's contents                           | `src/components/Pane.tsx`         |
 
 The shape to keep in mind: `src-tauri` owns processes and the filesystem and
 knows nothing about tabs; `src/deck.ts` owns what a tab _is_ and knows nothing

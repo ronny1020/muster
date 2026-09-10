@@ -3,21 +3,22 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { Pane } from './components/Pane'
 import type { LaunchRequest } from './components/Launcher'
 import { TabStrip } from './components/TabStrip'
-import {
-  type Deck,
-  type DeckAction,
-  deckReducer,
-  initialDeck,
-  tabSession,
-} from './deck'
+import { type Deck, type DeckAction, deckReducer, tabSession } from './deck'
 import { useSettings } from './hooks/useSettings'
 import { useTabShortcuts } from './hooks/useTabShortcuts'
 import { onPtyExit } from './ipc'
+import { loadDeck, saveDeck } from './persist'
 import { decideBellResponse, notify } from './notify'
 import type { Settings } from './settings'
 
-let counter = 0
-const nextTabId = () => `tab-${++counter}`
+/**
+ * Tab ids, which also key the backend's PTY map.
+ *
+ * Unique across runs on purpose: a counter restarts at 1 every launch, so a
+ * restored tab and a later `⌘T` would eventually claim the same id — and the
+ * spawn path reads a reused id as "end that session and take its place".
+ */
+const nextTabId = () => crypto.randomUUID()
 
 /**
  * A session ending is worth the same interruption as one finishing a turn —
@@ -50,7 +51,11 @@ function announceExit(
 }
 
 export function App() {
-  const [deck, dispatch] = useReducer(deckReducer, nextTabId(), initialDeck)
+  const [deck, dispatch] = useReducer(deckReducer, nextTabId, loadDeck)
+
+  // Remembered on every change rather than at quit: the window can be closed
+  // by the OS, and `beforeunload` is not reliable in a webview.
+  useEffect(() => saveDeck(deck), [deck])
   const { settings } = useSettings()
   // The exit listener is registered once, so it reads live state through refs.
   const current = useRef({ deck, settings })
@@ -80,6 +85,10 @@ export function App() {
     () => dispatch({ type: 'toggleHistory', id: deck.activeId }),
     [deck.activeId],
   )
+  const find = useCallback(
+    () => dispatch({ type: 'setFind', id: deck.activeId, open: true }),
+    [deck.activeId],
+  )
   const activateIndex = useCallback(
     (index: number) => dispatch({ type: 'activateIndex', index }),
     [],
@@ -91,6 +100,7 @@ export function App() {
     cycle,
     activateIndex,
     toggleHistory,
+    find,
     openSettings,
   })
 

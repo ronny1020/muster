@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { AGENTS, type Agent, agentById, SHELL_AGENT } from '../agents'
+import type { LauncherStart } from '../deck'
 import { usePlatform } from '../hooks/usePlatform'
 import { useSettings } from '../hooks/useSettings'
 import { splitFlags } from '../flags'
@@ -45,21 +46,28 @@ interface MissingDirectory {
 export function Launcher({
   active,
   onLaunch,
+  start,
 }: {
   active: boolean
   onLaunch(request: LaunchRequest): void
+  /** What a restored tab opens with, in place of the settings defaults. */
+  start?: LauncherStart
 }) {
   const directory = useRef<HTMLInputElement>(null)
   const { settings } = useSettings()
   const platform = usePlatform()
   const [recents] = useState(recentDirs)
-  const [cwd, setCwd] = useState(settings.defaultDirectory || recents[0] || '')
-  const [flags, setFlags] = useState('')
-  const [agent, setAgent] = useState<Agent>(() =>
-    agentById(settings.defaultAgentId),
+  const [cwd, setCwd] = useState(
+    start?.cwd || settings.defaultDirectory || recents[0] || '',
   )
-  const [backend, setBackend] = useState<Backend>(settings.defaultBackend)
-  const [distro, setDistro] = useState(settings.defaultDistro)
+  const [flags, setFlags] = useState(start?.flags ?? '')
+  const [agent, setAgent] = useState<Agent>(() =>
+    agentById(start?.agentId || settings.defaultAgentId),
+  )
+  const [backend, setBackend] = useState<Backend>(
+    start?.backend ?? settings.defaultBackend,
+  )
+  const [distro, setDistro] = useState(start?.distro ?? settings.defaultDistro)
   const [error, setError] = useState('')
   const [missing, setMissing] = useState<MissingDirectory | null>(null)
   // null = the agent's store is unreadable, so every mode stays offered.
@@ -68,7 +76,7 @@ export function Launcher({
   const distros = platform?.wslDistros ?? []
 
   useEffect(() => {
-    if (!cwd) void homeDir().then(setCwd)
+    if (!cwd) void homeDir().then(setCwd, () => setCwd(''))
     // Runs once: it only fills the initial blank, and every later edit is
     // the user's to keep.
   }, [])

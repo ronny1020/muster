@@ -40,6 +40,26 @@ you changed process spawning, terminal behaviour, or anything in the window
 chrome, say plainly that you did not run it, or run it: `bun run dev`, then
 report what you saw.
 
+## Keep these documents true
+
+A change is not finished while one of these files still describes the old
+behaviour. Update them **in the same change**, not afterwards:
+
+- **AGENTS.md** — the invariants, the module list, the conventions. The module
+  list is meant to be what exists, so a new `src/<thing>.ts` belongs in it.
+- **CONTRIBUTING.md** — the checks, the "where things are" table, the
+  procedures. A new module or command gets a row.
+- **README.md** — anything a user can see. A new setting, a new shortcut, a new
+  thing that is clickable: the settings list and the shortcut table are the two
+  that go stale first.
+
+The same applies to an instruction you are given that disagrees with what is
+written here: the instruction wins, and this file gets the correction as part of
+the work. A document nobody trusts is worse than no document — and the drift is
+invisible, because nothing in the checks can catch it.
+
+Say in your report which of these you changed, and why.
+
 ## Invariants that break silently
 
 Each of these was a real bug. None of them fail loudly.
@@ -108,6 +128,36 @@ trade than telling them to run `brew reinstall --cask` by hand.
 This is invisible from a developer machine, where the tap is already present and
 trusted. Test from a wiped one — see "Verifying an install" in CONTRIBUTING.md.
 
+**Cleanup runs on `RunEvent::Exit`, not on a window event.** `Cmd+Q` and the
+app menu's Quit reach tao as `terminate:`, which emits only `LoopDestroyed` — so
+no window ever sees `CloseRequested` or `Destroyed`, and anything hung off those
+is skipped on the most common quit gesture on macOS. The confirmation prompt can
+live on `CloseRequested`; ending the sessions cannot.
+
+**A session must be forgotten when its child exits.** The pane stays mounted
+behind the "session ended" overlay, so `pty_kill` never runs on a natural exit.
+Without `Sessions::forget` in the reader thread the registry keeps dead entries,
+and then the quit prompt counts tabs with nothing running and `end_all` signals
+pids the OS may already have recycled. For the same reason `end_all` drains into
+a vec before ending anything — `end` sleeps between `SIGHUP` and `SIGKILL`, and
+holding the map guard across those sleeps blocks the event loop.
+
+**Tab ids must be unique across runs.** They key the backend's PTY map, and
+`pty_spawn` reads a reused id as "end that session and take its place". A
+per-run counter restarts at 1, so a restored tab and a later `⌘T` would collide;
+`crypto.randomUUID` is what makes restore safe.
+
+**`allowTransparency` is set once and never changed.** xterm requires it before
+`open()` and it cannot be changed without calling `open()` again — which would
+respawn the PTY. So it is always on, and whether the grid is actually
+transparent is decided by the theme's alpha. For the same reason every theme's
+`background` must stay an opaque `#rrggbb`: the pane paints it behind the grid.
+
+**Dispose the WebGL addon before the terminal.** The renderer has to release its
+GPU context first, and `onContextLoss` must null the handle so cleanup cannot
+double-dispose. A lost context with no fallback stops the terminal painting
+entirely rather than dropping back to the DOM renderer.
+
 **Keep command-line building platform-independent.** POSIX, PowerShell and WSL
 argv construction in `src-tauri/src/platform.rs` compiles on every target so
 `cargo test` covers all three from any host. `cfg`-gate the _choice_ between
@@ -123,7 +173,9 @@ Dependencies point one way:
   nothing about the DOM. Tab behaviour worth arguing about belongs here, where a
   test can reach it.
 - `src/settings.ts`, `src/notify.ts`, `src/shortcuts.ts`, `src/git.ts`,
-  `src/flags.ts`, `src/paths.ts`, `src/recents.ts`, `src/termlinks.ts` and `src/termcells.ts` are
+  `src/flags.ts`, `src/paths.ts`, `src/recents.ts`, `src/termlinks.ts`,
+  `src/termcells.ts`, `src/branches.ts`, `src/clipboard.ts`, `src/persist.ts`
+  and `src/themes.ts` are
   plain modules: no React, no runtime IPC, each with its own test file. (`src/platform.ts` sits
   beside them but does call `invoke`, and has no test of its own.) A new
   `src/<thing>.ts` beside them is the right home for new logic — the list is
@@ -152,7 +204,7 @@ the signal to move it into a module first.
 - **Tailwind classes inline**, no `@apply` outside `src/index.css`'s base layer.
   Reach for the `@theme` tokens first (`canvas`, `chrome`, `surface`, `line`,
   `ink`, `muted`, `faint`, `brand`, `danger`). Raw hex is still in use where no
-  token fits — the git-status chip colours, the xterm `THEME` palette, an
+  token fits — the git-status chip colours, the palettes in `src/themes.ts`, an
   agent's `accent` — so prefer promoting a repeated hex to a token over adding
   another one-off.
 

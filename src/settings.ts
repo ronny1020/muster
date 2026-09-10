@@ -1,4 +1,5 @@
 import type { Backend } from './platform'
+import { DEFAULT_THEME_ID, THEMES } from './themes'
 
 /**
  * User settings, persisted in `localStorage`. Loading is total: anything
@@ -14,6 +15,8 @@ export interface Settings {
   defaultBackend: Backend
   /** Which WSL distro a `wsl` session uses; empty means the default one. */
   defaultDistro: string
+  /** Terminal colour scheme, by id. */
+  themeId: string
   fontFamily: string
   fontSize: number
   lineHeight: number
@@ -31,6 +34,10 @@ export interface Settings {
   /** Stay quiet while the user is already looking at that very tab. */
   notifyOnlyWhenUnfocused: boolean
   notifySound: boolean
+  /** Image drawn behind the terminal; empty for the plain background. */
+  backgroundImage: string
+  /** Brightness applied to that image, as a percentage. */
+  backgroundBrightness: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -38,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultDirectory: '',
   defaultBackend: 'native',
   defaultDistro: '',
+  themeId: DEFAULT_THEME_ID,
   fontFamily:
     '"JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace',
   fontSize: 13,
@@ -50,6 +58,10 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyOnDone: true,
   notifyOnlyWhenUnfocused: true,
   notifySound: true,
+  backgroundImage: '',
+  // Wallpaper at full brightness makes terminal text unreadable, so the
+  // default is already dimmed — the setting is there to bring it back up.
+  backgroundBrightness: 35,
 }
 
 export const LIMITS = {
@@ -58,6 +70,7 @@ export const LIMITS = {
   scrollback: { min: 1000, max: 200000, step: 1000 },
   gitPollSeconds: { min: 1, max: 60, step: 1 },
   historyLimit: { min: 10, max: 500, step: 10 },
+  backgroundBrightness: { min: 5, max: 100, step: 5 },
 } as const
 
 const STORAGE_KEY = 'muster.settings'
@@ -80,6 +93,12 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.defaultDistro,
       true,
     ),
+    // Validated against the table rather than kept as typed: a stored id for a
+    // theme that no longer exists must not leave the terminal unstyled.
+    themeId:
+      typeof raw.themeId === 'string' && raw.themeId in THEMES
+        ? raw.themeId
+        : DEFAULT_SETTINGS.themeId,
     fontFamily: text(raw.fontFamily, DEFAULT_SETTINGS.fontFamily),
     fontSize: number(raw.fontSize, DEFAULT_SETTINGS.fontSize, LIMITS.fontSize),
     lineHeight: number(
@@ -114,6 +133,17 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.notifyOnlyWhenUnfocused,
     ),
     notifySound: flag(raw.notifySound, DEFAULT_SETTINGS.notifySound),
+    // Not through `text()`: it trims, and a filename may legally end in a
+    // space — trimming would silently point at a different file.
+    backgroundImage:
+      typeof raw.backgroundImage === 'string'
+        ? raw.backgroundImage
+        : DEFAULT_SETTINGS.backgroundImage,
+    backgroundBrightness: number(
+      raw.backgroundBrightness,
+      DEFAULT_SETTINGS.backgroundBrightness,
+      LIMITS.backgroundBrightness,
+    ),
   }
 }
 

@@ -5,12 +5,16 @@ import { useSettings } from '../hooks/useSettings'
 import { preferredEditor, useEditors } from '../hooks/useEditors'
 import { useHomeDir } from '../hooks/useHomeDir'
 import { useWorkspace } from '../hooks/useWorkspace'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
+
 import {
   type ImagePreview as Image,
   type LinkMeta,
   linkPreview,
   openInEditor,
+  pathKind,
   readImage,
+  report,
 } from '../ipc'
 import { decideBellResponse, notify } from '../notify'
 import { isImagePath } from '../termlinks'
@@ -48,7 +52,7 @@ export interface PaneProps {
 export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
   const { settings } = useSettings()
   const session = tabSession(tab)
-  const { cwd, workspace, tracked } = useWorkspace(
+  const { cwd, workspace, tracked, refresh } = useWorkspace(
     session && tab.id,
     session?.cwd ?? null,
     settings.gitPollSeconds,
@@ -61,6 +65,10 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
   const git = workspace?.git
   const historyOpen = tab.historyOpen && Boolean(git?.repo)
   const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
+  const closeFind = useCallback(
+    () => dispatch({ type: 'setFind', id: tab.id, open: false }),
+    [dispatch, tab.id],
+  )
 
   const home = useHomeDir()
   const [preview, setPreview] = useState<ImagePreviewState>({
@@ -73,7 +81,7 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
    * goes to the editor. A directory counts as "anything else" — editors open
    * those happily.
    */
-  const onPath = useCallback((path: string, line?: number) => {
+  const openFile = useCallback((path: string, line?: number) => {
     if (isImagePath(path)) {
       void readImage(path)
         .then((image) => setPreview({ image, error: null }))
@@ -88,6 +96,24 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
       setPreview({ image: null, error: String(error) }),
     )
   }, [])
+
+  const onPath = useCallback(
+    (path: string, line?: number) => {
+      // A folder belongs in the file manager, not an editor — and only the
+      // filesystem can say which one a path is.
+      void pathKind(path).then(
+        (kind) => {
+          if (kind === 'directory') {
+            void revealItemInDir(path).catch(report)
+            return
+          }
+          openFile(path, line)
+        },
+        () => openFile(path, line),
+      )
+    },
+    [openFile],
+  )
 
   const [link, setLink] = useState<LinkState>({
     url: null,
@@ -154,7 +180,13 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
     >
       {tab.content.type === 'settings' && <SettingsPane />}
       {tab.content.type === 'launcher' && (
-        <Launcher active={active} onLaunch={onLaunch} />
+        <Launcher
+          active={active}
+          onLaunch={onLaunch}
+          start={
+            tab.content.type === 'launcher' ? tab.content.start : undefined
+          }
+        />
       )}
 
       {session && (
@@ -169,14 +201,17 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
               home={home}
               onPath={onPath}
               onUrl={onUrl}
+              findOpen={tab.findOpen}
+              onCloseFind={closeFind}
             />
             {historyOpen && git && (
               <HistoryPanel
                 cwd={cwd}
-                branch={git.branch}
+                git={git}
                 limit={settings.historyLimit}
                 revision={`${cwd}:${git.branch}:${git.ahead}:${git.staged}:${git.modified}`}
                 onClose={toggleHistory}
+                onSwitched={refresh}
               />
             )}
           </div>

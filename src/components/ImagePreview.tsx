@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import type { ImagePreview as Preview } from '../ipc'
+import { report } from '../ipc'
 
 export interface ImagePreviewProps {
   preview: Preview | null
@@ -51,7 +52,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
               </span>
               <button
                 type="button"
-                onClick={() => void revealItemInDir(preview.path)}
+                onClick={() => void revealItemInDir(preview.path).catch(report)}
                 className="flex-none rounded px-1 text-[11px] text-muted hover:bg-surface-hover hover:text-ink"
               >
                 Reveal

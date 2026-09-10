@@ -1,10 +1,12 @@
 import { AGENTS } from '../agents'
+import { useBackground } from '../hooks/useBackground'
 import { usePlatform } from '../hooks/usePlatform'
 import { useEditors } from '../hooks/useEditors'
 import { useSettings } from '../hooks/useSettings'
-import { pickDirectory } from '../ipc'
+import { pickDirectory, pickImage } from '../ipc'
 import { clearRecentDirs, recentDirs } from '../recents'
 import { LIMITS, type Settings } from '../settings'
+import { themeChoices, themeFor } from '../themes'
 
 /** Settings live in a tab of their own, the way Chrome's do. */
 export function SettingsPane() {
@@ -106,6 +108,23 @@ export function SettingsPane() {
         </Group>
 
         <Group title="Terminal">
+          <Row label="Theme" hint="Applies to running sessions too">
+            <div className="flex items-center gap-2.5">
+              <ThemeSwatch id={settings.themeId} />
+              <select
+                value={settings.themeId}
+                onChange={(event) => update({ themeId: event.target.value })}
+                aria-label="Theme"
+                className="h-8 w-[180px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+              >
+                {themeChoices().map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Row>
           <Row label="Font family">
             <input
               value={settings.fontFamily}
@@ -124,6 +143,20 @@ export function SettingsPane() {
               label="Blinking cursor"
             />
           </Row>
+        </Group>
+
+        <Group title="Background">
+          <BackgroundRow />
+          {settings.backgroundImage && (
+            <>
+              <NumberRow
+                label="Brightness"
+                field="backgroundBrightness"
+                suffix="%"
+              />
+              <BackgroundPreview />
+            </>
+          )}
         </Group>
 
         <Group title="Editor">
@@ -335,5 +368,119 @@ function EditorRow() {
         ))}
       </select>
     </Row>
+  )
+}
+
+/** Picks the image drawn behind every terminal, or clears it. */
+function BackgroundRow() {
+  const { settings, update } = useSettings()
+  const chosen = settings.backgroundImage
+
+  const choose = async () => {
+    const picked = await pickImage()
+    if (picked) update({ backgroundImage: picked })
+  }
+
+  return (
+    <Row
+      label="Image"
+      hint={
+        chosen ? basename(chosen) : 'Drawn behind the terminal in every tab'
+      }
+    >
+      <div className="flex items-center gap-2">
+        {chosen && (
+          <button
+            type="button"
+            onClick={() => update({ backgroundImage: '' })}
+            className="h-8 rounded-lg border border-line px-2.5 text-xs text-muted hover:border-danger hover:text-danger"
+          >
+            Clear
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => void choose()}
+          className="h-8 rounded-lg border border-line px-2.5 text-xs text-ink hover:border-brand"
+        >
+          {chosen ? 'Change…' : 'Choose…'}
+        </button>
+      </div>
+    </Row>
+  )
+}
+
+/**
+ * The image at the chosen brightness, with terminal text over it.
+ *
+ * Brightness is only ever judged against the text it has to sit behind, so the
+ * preview carries a sample rather than showing the picture alone.
+ */
+function BackgroundPreview() {
+  const { settings } = useSettings()
+  const background = useBackground(settings.backgroundImage)
+
+  return (
+    <div className="px-3 pb-3">
+      <div className="relative h-[124px] overflow-hidden rounded-lg border border-line bg-canvas">
+        {background ? (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url("${background}")`,
+              filter: `brightness(${settings.backgroundBrightness}%)`,
+            }}
+          />
+        ) : (
+          <p className="absolute inset-0 flex items-center justify-center text-[11px] text-faint">
+            That file could not be read as an image.
+          </p>
+        )}
+        {background && (
+          <pre
+            aria-label="Background preview"
+            className="relative m-0 p-2.5 leading-snug text-ink"
+            style={{
+              fontFamily: settings.fontFamily,
+              fontSize: `${settings.fontSize}px`,
+            }}
+          >
+            <span className="text-[#7fb37a]">~/work/muster</span> on{' '}
+            <span className="text-[#6f9ede]">main</span>
+            {'\n'}$ claude --continue{'\n'}
+            <span className="text-muted">
+              Reading src/deck.ts to work out what a tab is…
+            </span>
+          </pre>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Last path segment, for showing which file was picked. */
+const basename = (path: string) =>
+  path.split(/[/\\]/).filter(Boolean).pop() ?? path
+
+/** The theme's own colours, so the name is not the only thing to go on. */
+function ThemeSwatch({ id }: { id: string }) {
+  const theme = themeFor(id)
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-8 items-center gap-1 rounded-lg border border-line px-2"
+      style={{ background: theme.background }}
+    >
+      {[theme.red, theme.green, theme.yellow, theme.blue, theme.magenta].map(
+        (colour) => (
+          <span
+            key={colour}
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ background: colour }}
+          />
+        ),
+      )}
+    </span>
   )
 }

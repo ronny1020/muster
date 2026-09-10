@@ -74,6 +74,12 @@ export const workspaceInfo = (cwd: string) =>
   invoke<Workspace>('workspace_info', { cwd })
 export const homeDir = () => invoke<string>('home_dir')
 
+export type PathKind = 'directory' | 'file' | 'missing'
+
+/** Whether a clicked path is a folder to reveal or a file to open. */
+export const pathKind = (path: string) =>
+  invoke<PathKind>('path_kind', { path })
+
 /**
  * Creates a directory and its missing parents, returning the absolute path.
  * Offered by the launcher when the directory typed is not there yet.
@@ -128,6 +134,23 @@ export interface LinkMeta {
  */
 export const linkPreview = (url: string) =>
   invoke<LinkMeta>('link_preview', { url })
+export interface Branch {
+  /** What a checkout would switch to; for a remote branch, the local name. */
+  name: string
+  current: boolean
+  upstream: string | null
+  when: string
+  /** Only a remote has it, so checking out starts a local branch from it. */
+  remote: boolean
+}
+
+export const gitBranches = (cwd: string) =>
+  invoke<Branch[]>('git_branches', { cwd })
+
+/** Rejects with git's own message, which names the files in the way. */
+export const gitCheckout = (cwd: string, branch: string) =>
+  invoke<void>('git_checkout', { cwd, branch })
+
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
 
@@ -146,4 +169,42 @@ export async function pickDirectory(defaultPath?: string) {
     title: 'Choose a working directory',
   })
   return typeof picked === 'string' ? picked : null
+}
+
+/** Picks a background image, or `null` when the dialog is dismissed. */
+export async function pickImage() {
+  const picked = await open({
+    multiple: false,
+    title: 'Choose a background image',
+    // Matches the extensions the Rust side is willing to read.
+    filters: [
+      {
+        name: 'Images',
+        extensions: [
+          'png',
+          'jpg',
+          'jpeg',
+          'gif',
+          'webp',
+          'bmp',
+          'avif',
+          'svg',
+          'ico',
+        ],
+      },
+    ],
+  })
+  return typeof picked === 'string' ? picked : null
+}
+
+/**
+ * Reports a failed hand-off to the OS — revealing a file, opening an editor or
+ * a URL.
+ *
+ * These have no error surface in the chrome they are triggered from, and an
+ * unhandled rejection is worse than a quiet one: in development it throws a
+ * full-window overlay over an app that is otherwise working.
+ */
+export const report = (error: unknown) => {
+  console.error(error)
 }

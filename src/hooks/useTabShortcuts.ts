@@ -7,6 +7,7 @@ export interface TabShortcuts {
   open(): void
   openSettings(): void
   toggleHistory(): void
+  find(): void
   closeActive(): void
   cycle(step: number): void
   activateIndex(index: number): void
@@ -23,6 +24,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     cycle,
     activateIndex,
     toggleHistory,
+    find,
     openSettings,
   } = handlers
 
@@ -37,13 +39,22 @@ export function useTabShortcuts(handlers: TabShortcuts) {
         cycle,
         activateIndex,
         toggleHistory,
+        find,
         openSettings,
       })
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, closeActive, cycle, activateIndex, toggleHistory, openSettings])
+  }, [
+    open,
+    closeActive,
+    cycle,
+    activateIndex,
+    toggleHistory,
+    find,
+    openSettings,
+  ])
 }
 
 function run(action: ShortcutAction, handlers: TabShortcuts) {
@@ -54,6 +65,8 @@ function run(action: ShortcutAction, handlers: TabShortcuts) {
       return handlers.openSettings()
     case 'toggleHistory':
       return handlers.toggleHistory()
+    case 'find':
+      return handlers.find()
     case 'closeActive':
       return handlers.closeActive()
     case 'cycle':

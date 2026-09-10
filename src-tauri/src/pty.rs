@@ -16,7 +16,7 @@ use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tauri::{
     ipc::{Channel, InvokeResponseBody},
-    AppHandle, Emitter,
+    AppHandle, Emitter, Manager,
 };
 
 use crate::platform::{self, Backend, Launch};
@@ -53,6 +53,35 @@ impl Sessions {
             .get(id)
             .cloned()
             .ok_or_else(|| format!("no session {id}"))
+    }
+
+    /// How many sessions are still running, for a close prompt.
+    pub fn live(&self) -> usize {
+        self.0.lock().len()
+    }
+
+    /// Forgets a session whose child has exited.
+    ///
+    /// Without this the map keeps finished sessions, so the quit prompt counts
+    /// tabs with nothing running and `end_all` signals pids the reader thread
+    /// already reaped — which the OS is free to have recycled.
+    pub fn forget(&self, id: &str) {
+        self.0.lock().remove(id);
+    }
+
+    /// Ends every session, for quit.
+    ///
+    /// Quitting never unmounts the frontend, so no `pty_kill` is ever issued
+    /// and nothing else reaches the agents' own subprocesses — a dev server an
+    /// agent started outlives the app that started it.
+    pub fn end_all(&self) {
+        // Drained into a vec first: `end` sleeps between SIGHUP and SIGKILL,
+        // and holding the map guard across those sleeps would block the event
+        // loop for 150ms per session at exit.
+        let sessions: Vec<Arc<Session>> = self.0.lock().drain().map(|(_, s)| s).collect();
+        for session in sessions {
+            end(&session);
+        }
     }
 }
 
@@ -236,6 +265,9 @@ pub fn pty_spawn(
             }
         }
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
+        // The child is gone, so the registry must let go of it: the pane stays
+        // mounted behind the "session ended" overlay, so nothing else will.
+        app.state::<Sessions>().forget(&id);
         // A deliberate close needs no banner; the tab is already a launcher.
         if !killed.load(Ordering::SeqCst) {
             let _ = app.emit("pty://exit", ExitPayload { id, code });
@@ -373,7 +405,7 @@ mod cwd_tests {
     use parking_lot::Mutex;
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
-    use super::{end, Session};
+    use super::{end, Session, Sessions};
 
     /// Polls until the leader reports `expected`, or gives up.
     fn wait_for_cwd(master: &dyn portable_pty::MasterPty, expected: &str) -> Option<String> {
@@ -395,6 +427,92 @@ mod cwd_tests {
     ///
     /// A signal to the leader alone leaves them running, because the child is a
     /// session leader and they are in its group, not its parentage.
+    #[test]
+    fn quitting_ends_every_session_and_empties_the_registry() {
+        // Closing the window never unmounts the frontend, so `end_all` is the
+        // only thing standing between quitting and orphaned agents. Assert on
+        // grandchildren: a direct child stays a zombie until it is waited on,
+        // and a zombie still answers `kill(pid, 0)`.
+        let sessions = Sessions::default();
+        let mut children = Vec::new();
+        let mut grandchildren = Vec::new();
+
+        for index in 0..2 {
+            let marker = std::env::temp_dir()
+                .join(format!("muster-quit-{}-{index}.pid", std::process::id()));
+            let _ = std::fs::remove_file(&marker);
+
+            let pair = native_pty_system()
+                .openpty(PtySize {
+                    rows: 24,
+                    cols: 80,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .expect("openpty");
+            let mut cmd = CommandBuilder::new("/bin/sh");
+            cmd.args([
+                "-c",
+                &format!(
+                    "sleep 60 & echo $! > {}; exec sleep 60",
+                    marker.to_string_lossy()
+                ),
+            ]);
+            let child = pair.slave.spawn_command(cmd).expect("spawn");
+            drop(pair.slave);
+
+            let group = child.process_id().map(|pid| pid as i32);
+            let killer = child.clone_killer();
+            let _reader = pair.master.try_clone_reader().expect("reader");
+            let (stdin, _queued) = mpsc::channel::<Vec<u8>>();
+            sessions.0.lock().insert(
+                format!("tab-{index}"),
+                Arc::new(Session {
+                    master: Mutex::new(pair.master),
+                    stdin,
+                    group,
+                    killer: Mutex::new(killer),
+                    killed: Arc::new(AtomicBool::new(false)),
+                }),
+            );
+
+            grandchildren.push((wait_for_pid(&marker), marker));
+            children.push(child);
+        }
+
+        assert_eq!(sessions.live(), 2, "both sessions should be registered");
+        assert!(
+            grandchildren.iter().all(|(pid, _)| alive(*pid)),
+            "the grandchildren should be running before the quit",
+        );
+
+        sessions.end_all();
+        assert_eq!(sessions.live(), 0, "the registry must be emptied");
+
+        // Generous on purpose: `end` sleeps 150ms between SIGHUP and SIGKILL
+        // for every session, and this waits on two whole process trees. A tight
+        // bound here fails on a loaded CI runner rather than on a real bug.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline && grandchildren.iter().any(|(pid, _)| alive(*pid)) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let survivors: Vec<i32> = grandchildren
+            .iter()
+            .filter(|(pid, _)| alive(*pid))
+            .map(|(pid, _)| *pid)
+            .collect();
+        for child in children.iter_mut() {
+            let _ = child.wait();
+        }
+        for (_, marker) in &grandchildren {
+            let _ = std::fs::remove_file(marker);
+        }
+        assert!(
+            survivors.is_empty(),
+            "quitting must not leave an agent's subprocesses running: {survivors:?}",
+        );
+    }
+
     #[test]
     fn ending_a_session_reaches_the_children_the_agent_started() {
         let marker = std::env::temp_dir().join(format!("muster-group-{}.pid", std::process::id()));

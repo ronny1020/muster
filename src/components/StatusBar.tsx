@@ -1,7 +1,7 @@
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import { branchLabel, type GitChip, gitChips } from '../git'
-import { type Editor, openInEditor, type Workspace } from '../ipc'
+import { type Editor, openInEditor, type Workspace, report } from '../ipc'
 import { REVEAL_LABEL } from '../platform'
 
 const CHIP_TONE: Record<GitChip['tone'], string> = {
@@ -50,7 +50,7 @@ export function StatusBar({
             ? REVEAL_LABEL
             : `${REVEAL_LABEL} — the directory this session started in`
         }
-        onClick={() => void revealItemInDir(cwd)}
+        onClick={() => void revealItemInDir(cwd).catch(report)}
         className={`max-w-[46%] overflow-hidden text-ellipsis hover:text-ink hover:underline ${
           workspace && !workspace.exists ? 'text-danger' : ''
         }`}
@@ -90,7 +90,7 @@ export function StatusBar({
         <button
           type="button"
           title={`Open this directory in ${editor.name}`}
-          onClick={() => void openInEditor(cwd, editor.command)}
+          onClick={() => void openInEditor(cwd, editor.command).catch(report)}
           className="rounded px-1 hover:bg-surface-hover hover:text-ink"
         >
           Open in {editor.name}

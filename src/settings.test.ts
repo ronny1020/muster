@@ -117,3 +117,39 @@ test('notification flags round trip and reject non-booleans', () => {
   expect(normalizeSettings({ notifyOnDone: 'yes' }).notifyOnDone).toBe(true)
   expect(normalizeSettings({ notifySound: 0 }).notifySound).toBe(true)
 })
+
+test('background defaults to no image, so nothing is drawn until one is picked', () => {
+  expect(normalizeSettings({}).backgroundImage).toBe('')
+})
+
+test('a background path is kept as given, since it is not a display string', () => {
+  expect(
+    normalizeSettings({ backgroundImage: '/Users/me/Pictures/wall.png' })
+      .backgroundImage,
+  ).toBe('/Users/me/Pictures/wall.png')
+})
+
+test('background starts dimmed, because full brightness hides the text', () => {
+  expect(normalizeSettings({}).backgroundBrightness).toBe(35)
+})
+
+test('brightness clamps to a range that still leaves the image visible', () => {
+  expect(
+    normalizeSettings({ backgroundBrightness: 0 }).backgroundBrightness,
+  ).toBe(5)
+  expect(
+    normalizeSettings({ backgroundBrightness: 400 }).backgroundBrightness,
+  ).toBe(100)
+})
+
+test('a corrupt stored brightness falls back rather than throwing', () => {
+  expect(
+    normalizeSettings({ backgroundBrightness: 'bright' }).backgroundBrightness,
+  ).toBe(35)
+})
+
+test('a background path keeps trailing space, which names a different file', () => {
+  expect(
+    normalizeSettings({ backgroundImage: '/pics/wall.png ' }).backgroundImage,
+  ).toBe('/pics/wall.png ')
+})

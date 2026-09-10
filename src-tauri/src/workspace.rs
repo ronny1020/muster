@@ -91,6 +91,7 @@ pub async fn git_log(cwd: String, limit: u32) -> Vec<Commit> {
 }
 
 fn read_log(cwd: String, limit: u32) -> Vec<Commit> {
+    let cwd = expand_home(&cwd);
     let cwd = Path::new(&cwd);
     let Some(out) = git(cwd, &["log", LOG_FORMAT, &format!("--max-count={limit}")]) else {
         return Vec::new();
@@ -132,6 +133,155 @@ fn parse_refs(decorations: &str) -> Vec<String> {
         .map(|reference| reference.trim().trim_start_matches("tag: ").to_string())
         .filter(|reference| !reference.is_empty())
         .collect()
+}
+
+/// One branch the history panel can switch to.
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Branch {
+    /// What to check out — for a remote-only branch, the local name it creates.
+    pub name: String,
+    pub current: bool,
+    pub upstream: Option<String>,
+    /// Relative age of its tip, e.g. `3 hours ago`.
+    pub when: String,
+    /// Only a remote has it, so checking out starts a local branch from it.
+    pub remote: bool,
+}
+
+/// NUL separates the fields; no ref name or date can contain one.
+const BRANCH_FORMAT: &str =
+    "--format=%(HEAD)%00%(refname:short)%00%(committerdate:relative)%00%(upstream:short)";
+
+#[tauri::command]
+pub async fn git_branches(cwd: String) -> Vec<Branch> {
+    tauri::async_runtime::spawn_blocking(move || read_branches(&cwd))
+        .await
+        .unwrap_or_default()
+}
+
+/// Local branches first, most recently committed to first, then branches only
+/// a remote has.
+fn read_branches(cwd: &str) -> Vec<Branch> {
+    let cwd = expand_home(cwd);
+    let path = Path::new(&cwd);
+    let sort = "--sort=-committerdate";
+    let mut branches =
+        parse_branches(git(path, &["for-each-ref", BRANCH_FORMAT, sort, "refs/heads"]).as_deref());
+    let local: HashSet<String> = branches.iter().map(|b| b.name.clone()).collect();
+    branches.extend(remote_only(
+        git(path, &["for-each-ref", BRANCH_FORMAT, sort, "refs/remotes"]).as_deref(),
+        &local,
+    ));
+    branches
+}
+
+fn parse_branches(out: Option<&str>) -> Vec<Branch> {
+    let Some(out) = out else { return Vec::new() };
+    out.lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\0');
+            let head = fields.next()?;
+            let name = fields.next()?.to_string();
+            if name.is_empty() {
+                return None;
+            }
+            Some(Branch {
+                name,
+                current: head.trim() == "*",
+                when: fields.next().unwrap_or_default().to_string(),
+                upstream: fields.next().filter(|u| !u.is_empty()).map(str::to_string),
+                remote: false,
+            })
+        })
+        .collect()
+}
+
+/// Remote refs with no local branch of the same name, as checkout candidates.
+///
+/// The remote prefix is dropped because that is the name a checkout creates;
+/// `origin/HEAD` is a symbolic ref to another entry, never its own branch.
+fn remote_only(out: Option<&str>, local: &HashSet<String>) -> Vec<Branch> {
+    let mut seen = HashSet::new();
+    parse_branches(out)
+        .into_iter()
+        .filter_map(|branch| {
+            let full = branch.name;
+            let name = full.split_once('/').map(|(_, rest)| rest)?.to_string();
+            if name == "HEAD" || local.contains(&name) || !seen.insert(name.clone()) {
+                return None;
+            }
+            Some(Branch {
+                name,
+                current: false,
+                upstream: Some(full),
+                when: branch.when,
+                remote: true,
+            })
+        })
+        .collect()
+}
+
+/// Switches the working directory to `branch`, or explains why git refused.
+///
+/// Uncommitted work that the switch would overwrite is the usual refusal, and
+/// git's own message names the files — so it is passed through rather than
+/// summarised.
+#[tauri::command]
+pub async fn git_checkout(cwd: String, branch: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || checkout(&cwd, &branch))
+        .await
+        .unwrap_or_else(|_| Err("checkout did not run".to_string()))
+}
+
+fn checkout(cwd: &str, branch: &str) -> Result<(), String> {
+    // A leading dash would be read as an option, and `--` cannot precede a
+    // branch because git takes what follows it as paths.
+    if branch.is_empty() || branch.starts_with('-') {
+        return Err(format!("not a branch name: {branch}"));
+    }
+    let cwd = expand_home(cwd);
+    run_git(Path::new(&cwd), &["checkout", branch]).map(|_| ())
+}
+
+/// Like `git`, but keeps git's stderr so a failure can be shown to the user.
+fn run_git(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    let out = platform::command("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(args)
+        .output()
+        .map_err(|error| format!("could not run git: {error}"))?;
+    if out.status.success() {
+        return Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string());
+    }
+    let error = String::from_utf8_lossy(&out.stderr).trim_end().to_string();
+    Err(if error.is_empty() {
+        "git refused the checkout".to_string()
+    } else {
+        error
+    })
+}
+
+/// Whether a path is a directory, a file, or absent.
+///
+/// A click on a path in the output has to choose between revealing a folder in
+/// the file manager and opening a file in an editor, and only the filesystem
+/// knows which it is.
+#[tauri::command]
+pub async fn path_kind(path: String) -> &'static str {
+    tauri::async_runtime::spawn_blocking(move || kind_of(&path))
+        .await
+        .unwrap_or("missing")
+}
+
+fn kind_of(path: &str) -> &'static str {
+    // Follows symlinks on purpose: a link to a directory should reveal like one.
+    match std::fs::metadata(expand_home(path)) {
+        Ok(meta) if meta.is_dir() => "directory",
+        Ok(_) => "file",
+        Err(_) => "missing",
+    }
 }
 
 #[tauri::command(async)]
@@ -310,6 +460,90 @@ fn count_entry(status: &mut GitStatus, line: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_directory_is_told_apart_from_a_file_and_from_nothing() {
+        assert_eq!(kind_of(env!("CARGO_MANIFEST_DIR")), "directory");
+        assert_eq!(
+            kind_of(&format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"))),
+            "file"
+        );
+        assert_eq!(kind_of("/definitely/not/here"), "missing");
+    }
+
+    #[test]
+    fn the_home_shorthand_is_expanded_before_asking_the_filesystem() {
+        // The launcher shows and sends tilde paths; `metadata` does not expand.
+        assert_eq!(kind_of("~"), "directory");
+    }
+
+    #[test]
+    fn the_starred_ref_is_the_current_branch() {
+        let out = "*\0main\x003 hours ago\0origin/main\n \0topic\x002 days ago\0";
+        let branches = parse_branches(Some(out));
+        assert_eq!(branches.len(), 2);
+        assert!(branches[0].current);
+        assert_eq!(branches[0].name, "main");
+        assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
+        assert!(!branches[1].current);
+        // A branch with no upstream must read as absent, not as an empty name.
+        assert_eq!(branches[1].upstream, None);
+    }
+
+    #[test]
+    fn a_remote_branch_is_offered_under_the_name_a_checkout_would_create() {
+        let out = " \0origin/feature/nested\x001 day ago\0";
+        let remote = remote_only(Some(out), &HashSet::new());
+        assert_eq!(remote.len(), 1);
+        assert_eq!(remote[0].name, "feature/nested");
+        assert!(remote[0].remote);
+        // The full ref is what it would start from, so it is worth keeping.
+        assert_eq!(remote[0].upstream.as_deref(), Some("origin/feature/nested"));
+    }
+
+    #[test]
+    fn a_remote_branch_that_already_exists_locally_is_not_offered_twice() {
+        let out = " \0origin/main\x001 day ago\0\n \0origin/other\x002 days ago\0";
+        let local = HashSet::from(["main".to_string()]);
+        let names: Vec<_> = remote_only(Some(out), &local)
+            .into_iter()
+            .map(|b| b.name)
+            .collect();
+        assert_eq!(names, vec!["other"]);
+    }
+
+    #[test]
+    fn the_remote_head_symref_is_not_a_branch() {
+        let out = " \0origin/HEAD\x001 day ago\0";
+        assert!(remote_only(Some(out), &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn two_remotes_carrying_one_branch_offer_it_once() {
+        let out = " \0origin/shared\x001 day ago\0\n \0fork/shared\x002 days ago\0";
+        assert_eq!(remote_only(Some(out), &HashSet::new()).len(), 1);
+    }
+
+    #[test]
+    fn a_directory_that_is_not_a_repository_lists_no_branches() {
+        assert!(read_branches("/definitely/not/here").is_empty());
+    }
+
+    #[test]
+    fn a_branch_name_that_could_be_read_as_an_option_is_refused() {
+        // `git checkout --orphan` would create a branch rather than switch.
+        assert!(checkout(".", "--orphan").is_err());
+        assert!(checkout(".", "-f").is_err());
+        assert!(checkout(".", "").is_err());
+    }
+
+    #[test]
+    fn checking_out_a_missing_branch_reports_gits_own_words() {
+        let error = checkout(env!("CARGO_MANIFEST_DIR"), "muster-no-such-branch")
+            .expect_err("a branch that does not exist cannot be checked out");
+        // The message has to name the branch, or the panel shows nothing useful.
+        assert!(error.contains("muster-no-such-branch"), "{error}");
+    }
+
     use super::*;
 
     /// A porcelain v2 dump as `git status` emits it, header lines first.
