@@ -21,40 +21,20 @@ fetches Microsoft's WebView2 runtime if the machine does not already have it.
 **macOS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ronny1020/muster/main/install.sh | sh
-```
-
-That installs it — tapping on the way, since naming the cask is what makes the
-tap loadable — and clears the quarantine attribute, and it works whatever state
-your machine is in. It is about sixty lines and worth reading first —
-[install.sh](install.sh).
-
-Or do it by hand — **as one line**:
-
-```bash
 brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
 ```
 
-Two separate lines pasted together will not work. Homebrew prompts on stdin,
-and a prompt reads the _next pasted line_ as its answer — so `xattr` is swallowed and never runs. Joined with `&&` there is no
-second line to eat, and it also means the quarantine is only cleared if the
-install actually succeeded.
+Run it as one line. It adds the tap, installs the app, and clears the quarantine
+attribute that would otherwise stop macOS from opening it. Then launch Muster
+from Applications.
 
-Clearing the attribute is not optional. Homebrew quarantines every cask, and because
-these builds are not notarized macOS will refuse to open a quarantined copy.
-There used to be a `--no-quarantine` flag that skipped it; Homebrew 6 removed
-it, so clearing the attribute afterwards is now the only route.
+Or take the `.dmg` from the
+[Releases page](https://github.com/ronny1020/muster/releases): drag it to
+Applications, then run the same `xattr -cr /Applications/Muster.app`, or
+right-click → _Open_ the first time.
 
-To remove Muster, use `brew uninstall --cask ronny1020/tap/muster` rather than
-dragging it to the Trash. Homebrew tracks its own record, not `/Applications`,
-so deleting the app by hand leaves the two disagreeing — and `brew install`
-then prints `Warning: Not upgrading muster, the latest version is already
-installed` and does nothing. If you are already in that state, `brew reinstall
---cask ronny1020/tap/muster` repairs it.
-
-Taking the `.dmg` from the
-[Releases page](https://github.com/ronny1020/muster/releases) instead needs the
-same `xattr -cr`, or a right-click → _Open_ the first time.
+To uninstall, `brew uninstall --cask ronny1020/tap/muster` — dragging the app to
+the Trash leaves Homebrew's record of it behind.
 
 **Windows**
 
@@ -81,6 +61,11 @@ This project has not bought a code-signing certificate — an Apple Developer
 membership and a Windows certificate cost real money, and it has no users yet
 to justify it. So macOS sees an app that is only ad-hoc signed, and Windows
 sees an unsigned installer, and both say so.
+
+On macOS that is also why the install command ends in `xattr -cr`: Homebrew
+quarantines every cask it installs, and Gatekeeper refuses to open a quarantined
+copy that is not notarized. Homebrew 6 removed the `--no-quarantine` flag that
+used to skip the step.
 
 What you get instead of a signature: every binary is built in public by GitHub
 Actions from the tag it claims to be, in a workflow you can read
@@ -236,6 +221,12 @@ middle of the install output. It is noise, not a failure; look for
 `successfully installed` at the end. Muster needs no `brew trust` of its own:
 naming the cask explicitly is what authorises it.
 
+**`brew tap ronny1020/tap` fails with `Cannot tap ronny1020/tap: invalid syntax
+in tap!`.** You do not need to tap anything — the install command does it for
+you. On its own, tapping trips over Homebrew's trust rule: it validates the cask
+as it taps, and refuses to load a cask from a tap you have not trusted. Asking
+for the cask by name is what grants that trust.
+
 **Nothing happens when you double-click it, right after installing.** macOS
 needs a moment to register a freshly replaced app bundle. Open it again and it
 starts.
@@ -246,9 +237,10 @@ already installed, not an error — there is nothing to do. To force a fresh cop
 anyway, use `brew reinstall --cask ronny1020/tap/muster`.
 
 **`brew install` says "already installed" but there is no app.** The app was
-deleted by hand, so Homebrew's record and the disk disagree. The install
-commands above use `brew reinstall` for exactly this reason — run them again
-as written and it repairs itself.
+deleted by hand, so Homebrew's record and the disk disagree, and `brew install`
+will go on reporting success without installing anything. Repair it with `brew
+reinstall --cask ronny1020/tap/muster`, then clear the quarantine attribute as
+above.
 
 **"command not found" when a session starts.** That agent's CLI is not
 installed, or is not on the `PATH` your login shell sets up. Check that the

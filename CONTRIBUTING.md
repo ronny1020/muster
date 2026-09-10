@@ -187,17 +187,20 @@ disagrees with `/Applications` — are both invisible to you. Wipe first.
 brew uninstall --cask --force muster
 brew untap ronny1020/tap
 find "$(brew --cache)" -maxdepth 2 -iname '*muster*' -exec rm -rf {} +
-# Homebrew records trust per cask; drop Muster's entry from trustedcasks.
-$EDITOR "$(brew --prefix)/trust.json"
+# `untap` does not drop trust, and a retained entry is what makes a "cold"
+# machine quietly not cold.
+brew untrust --cask ronny1020/tap/muster
 ```
 
-Then run the README's own command rather than one you have retyped, and check
-all three starting states:
+Then run the README's own command rather than one you have retyped — copy it
+out of the published README, so a stale instruction shows up as a failure — and
+check all three starting states:
 
 1. **Cold** — nothing installed. Expect `Tapping` → `Trusted cask` → installed.
 2. **Stale record** — move the app out of `/Applications` by hand, leaving
    Homebrew's record. Expect `Warning: Not upgrading muster, the latest version
-is already installed`, then the script's repair.
+is already installed` and nothing installed —
+   `brew reinstall --cask ronny1020/tap/muster` is the repair.
 3. **Already installed** — expect the install to no-op and the quarantine
    attribute to be cleared anyway.
 

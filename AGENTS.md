@@ -93,18 +93,20 @@ build silently emits no custom utilities.
 `Channel<InvokeResponseBody>` and sends `InvokeResponseBody::Raw(...)`. A
 borrowed `&[u8]` cannot outlive the command, and the reader thread needs it to.
 
-**`install.sh` installs before it taps.** Homebrew validates a cask while
-tapping, refuses to load one from a tap you have not trusted, and grants trust
-only to a cask you name explicitly. So `brew tap ronny1020/tap` on its own is
-fatal on a machine that has never seen the tap — validation needs the trust that
-tapping was supposed to earn — and `brew reinstall` cannot lead either, because
-it does not auto-tap. Only `brew install --cask <tap>/<cask>` does the tap, the
-trust and the install in an order that works; `reinstall` follows it as the
-repair for the case Homebrew's record and `/Applications` disagree.
+**Never document `brew tap` as a step of its own.** `brew install --cask
+<tap>/<cask>` is the only form that taps, trusts and installs in a working
+order. The mechanism and Homebrew's exact error live in one place — the README's
+"If something looks wrong" section, never the install steps, which stay a list
+of what to do. `brew reinstall` cannot stand in for the install either, because
+it does not add a missing tap; it repairs a record that disagrees with
+`/Applications`, which is a different job.
 
-This one is invisible from a developer machine: anyone who already has the tap
-sees it work. Test it from a wiped one — see "Verifying an install" in
-CONTRIBUTING.md.
+Do not add a second install step to paper over that repair. One Homebrew command
+is the whole macOS install, and anything further a user has to trust is a worse
+trade than telling them to run `brew reinstall --cask` by hand.
+
+This is invisible from a developer machine, where the tap is already present and
+trusted. Test from a wiped one — see "Verifying an install" in CONTRIBUTING.md.
 
 **Keep command-line building platform-independent.** POSIX, PowerShell and WSL
 argv construction in `src-tauri/src/platform.rs` compiles on every target so
