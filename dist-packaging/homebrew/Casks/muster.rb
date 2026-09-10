@@ -1,7 +1,7 @@
 # Template for the ronny1020/homebrew-tap repository. Copy to
 # Casks/muster.rb there; `sha256` comes from the GitHub Release assets.
 cask "muster" do
-  version "0.1.0"
+  version "0.1.1"
   arch arm: "aarch64", intel: "x64"
 
   sha256 arm:   "<PLACEHOLDER_SHA256_AARCH64_DMG>",

@@ -1,6 +1,6 @@
 [package]
 name = "muster"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tabbed desktop runner for AI agent CLIs"
 edition = "2021"
 rust-version = "1.77"
