@@ -93,6 +93,19 @@ build silently emits no custom utilities.
 `Channel<InvokeResponseBody>` and sends `InvokeResponseBody::Raw(...)`. A
 borrowed `&[u8]` cannot outlive the command, and the reader thread needs it to.
 
+**`install.sh` installs before it taps.** Homebrew validates a cask while
+tapping, refuses to load one from a tap you have not trusted, and grants trust
+only to a cask you name explicitly. So `brew tap ronny1020/tap` on its own is
+fatal on a machine that has never seen the tap — validation needs the trust that
+tapping was supposed to earn — and `brew reinstall` cannot lead either, because
+it does not auto-tap. Only `brew install --cask <tap>/<cask>` does the tap, the
+trust and the install in an order that works; `reinstall` follows it as the
+repair for the case Homebrew's record and `/Applications` disagree.
+
+This one is invisible from a developer machine: anyone who already has the tap
+sees it work. Test it from a wiped one — see "Verifying an install" in
+CONTRIBUTING.md.
+
 **Keep command-line building platform-independent.** POSIX, PowerShell and WSL
 argv construction in `src-tauri/src/platform.rs` compiles on every target so
 `cargo test` covers all three from any host. `cfg`-gate the _choice_ between
@@ -166,6 +179,12 @@ component wiring is verified by running the app, not by a green suite.
 - **Never disable commit signing.** No `-c commit.gpgsign=false`, no
   `--no-gpg-sign`. If signing fails, fix the key setup or ask.
 - Keep a change in one commit. There is no changelog.
+- **Subjects are [Conventional Commits](https://www.conventionalcommits.org)**:
+  `type(scope): summary`, where type is one of `feat`, `fix`, `docs`,
+  `refactor`, `test`, `build`, `ci` or `chore`. Imperative mood, no trailing
+  full stop. Nothing enforces this — there is no commitlint hook — so the
+  convention holds only as long as you follow it. The body is where the
+  reasoning goes: why the change, and what breaks without it.
 
 ## Scope
 

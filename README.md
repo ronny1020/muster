@@ -15,23 +15,42 @@ Runs on macOS, Windows and Linux. On Windows a tab can run inside WSL.
 
 ## Install
 
-> The Homebrew tap and Scoop bucket below are not published yet. Until they
-> are, take the installer from the Releases page.
-
 The download is the whole app on macOS and Linux. On Windows the installer
 fetches Microsoft's WebView2 runtime if the machine does not already have it.
 
 **macOS**
 
 ```bash
-brew install --cask ronny1020/tap/muster
-xattr -cr /Applications/Muster.app
+curl -fsSL https://raw.githubusercontent.com/ronny1020/muster/main/install.sh | sh
 ```
 
-The second line is not optional. Homebrew quarantines every cask, and because
+That installs it — tapping on the way, since naming the cask is what makes the
+tap loadable — and clears the quarantine attribute, and it works whatever state
+your machine is in. It is about sixty lines and worth reading first —
+[install.sh](install.sh).
+
+Or do it by hand — **as one line**:
+
+```bash
+brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
+```
+
+Two separate lines pasted together will not work. Homebrew prompts on stdin,
+and a prompt reads the _next pasted line_ as its answer — so `xattr` is swallowed and never runs. Joined with `&&` there is no
+second line to eat, and it also means the quarantine is only cleared if the
+install actually succeeded.
+
+Clearing the attribute is not optional. Homebrew quarantines every cask, and because
 these builds are not notarized macOS will refuse to open a quarantined copy.
 There used to be a `--no-quarantine` flag that skipped it; Homebrew 6 removed
 it, so clearing the attribute afterwards is now the only route.
+
+To remove Muster, use `brew uninstall --cask ronny1020/tap/muster` rather than
+dragging it to the Trash. Homebrew tracks its own record, not `/Applications`,
+so deleting the app by hand leaves the two disagreeing — and `brew install`
+then prints `Warning: Not upgrading muster, the latest version is already
+installed` and does nothing. If you are already in that state, `brew reinstall
+--cask ronny1020/tap/muster` repairs it.
 
 Taking the `.dmg` from the
 [Releases page](https://github.com/ronny1020/muster/releases) instead needs the
@@ -209,6 +228,27 @@ distro.
 Middle-click a tab to close it. Every other key goes to the agent untouched.
 
 ## If something looks wrong
+
+**Warnings about taps you have never heard of.** Homebrew 6 refuses to load
+third-party taps until they are trusted, and it lists _every_ untrusted tap on
+your machine on _every_ command — so a tap unrelated to Muster can fill the
+middle of the install output. It is noise, not a failure; look for
+`successfully installed` at the end. Muster needs no `brew trust` of its own:
+naming the cask explicitly is what authorises it.
+
+**Nothing happens when you double-click it, right after installing.** macOS
+needs a moment to register a freshly replaced app bundle. Open it again and it
+starts.
+
+**`brew install` says `Warning: Not upgrading muster, the latest version is
+already installed`, and the app is there.** That is Homebrew telling you it is
+already installed, not an error — there is nothing to do. To force a fresh copy
+anyway, use `brew reinstall --cask ronny1020/tap/muster`.
+
+**`brew install` says "already installed" but there is no app.** The app was
+deleted by hand, so Homebrew's record and the disk disagree. The install
+commands above use `brew reinstall` for exactly this reason — run them again
+as written and it repairs itself.
 
 **"command not found" when a session starts.** That agent's CLI is not
 installed, or is not on the `PATH` your login shell sets up. Check that the

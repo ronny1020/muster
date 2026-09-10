@@ -4,11 +4,10 @@ cask "muster" do
   version "0.1.1"
   arch arm: "aarch64", intel: "x64"
 
-  sha256 arm:   "<PLACEHOLDER_SHA256_AARCH64_DMG>",
-         intel: "<PLACEHOLDER_SHA256_X64_DMG>"
+  sha256 arm:   "a29b0c651089f7e0f30d9a870e0778e74444d7b0c5e1b36db12d5ac556294fbc",
+         intel: "625a1ff73a034968165f01f3ff53b1cefefde2e22008d645862b89dff0340eec"
 
-  url "https://github.com/ronny1020/muster/releases/download/v#{version}/Muster_#{version}_#{arch}.dmg",
-      verified: "github.com/ronny1020/muster/"
+  url "https://github.com/ronny1020/muster/releases/download/v#{version}/Muster_#{version}_#{arch}.dmg"
 
   name "Muster"
   desc "Run AI agent CLIs in tabs, each a real terminal with its own git state"

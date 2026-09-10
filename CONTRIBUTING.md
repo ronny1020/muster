@@ -176,9 +176,44 @@ Bump the version in three files, push a `v*` tag, review the draft release,
 publish, then move the Homebrew and Scoop manifests.
 [docs/RELEASE.md](docs/RELEASE.md) is the runbook.
 
+## Verifying an install
+
+The install instructions in the README cannot be tested from a machine that
+already has the app: Homebrew trusts a cask it has installed before and keeps
+its tap, so the two failures that matter — an untrusted tap and a record that
+disagrees with `/Applications` — are both invisible to you. Wipe first.
+
+```bash
+brew uninstall --cask --force muster
+brew untap ronny1020/tap
+find "$(brew --cache)" -maxdepth 2 -iname '*muster*' -exec rm -rf {} +
+# Homebrew records trust per cask; drop Muster's entry from trustedcasks.
+$EDITOR "$(brew --prefix)/trust.json"
+```
+
+Then run the README's own command rather than one you have retyped, and check
+all three starting states:
+
+1. **Cold** — nothing installed. Expect `Tapping` → `Trusted cask` → installed.
+2. **Stale record** — move the app out of `/Applications` by hand, leaving
+   Homebrew's record. Expect `Warning: Not upgrading muster, the latest version
+is already installed`, then the script's repair.
+3. **Already installed** — expect the install to no-op and the quarantine
+   attribute to be cleared anyway.
+
+Finish by launching the bundle by full path (`open /Applications/Muster.app`),
+not by name — `open -a Muster` can resolve to a local `cargo build` bundle and
+tell you the install worked when it did not. Confirm the running binary with
+`pgrep -fl "MacOS/muster"`.
+
 ## Pull requests
 
-- Run the five checks.
+- Run the six checks.
 - One commit is fine and preferred; there is no changelog to update.
+- Write the subject as a
+  [Conventional Commit](https://www.conventionalcommits.org) —
+  `type(scope): summary`, from `feat`, `fix`, `docs`, `refactor`, `test`,
+  `build`, `ci`, `chore` — in the imperative and without a trailing full stop.
+  No hook checks this. Put the reasoning in the body rather than the subject.
 - Say what you verified by hand, especially for anything touching a PTY,
   process spawning, or a platform you cannot test.

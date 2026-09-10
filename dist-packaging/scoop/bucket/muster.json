@@ -6,7 +6,7 @@
   "architecture": {
     "64bit": {
       "url": "https://github.com/ronny1020/muster/releases/download/v0.1.1/Muster_0.1.1_x64-setup.exe#/setup.exe",
-      "hash": "<PLACEHOLDER_SHA256_X64_SETUP_EXE>"
+      "hash": "8a810578bff7ba95b503a05071fe3842bde03cc4246c93ef550bc56edf294a79"
     }
   },
   "installer": {
