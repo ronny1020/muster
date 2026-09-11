@@ -47,7 +47,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Check out the Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ronny1020/homebrew-tap
           token: ${{ secrets.PACKAGES_PAT }}
@@ -65,7 +65,7 @@ jobs:
           git commit -am "muster $PLAIN_VERSION" && git push
 
       - name: Check out the Scoop bucket
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ronny1020/scoop-bucket
           token: ${{ secrets.PACKAGES_PAT }}
