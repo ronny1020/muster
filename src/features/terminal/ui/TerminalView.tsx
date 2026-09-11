@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { type ILink, Terminal } from '@xterm/xterm'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import { clipboardIntent } from '../model/clipboard'
 import type { Session } from '../../../entities/tab/model/deck'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
-import { killPty, resizePty, spawnPty, writePty } from '../../../shared/ipc'
+import {
+  dropPaths,
+  killPty,
+  report,
+  resizePty,
+  spawnPty,
+  writePty,
+} from '../../../shared/ipc'
 import { IS_MAC } from '../../../shared/lib/platform'
 import { flattenLogicalLine, rangeOf } from '../model/termcells'
 import { themeFor } from '../../../shared/lib/themes'
@@ -32,6 +40,13 @@ export interface TerminalViewProps {
   /** Whether this tab's scrollback search bar is showing. */
   findOpen: boolean
   onCloseFind(): void
+  /**
+   * Filled in with a function that types text into this session, for the
+   * surfaces outside the terminal that need to — the review panel handing a
+   * path to the agent. It goes through xterm's own `paste`, so the text
+   * arrives bracketed rather than as a submitted line.
+   */
+  paste?: RefObject<((text: string) => void) | null>
 }
 
 /**
@@ -60,6 +75,7 @@ export function TerminalView({
   onUrl,
   findOpen,
   onCloseFind,
+  paste,
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal>(null)
@@ -92,6 +108,7 @@ export function TerminalView({
       fontFamily: latest.current.fontFamily,
       fontSize: latest.current.fontSize,
       lineHeight: latest.current.lineHeight,
+      letterSpacing: latest.current.letterSpacing,
       scrollback: latest.current.scrollback,
       macOptionIsMeta: true,
       theme: paletteFor(
@@ -160,6 +177,7 @@ export function TerminalView({
     // Read through a ref so a new handler identity never re-runs the spawn.
     term.onBell(() => bell.current())
     terminal.current = term
+    if (paste) paste.current = (text: string) => term.paste(text)
 
     // The PTY is spawned only once the pane has real dimensions, so the
     // agent's TUI draws at the right size from its first frame.
@@ -202,10 +220,73 @@ export function TerminalView({
       webgl?.dispose()
       term.dispose()
       terminal.current = null
+      if (paste) paste.current = null
     }
     // Session identity is fixed for the life of the tab, so the spawn runs
-    // once: everything else this effect reads comes through a ref.
-  }, [sessionId])
+    // once: everything else this effect reads comes through a ref. `paste` is
+    // a ref object too, so it is stable by construction.
+  }, [paste, sessionId])
+
+  const [dropping, setDropping] = useState(false)
+
+  /**
+   * Files dropped on the window are typed into the session, quoted — what
+   * every terminal has done with a dropped file for decades, and the shortest
+   * path from "that file" to a prompt.
+   *
+   * Only the active pane listens. The event is the window's, not an element's:
+   * Tauri intercepts the drop before the DOM sees it, so there is no target to
+   * hang a handler on, and every mounted pane would otherwise answer one drop.
+   */
+  useEffect(() => {
+    if (!active) return
+    let unlisten: (() => void) | null = null
+    let live = true
+
+    // Guarded because reaching the webview is what fails when this runs
+    // outside Tauri — `bun run serve` — and a throw inside an effect takes the
+    // whole tree down, where a rejected call would only lose the feature.
+    try {
+      void getCurrentWebview()
+        .onDragDropEvent(({ payload }) => {
+          if (payload.type === 'leave') {
+            setDropping(false)
+            return
+          }
+          if (payload.type !== 'drop') {
+            setDropping(true)
+            return
+          }
+          setDropping(false)
+          if (payload.paths.length === 0) return
+          void dropPaths(payload.paths, launch.current.backend)
+            .then((text) => {
+              // Through `paste`, so the text arrives bracketed: an agent's TUI
+              // then treats it as text rather than as a submitted line.
+              if (text) terminal.current?.paste(text)
+            })
+            .catch(report)
+        })
+        .then((stop) => {
+          if (live) unlisten = stop
+          // Unsubscribed before the listener was even registered: drop it now,
+          // or this pane keeps answering drops meant for another tab.
+          else stop()
+        })
+        // Reaching the webview fails by rejection as often as by throwing —
+        // `bun run serve`, where there is no Tauri at all — and an unhandled
+        // rejection is a full-window overlay in development.
+        .catch(report)
+    } catch (error) {
+      report(error)
+    }
+
+    return () => {
+      live = false
+      unlisten?.()
+      setDropping(false)
+    }
+  }, [active])
 
   // A hidden pane keeps its DOM focus in xterm's helper textarea, which then
   // swallows typing meant for whatever the new tab put on screen, so the
@@ -228,6 +309,7 @@ export function TerminalView({
     term.options.fontFamily = settings.fontFamily
     term.options.fontSize = settings.fontSize
     term.options.lineHeight = settings.lineHeight
+    term.options.letterSpacing = settings.letterSpacing
     term.options.scrollback = settings.scrollback
     term.options.cursorBlink = settings.cursorBlink
     term.options.theme = paletteFor(settings.themeId, Boolean(background))
@@ -239,6 +321,7 @@ export function TerminalView({
     sessionId,
     settings.fontFamily,
     settings.fontSize,
+    settings.letterSpacing,
     settings.lineHeight,
     settings.scrollback,
     settings.cursorBlink,
@@ -267,6 +350,16 @@ export function TerminalView({
       />
       {findOpen && search.current && (
         <FindBar search={search.current} onClose={closeFind} />
+      )}
+      {dropping && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-brand/70 p-4"
+        >
+          <span className="rounded bg-chrome/95 px-2 py-1 text-[11px] text-muted">
+            Drop to type the path
+          </span>
+        </div>
       )}
     </div>
   )

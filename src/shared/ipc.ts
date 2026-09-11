@@ -115,8 +115,13 @@ export interface ImagePreview {
  * Reads an image off disk as a `data:` URI. The webview never fetches it
  * itself, which is what keeps the content security policy at `img-src data:`.
  */
-export const readImage = (path: string) =>
-  invoke<ImagePreview>('read_image', { path })
+/**
+ * `within` confines the read to that directory, resolved through any symlinks.
+ * A caller that renders a file's own references passes it; one acting on a
+ * path the user named does not.
+ */
+export const readImage = (path: string, within?: string) =>
+  invoke<ImagePreview>('read_image', { path, within: within ?? null })
 
 export interface LinkMeta {
   url: string
@@ -208,3 +213,111 @@ export async function pickImage() {
 export const report = (error: unknown) => {
   console.error(error)
 }
+
+/** How a file differs from the base the review panel is comparing against. */
+export type ChangeStatus =
+  | 'added'
+  | 'modified'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'conflicted'
+  | 'typechange'
+  | 'untracked'
+
+export interface ChangedFile {
+  /** Repo-relative, in git's own forward-slash form on every host. */
+  path: string
+  status: ChangeStatus
+  /** Where a rename came from; `null` for every other status. */
+  oldPath: string | null
+  insertions: number
+  deletions: number
+  binary: boolean
+  /** False when the file was listed but never read for a line count. */
+  counted: boolean
+}
+
+export interface Changes {
+  repo: boolean
+  /**
+   * Absolute repository root. Every `path` below is relative to it rather than
+   * to the session's directory, so matching a clicked path needs this.
+   */
+  root: string
+  /** The branch being compared against, or `''` for uncommitted work. */
+  base: string
+  /** Set when a base branch was asked for and git could not resolve it. */
+  error: string | null
+  files: ChangedFile[]
+}
+
+/**
+ * Every file that differs from `base` — a branch name, or nothing for the
+ * uncommitted state. Untracked files are included either way: a file an agent
+ * has just written is the change you most want to read.
+ */
+export const gitChanges = (cwd: string, base?: string) =>
+  invoke<Changes>('git_changes', { cwd, base: base ?? null })
+
+export interface FileDiff {
+  path: string
+  /** Unified diff, or a synthesised all-added patch for an untracked file. */
+  patch: string
+  truncated: boolean
+}
+
+/**
+ * One file's diff. `context` is the number of unchanged lines kept around each
+ * hunk; a number past the file's length is how the panel shows all of it.
+ */
+export const gitFileDiff = (
+  cwd: string,
+  path: string,
+  base?: string,
+  context?: number,
+) =>
+  invoke<FileDiff>('git_file_diff', {
+    cwd,
+    path,
+    base: base ?? null,
+    context: context ?? null,
+  })
+
+export interface TextFile {
+  path: string
+  text: string
+  /** Size on disk, which `text` may be a prefix of. */
+  bytes: number
+  truncated: boolean
+}
+
+/** A file read for the preview. Rejects anything binary, by its bytes. */
+export const readTextFile = (path: string) =>
+  invoke<TextFile>('read_text_file', { path })
+
+export interface DirEntry {
+  name: string
+  /** Absolute, so a click needs nothing but this. */
+  path: string
+  directory: boolean
+  bytes: number
+  symlink: boolean
+  /** Matched by a `.gitignore`; the tree dims it rather than hiding it. */
+  ignored: boolean
+}
+
+/** One directory's entries, unsorted: the tree decides the order. */
+export const listDirectory = (path: string) =>
+  invoke<DirEntry[]>('list_directory', { path })
+
+/**
+ * What to type into a session when files are dropped on it: each path quoted
+ * for that session's shell, with a trailing space.
+ *
+ * The quoting and the WSL path translation are the backend's, so a dropped
+ * file behaves the same as one passed at launch — and neither is guessed at in
+ * the webview, where the host's rules are not known.
+ */
+export const dropPaths = (paths: string[], backend: Backend) =>
+  invoke<string>('drop_paths', { paths, backend })

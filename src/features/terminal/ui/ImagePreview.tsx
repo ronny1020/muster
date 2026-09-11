@@ -4,6 +4,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import type { ImagePreview as Preview } from '../../../shared/ipc'
 import { report } from '../../../shared/ipc'
+import { formatBytes } from '../../../shared/lib/bytes'
 
 export interface ImagePreviewProps {
   preview: Preview | null
@@ -23,10 +24,15 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      // Captured and stopped: this sits on top of the review column, which
+      // also closes on Escape, and dismissing the overlay must not close what
+      // it was covering.
+      event.stopPropagation()
+      onClose()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [open, onClose])
 
   if (!preview && !error) return null
@@ -87,10 +93,4 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
       </p>
     </div>
   )
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / 1_048_576).toFixed(1)} MB`
 }

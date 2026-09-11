@@ -311,6 +311,7 @@ test('going back to the launcher clears everything the dead session left', () =>
     exitCode: null,
     attention: false,
     historyOpen: false,
+    reviewOpen: false,
   })
 })
 
@@ -405,4 +406,116 @@ test('a real change still produces a new deck', () => {
 test('an action for a tab that is gone leaves the deck alone', () => {
   const deck = initialDeck('tab-1')
   expect(deckReducer(deck, { type: 'attention', id: 'tab-404' })).toBe(deck)
+})
+
+test('the review panel starts closed', () => {
+  expect(initialDeck('tab-1').tabs[0].reviewOpen).toBe(false)
+})
+
+test("toggling review flips only that tab's panel", () => {
+  let deck = deckOf(2)
+  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  expect(deck.tabs.map((tab) => tab.reviewOpen)).toEqual([true, false])
+
+  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  expect(deck.tabs[0].reviewOpen).toBe(false)
+})
+
+test('a changed path clicked in the output opens the panel, open or not', () => {
+  // The click is a request to see that diff, so it must not toggle the panel
+  // shut when it happens to be open already.
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: true })
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: true })
+  expect(deck.tabs[0].reviewOpen).toBe(true)
+})
+
+test('review and history are independent drawers', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  expect(deck.tabs[0]).toMatchObject({ reviewOpen: true, historyOpen: true })
+})
+
+test('a review panel left open does not follow a relaunched tab', () => {
+  // The panel reads the session's directory, and a relaunched tab has none
+  // until it is started again.
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'relaunch', id: 'tab-1' })
+  expect(deck.tabs[0].reviewOpen).toBe(false)
+})
+
+test('a status chip opens its drawer whether or not it was open', () => {
+  // The click means "show me these files", never "hide them".
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
+  expect(deck.tabs[0].historyOpen).toBe(true)
+})
+
+test('a control that names a view opens the drawer on it', () => {
+  const deck = deckReducer(initialDeck('tab-1'), {
+    type: 'showReview',
+    id: 'tab-1',
+    view: 'files',
+  })
+
+  expect(deck.tabs[0]).toMatchObject({ reviewOpen: true, reviewView: 'files' })
+})
+
+test('naming the other view switches rather than closing', () => {
+  // This is the difference between these controls and a toggle: the directory
+  // and the change counts each say "show me this", not "flip the drawer".
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'showReview',
+    id: 'tab-1',
+    view: 'files',
+  })
+  deck = deckReducer(deck, { type: 'showReview', id: 'tab-1', view: 'changes' })
+
+  expect(deck.tabs[0]).toMatchObject({
+    reviewOpen: true,
+    reviewView: 'changes',
+  })
+})
+
+test('naming the view already on screen closes the drawer', () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'showReview',
+    id: 'tab-1',
+    view: 'files',
+  })
+  deck = deckReducer(deck, { type: 'showReview', id: 'tab-1', view: 'files' })
+
+  expect(deck.tabs[0].reviewOpen).toBe(false)
+  // The view is remembered, so reopening lands where you left it.
+  expect(deck.tabs[0].reviewView).toBe('files')
+})
+
+test("the drawer's own tabs switch without ever closing it", () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'showReview',
+    id: 'tab-1',
+    view: 'changes',
+  })
+  deck = deckReducer(deck, {
+    type: 'setReviewView',
+    id: 'tab-1',
+    view: 'changes',
+  })
+
+  expect(deck.tabs[0]).toMatchObject({
+    reviewOpen: true,
+    reviewView: 'changes',
+  })
+})
+
+test('a new tab starts on the changes view', () => {
+  expect(initialDeck('tab-1').tabs[0].reviewView).toBe('changes')
 })

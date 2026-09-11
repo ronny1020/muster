@@ -370,7 +370,20 @@ fn starts_at_boundary(rest: &str) -> bool {
     rest.starts_with('/') || rest.starts_with('\\')
 }
 
-fn git(cwd: &Path, args: &[&str]) -> Option<String> {
+/// `git` output with trailing whitespace trimmed, or `None` when it failed —
+/// the caller wanted a fact, not a message. [`run_git`] is the one that keeps
+/// stderr, and [`git_verbatim`] the one that keeps whitespace.
+pub(crate) fn git(cwd: &Path, args: &[&str]) -> Option<String> {
+    git_verbatim(cwd, args).map(|out| out.trim_end().to_string())
+}
+
+/// `git` output exactly as git wrote it.
+///
+/// A unified diff needs this: its blank context line is a single space, so
+/// trimming the end of a patch deletes the diff's last rows whenever the file
+/// ends in blank lines — and those rows are precisely what a reviewer checks
+/// when an agent may have eaten a trailing newline.
+pub(crate) fn git_verbatim(cwd: &Path, args: &[&str]) -> Option<String> {
     let out = platform::command("git")
         .arg("-C")
         .arg(cwd)
@@ -379,7 +392,7 @@ fn git(cwd: &Path, args: &[&str]) -> Option<String> {
         .ok()?;
     out.status
         .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Reads branch, upstream divergence and worktree counts from one

@@ -206,6 +206,72 @@ fn join_quoted(program: &str, args: &[String], quote: fn(&str) -> String) -> Str
     line
 }
 
+/// Which shell's quoting a command line is being written for.
+///
+/// Named rather than derived from the host so the drop text for every shell is
+/// testable from any machine, the way the rest of this module's string
+/// building is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Quoting {
+    Posix,
+    Powershell,
+}
+
+/// The text a file drop inserts into a session.
+///
+/// Every path quoted for the shell that session runs and space-separated, with
+/// a trailing space so the next argument can be typed straight after — which
+/// is what every terminal has done with a dropped file for thirty years.
+///
+/// `translate` turns Windows paths into the distro's own, because a `C:\`
+/// path pasted into a WSL shell names nothing. It is the same translation
+/// `--cd` gets at launch.
+pub fn drop_text(paths: &[String], quoting: Quoting, translate: bool) -> String {
+    let quote = match quoting {
+        Quoting::Posix => posix_quote,
+        Quoting::Powershell => powershell_quote,
+    };
+    let mut line = String::new();
+    for path in paths
+        .iter()
+        .filter(|path| !path.is_empty() && !has_control(path))
+    {
+        let path = if translate {
+            wsl_path(path)
+        } else {
+            path.to_string()
+        };
+        line.push_str(&quote(&path));
+        line.push(' ');
+    }
+    line
+}
+
+/// Whether a path carries a byte that would be read as a key rather than text.
+///
+/// Quoting is not enough on its own: the text is delivered through xterm's
+/// bracketed paste, which wraps it in `ESC[200~`…`ESC[201~` and does not strip
+/// an end marker embedded in the middle. A filename containing that sequence —
+/// git stores arbitrary path bytes, and an agent chooses its own filenames —
+/// therefore ends paste mode early, and everything after it arrives as
+/// keystrokes, with a carriage return to submit them. A path with a control
+/// byte in it is never worth typing, so it is dropped rather than repaired.
+fn has_control(path: &str) -> bool {
+    path.chars().any(|c| c.is_control())
+}
+
+/// What to type into a session when files are dropped on it.
+#[tauri::command(async)]
+pub fn drop_paths(paths: Vec<String>, backend: Backend) -> String {
+    // The host decides the quoting; `drop_text` only writes it.
+    let quoting = if cfg!(windows) && backend == Backend::Native {
+        Quoting::Powershell
+    } else {
+        Quoting::Posix
+    };
+    drop_text(&paths, quoting, backend == Backend::Wsl)
+}
+
 /// A Windows path as the distro sees it: `C:\code` becomes `/mnt/c/code`, a
 /// `\\wsl$\Ubuntu\home\ada` share becomes `/home/ada`, and a path that is
 /// already distro-shaped is left alone.

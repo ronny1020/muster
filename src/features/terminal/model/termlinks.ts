@@ -18,19 +18,6 @@ export interface PathMatch {
   end: number
 }
 
-/** Extensions that get an image preview rather than opening in an editor. */
-const IMAGE_EXTENSIONS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'bmp',
-  'avif',
-  'svg',
-  'ico',
-])
-
 /**
  * A run of path-ish characters. Deliberately excludes whitespace, quotes and
  * brackets, so a path inside `"…"` or `(…)` matches without them.
@@ -42,17 +29,6 @@ const POSITION = /:(\d+)(?::(\d+))?$/
 
 /** Punctuation that ends a sentence rather than a path. */
 const TRAILING_NOISE = /[.,;:!?]+$/
-
-export function isImagePath(path: string): boolean {
-  // Both separators: a WSL session shows Windows paths, where splitting on `/`
-  // alone leaves the whole path as the "filename" and the leading-dot guard
-  // below never applies.
-  const name = path.split(/[/\\]/).pop() ?? ''
-  // A leading-dot name like `.png` has no extension, only a name.
-  if (name.startsWith('.') && name.indexOf('.', 1) === -1) return false
-  const extension = name.split('.').pop()?.toLowerCase() ?? ''
-  return IMAGE_EXTENSIONS.has(extension)
-}
 
 /**
  * Every path-looking run in one line of terminal output.

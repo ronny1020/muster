@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { findPaths, isImagePath, resolvePath } from './termlinks'
+import { findPaths, resolvePath } from './termlinks'
 
 const paths = (text: string) => findPaths(text).map((match) => match.path)
 
@@ -73,23 +73,6 @@ test('an empty line yields nothing', () => {
   expect(findPaths('   ')).toEqual([])
 })
 
-test('recognises image extensions, whatever the case', () => {
-  for (const path of ['/a/b.png', 'x.JPG', 'd.jpeg', 'i.svg', 'p.WEBP']) {
-    expect(isImagePath(path)).toBe(true)
-  }
-})
-
-test('code and data files are not images', () => {
-  for (const path of ['src/App.tsx', 'notes.md', 'a.tar.gz', 'Makefile']) {
-    expect(isImagePath(path)).toBe(false)
-  }
-})
-
-test('a dotfile named like an extension is not an image', () => {
-  expect(isImagePath('.png')).toBe(false)
-  expect(isImagePath('/home/ada/.png')).toBe(false)
-})
-
 test('an absolute path resolves to itself', () => {
   expect(resolvePath('/tmp/a.png', '/work', '/home/ada')).toBe('/tmp/a.png')
 })
@@ -119,16 +102,4 @@ test('a Windows session directory joins with a backslash', () => {
   expect(resolvePath('src\\a.ts', 'C:\\work', 'C:\\Users\\ada')).toBe(
     'C:\\work\\src\\a.ts',
   )
-})
-
-test('a Windows path is recognised as an image', () => {
-  // A WSL session shows Windows paths, and splitting on `/` alone left the
-  // whole path as the filename.
-  expect(isImagePath('C:\\Users\\me\\Pictures\\shot.png')).toBe(true)
-  expect(isImagePath('C:\\Users\\me\\notes.txt')).toBe(false)
-})
-
-test('a leading-dot Windows filename is not an image', () => {
-  // The guard only worked once the filename was isolated from the path.
-  expect(isImagePath('C:\\Users\\me\\.png')).toBe(false)
 })

@@ -36,6 +36,9 @@ export type TabContent =
   | { type: 'settings' }
   | { type: 'session'; session: Session }
 
+/** Which view the review drawer is on. */
+export type ReviewView = 'changes' | 'files'
+
 export interface Tab {
   id: string
   title: string
@@ -46,6 +49,9 @@ export interface Tab {
   exitCode: number | null
   /** Whether this tab's git history drawer is open. */
   historyOpen: boolean
+  /** Whether this tab's review panel is open. */
+  reviewOpen: boolean
+  reviewView: ReviewView
   /** Whether this tab's scrollback search bar is open. */
   findOpen: boolean
   /** The session signalled it is done while the user was looking elsewhere. */
@@ -77,6 +83,11 @@ export type DeckAction =
       dirty: boolean
     }
   | { type: 'toggleHistory'; id: string }
+  | { type: 'toggleReview'; id: string }
+  | { type: 'setHistory'; id: string; open: boolean }
+  | { type: 'setReview'; id: string; open: boolean }
+  | { type: 'showReview'; id: string; view: ReviewView }
+  | { type: 'setReviewView'; id: string; view: ReviewView }
   | { type: 'setFind'; id: string; open: boolean }
   | { type: 'attention'; id: string }
   | { type: 'relaunch'; id: string }
@@ -92,6 +103,8 @@ export const newTab = (
   dirty: false,
   exitCode: null,
   historyOpen: false,
+  reviewOpen: false,
+  reviewView: 'changes',
   findOpen: false,
   attention: false,
   content,
@@ -178,6 +191,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         exitCode: null,
         attention: false,
         historyOpen: false,
+        reviewOpen: false,
       }))
 
     case 'attention':
@@ -187,6 +201,41 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return patch(deck, action.id, (tab) => ({
         historyOpen: !tab.historyOpen,
       }))
+
+    // Set rather than toggled, for a click on something that says "show me
+    // these": a chip counting commits must not close the drawer listing them.
+    case 'setHistory':
+      return patch(deck, action.id, () => ({ historyOpen: action.open }))
+
+    case 'toggleReview':
+      return patch(deck, action.id, (tab) => ({
+        reviewOpen: !tab.reviewOpen,
+      }))
+
+    // Set rather than toggled, because a click on a changed path in the output
+    // must open the panel whether or not it was already open.
+    case 'setReview':
+      return patch(deck, action.id, () => ({ reviewOpen: action.open }))
+
+    /**
+     * A control that names a view: the directory shows the tree, the change
+     * counts show the changes.
+     *
+     * Naming the view already on screen closes the drawer, because the control
+     * has nothing left to say the second time — but naming the other one
+     * switches rather than closing, which is the difference between this and a
+     * toggle.
+     */
+    case 'showReview':
+      return patch(deck, action.id, (tab) => ({
+        reviewOpen: !(tab.reviewOpen && tab.reviewView === action.view),
+        reviewView: action.view,
+      }))
+
+    // The drawer's own tabs switch and nothing else: you are already looking
+    // at the drawer, so clicking the view you are on cannot mean "close".
+    case 'setReviewView':
+      return patch(deck, action.id, () => ({ reviewView: action.view }))
 
     // Set rather than toggled: the shortcut always opens and Escape always
     // closes, so neither can leave the bar in the state the user did not ask

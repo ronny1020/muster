@@ -5,6 +5,7 @@ mod image;
 mod link;
 mod platform;
 mod pty;
+mod review;
 mod sessions;
 mod workspace;
 
@@ -26,6 +27,10 @@ pub fn run() {
             workspace::git_branches,
             workspace::git_checkout,
             workspace::path_kind,
+            review::git_changes,
+            review::git_file_diff,
+            review::read_text_file,
+            review::list_directory,
             workspace::home_dir,
             workspace::create_directory,
             sessions::agent_sessions,
@@ -34,6 +39,7 @@ pub fn run() {
             image::read_image,
             link::link_preview,
             platform::platform_info,
+            platform::drop_paths,
         ])
         .on_window_event(|window, event| match event {
             // Quitting over a mid-turn agent throws away work that cannot be

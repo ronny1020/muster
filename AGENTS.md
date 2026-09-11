@@ -47,6 +47,11 @@ behaviour. Update them **in the same change**, not afterwards:
 
 - **AGENTS.md** — the invariants, the layer table, the conventions. The layer
   table is meant to be what exists, so a new slice or segment belongs in it.
+- **SECURITY.md** — what the app promises about the three parties it does not
+  trust. A new command that reads the filesystem, or a new renderer fed by file
+  contents, changes what that document has to claim.
+- **docs/RELEASE.md** — the release runbook, including how many checks there
+  are to run.
 - **CONTRIBUTING.md** — the checks, the "where things are" table, the
   procedures. A new module or command gets a row.
 - **README.md** — anything a user can see. A new setting, a new shortcut, a new
@@ -159,6 +164,162 @@ GPU context first, and `onContextLoss` must null the handle so cleanup cannot
 double-dispose. A lost context with no fallback stops the terminal painting
 entirely rather than dropping back to the DOM renderer.
 
+**Nothing an agent names may reach a session as keystrokes.** `drop_text`
+refuses any path carrying a control byte, because quoting is not the only
+boundary in play: the text is delivered through xterm's bracketed paste, which
+wraps it in `ESC[200~`…`ESC[201~` and does **not** strip an end marker embedded
+in the middle. A filename holding that sequence — git stores arbitrary path
+bytes, and an agent picks its own filenames — ends paste mode early, and the
+rest arrives as typed keys with a carriage return to submit them. Balanced
+quoting does not help, because the shell's line editor never sees quotes at
+all.
+
+**A pathspec must be literal.** `:(top,literal)<path>` in `review.rs`, never
+`:/<path>`: the second leaves the rest as pathspec language, so a file an agent
+named `:setup.sh` resolved to the tracked `setup.sh` beside it — an empty diff
+for a new file — and `!x` inverted the match to the whole repository. Verify a
+change here against a real name: `git ls-files -- ':/:AGENTS.md'` prints
+`AGENTS.md`, and the literal form prints nothing.
+
+**Nothing is read through a symlink, and the automatic reads are bounded.**
+`read_capped` uses `symlink_metadata` and refuses a link, the same stance and
+the same reason as `image.rs`: a repository can ship
+`docs/notes.md -> ~/.ssh/id_ed25519`, and the line count for an untracked file
+is read with no click at all. `MAX_COUNTED` bounds how many of those reads a
+single revision can cause. Confinement lives at the callers that have no click,
+not in the commands — `read_image` must stay unconfined, because the terminal's
+overlay and the background picker legitimately point anywhere, while
+`resolveAgainst` refuses a markdown image that climbs out of its document's own
+folder.
+
+**An editor installed on macOS usually has no shell command.** A bundle in
+`/Applications` puts nothing on `PATH`: VS Code's `code` arrives only if the
+user ran "Shell Command: Install 'code' command" from the palette. Probing the
+command alone therefore reported one editor on a machine with three, and looked
+like a working list rather than a broken one. `editor.rs` looks for the bundle
+too, and launches through the tool inside it — `Contents/Resources/app/bin/…`,
+which is what the shell command is a symlink to, so the flags are the same. The
+tool is not always named after the command: Antigravity's editor is
+`Antigravity IDE.app` with `antigravity-ide`, and the `Antigravity.app` beside
+it is a language server that opens nothing. A bundle with no such tool falls
+back to `open -a`, which takes no flags, so a line number is dropped there.
+
+**A file drop is a window event, not an element's.** Tauri intercepts the drop
+before the DOM sees it — `dragDropEnabled` is on by default — so there is no
+target to hang a handler on and `onDragDropEvent` is the only way to see one.
+Every mounted pane would otherwise answer the same drop, so only the active one
+subscribes; the effect is keyed on `active` for exactly that reason. The text it
+inserts is built in `platform::drop_text`, not in the webview: the quoting is
+the session's shell's, and a WSL session needs the path translated the way
+`--cd` translates it at launch.
+
+**Nothing in the review panel may need WASM.** The content security policy has
+no `wasm-unsafe-eval`, so Shiki runs on `createJavaScriptRegexEngine` — widening
+the policy to colour some text would be a bad trade. `forgiving: true` skips the
+few TextMate patterns that engine cannot express instead of throwing away the
+file's colours, and every failure in `highlight()` answers `null`, because
+uncoloured code is a perfectly good diff and an unreadable one is not.
+
+**Highlighted code is rendered as elements, never as markup.** Shiki can emit
+HTML directly and `dangerouslySetInnerHTML` would be shorter, but the code being
+coloured was written by an agent. `TokenLine` renders tokens as `<span>`s so
+nothing an agent wrote can reach the DOM as markup.
+
+`MarkdownView` is the one exception, and it is only safe because of three
+things in `markdown.ts`: markdown-it runs with `html: false`, so the file's own
+HTML is escaped into text; links are rendered with **no `href`**, carrying the
+URL as `data-url` for the same preview card the terminal uses, because the
+webview has one window and a link would navigate the whole app out of it; and
+images become `data-src` paths that Rust reads, never URLs the webview fetches.
+Any change there is a change to what a file an agent wrote can do to the
+window — treat the escaping, the missing `href` and the `data-src` as the
+feature, not as detail.
+
+Mermaid is the fourth thing, and it is not markdown-it's doing: a `click`
+directive in a diagram becomes a real `<a xlink:href>` inside the SVG, and
+`securityLevel: 'strict'` does not prevent that — it only picks the anchor's
+`target`. `disarmLinks` moves the destination to `data-url` after every render,
+so a diagram's links reach the same preview card as the document's. Anything
+that replaces `innerHTML` with mermaid's output has to keep calling it.
+
+**Mermaid and the syntax grammars must stay dynamic imports, and `build.ts`
+must keep `splitting: true`.** Inlined, they make an 8 MB bundle the webview
+parses before it can draw anything; split, the entry chunk is 1.3 MB and a
+grammar is fetched when a file needs one. Nothing fails if the flag is dropped
+— the app just starts slowly, which is the kind of regression nobody bisects.
+
+**The review surfaces re-read on a revision derived from the tree, never on a
+clock.** `treeRevision` in `features/workspace/model/status.ts` builds it from
+git's own counts, and the changed-file list, an open diff and every expanded
+folder key on it. A timestamp is what this started as, and because
+`useWorkspace` polls every few seconds it tore an open diff down on every tick —
+clearing it to a "Reading…" notice, losing the scroll position and re-tokenising
+both sides through Shiki on the thread that draws the window, in every mounted
+pane at once. The trade is that a second edit to an already-modified file moves
+no count, which is what the panel's Re-read button is for. No timer here at all:
+see the hidden-pane invariant, and note the panel is mounted only while open —
+which is also why the click that opens it asks git directly rather than reading
+a list that does not exist yet.
+
+**Material icons ship as path data, not a webfont.** `src/shared/ui/icons.ts`
+holds the `d` attributes traced from Material Symbols. A webfont would need a
+`font-src` the policy does not grant, and an icon font that fails to load
+renders tofu boxes rather than nothing — a failure that looks like a bug in the
+app.
+
+**A panel's width is a preference, not a fixed size.** All three right-hand
+panels — the review drawer, the file column, the history drawer — are dragged by
+their edge, so none may be `flex-none`: with several open and dragged wide, the
+flex row is the only thing left that can keep the terminal on screen, and it can
+only do that if they are allowed to shrink. The `min-w-64` on the terminal's
+column in `Pane` is the other half of that, and it belongs on the flex child
+rather than inside `TerminalView` — fitted to zero columns, xterm resizes the
+PTY to nothing. The width itself is remembered in `localStorage` rather than in
+settings: the panels unmount when closed, so component state would forget it
+every time, and it is direct manipulation rather than a row in the settings
+pane. `storedWidth` repairs what it reads, because a panel three pixels wide
+leaves no edge to drag it back with.
+
+**The file column never covers the terminal.** Reading a diff and typing the
+next instruction are one activity, so the column is a sibling of the terminal in
+the flex row, not an overlay on it. That is also why the drawer holds no reader:
+it lists and the column reads, and what is being read lives in `Pane` — the two
+are siblings, so neither can own it.
+
+**Code in the review panel is the terminal's own type.** `codeStyle` hands the
+font family, size, line height and letter spacing from settings to the diff and
+the file view, so a column of code matches the output beside it. Tailwind's
+preflight then undoes half of that: it sets `code { font-family: var(--font-mono) }`,
+which beats an inherited family, so the elements that actually show code would
+ignore the font the user chose. `[&_code]:[font-family:inherit]` on the
+container is what puts it back, and the gutters are sized in `ch` rather than
+pixels so the columns follow the font instead of clipping at 20px.
+
+**A scroll needs a bounded box.** `overflow-y-auto` on a child of an
+`overflow-hidden` parent never becomes a scroll container: the child grows to
+its content and the parent clips it, so the list looks truncated and the wheel
+does nothing. Put the overflow on the element that has the height — the
+`min-h-0 flex-1` box that the drawer's list and the reader both are — never on
+both it and a child.
+
+**A patch must come back from git verbatim.** `workspace::git` ends in
+`trim_end`, which is right for a fact — a sha, a branch name — and wrong for a
+diff: a unified diff's blank context line is a single space, so trimming
+deletes the diff's last rows for any file ending in blank lines, while its `@@`
+header still promises them. That is exactly the region a reviewer reads when an
+agent may have eaten a trailing newline. `git_verbatim` is the one to use for
+anything whose whitespace is content.
+
+**An overlay that closes on Escape must claim the key, not share it.** Several
+surfaces listen for Escape on their own, and they stack: the file column, the
+link card, the image overlay, and a width drag in progress. Listeners on
+`window` all fire, so dismissing a card also closed the column behind it, and
+cancelling a drag closed the panel being dragged. The rule: a transient surface
+listens in the **capture** phase on `document` and calls `stopPropagation`, so
+the topmost one answers and the rest do not. A surface that is per-tab must also
+gate on `active` — every pane stays mounted, so an Escape typed at a TUI in one
+tab was closing another tab's panel.
+
 **Keep command-line building platform-independent.** POSIX, PowerShell and WSL
 argv construction in `src-tauri/src/platform.rs` compiles on every target so
 `cargo test` covers all three from any host. `cfg`-gate the _choice_ between
@@ -187,7 +348,8 @@ what make the direction decidable.
 Two consequences worth knowing, because both surprised us:
 
 - **A component that composes several slices is not one of them.** `Pane.tsx`
-  renders the terminal, the launcher, the status bar and the history drawer;
+  renders the terminal, the launcher, the settings pane, the status bar, the
+  history drawer, the review drawer and the file column;
   `TabStrip.tsx` needs both the tab entity and the shortcut labels. Neither can
   live in a slice without importing sideways, which is what `widgets` is for.
 - **Vocabulary sinks.** If two features need the same type, it belongs in
@@ -210,7 +372,8 @@ CONTRIBUTING.md's "Where the tests live" covers it.
 
 `shared` earns its name by never importing from above. Anything that needs a
 domain type is not shared. `shared/lib` holds contained libraries with one focus
-each, not a `utils` drawer.
+each, not a `utils` drawer; `shared/ui` holds presentation with no domain in it
+at all — the icon set and the component that draws one.
 
 **`test/layers.test.ts` enforces all of this**, because there is no ESLint here
 and a rule nothing checks is a comment. It fails on an upward import, a
@@ -243,6 +406,38 @@ the signal to move it into a `model` segment first.
   token fits — the git-status chip colours, the palettes in `src/shared/lib/themes.ts`, an
   agent's `accent` — so prefer promoting a repeated hex to a token over adding
   another one-off.
+
+## Accessibility
+
+Level AA is the bar, and two habits carry most of it:
+
+- **A control's name is what a screen reader reads, and content wins over
+  `title`.** A status chip labelled `~24` needs an `aria-label` saying what it
+  counts; an icon-only button needs one at all. Every `<button>` in the review
+  surfaces has one or visible text.
+- **Colour is never the only signal, and `aria-hidden` can remove the other
+  one.** The diff's `+`/`-` glyph is decorative, so each added or removed row
+  also carries an `sr-only` word — hiding the glyph without that left the tint
+  as the sole carrier.
+
+Async text — "Reading…", the changed-file summary — sits in a `role="status"`
+region, because these replace each other as reads land and 4.1.3 is an AA
+criterion.
+
+A gesture that exists only on the right mouse button would fail 2.1.1, so note
+why the file tree's menu does not: `onContextMenu` on a focusable element is
+also fired by the Menu key and `Shift+F10`, which makes it a keyboard gesture
+too. Hang one on a `<div>` and that stops being true — and having opened it
+from the keyboard, the menu has to be usable from there, which is why
+`shared/ui/ContextMenu` takes focus, moves on the arrows, and hands focus back
+to the row it came from. It claims Escape in the capture phase for the reason
+the Escape invariant above gives: the column underneath closes on Escape too.
+
+The **syntax theme is the open contrast question**: measured against the app's
+own background, vitesse-dark's dimmest token (`#666666`) is 3.12:1, and the
+diff tints take it to 2.43:1 — under the 4.5:1 AA needs for body text. Tint
+tuning cannot close that on its own; a higher-contrast theme is the lever, and
+it is a visible change nobody has asked for yet.
 
 ## Tests
 
@@ -281,7 +476,7 @@ component wiring is verified by running the app, not by a green suite.
 Change this repository only. If a fix seems to require editing a dependency or
 another repo, stop and say so.
 
-Two files are the seams for common asks:
+These are the seams for common asks:
 
 - **A new agent** starts as one entry in `src/entities/agent/model/agents.ts`, but the roster is also
   pinned by `src/entities/agent/model/agents.test.ts` and written out in `README.md` and
@@ -289,3 +484,11 @@ Two files are the seams for common asks:
   rule the tests enforce and every file that follows.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.
+- **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
+  "Adding an icon" has where the path data comes from. A new file-type icon is
+  one more line in `src/shared/ui/fileicon.ts`, and its test asserts every
+  icon that table can return is one the set actually holds.
+- **A new syntax-highlighted language** is one entry in `GRAMMARS` and one in
+  `BY_EXTENSION`, both in `src/features/review/model/highlight.ts`. The test
+  pins the second to the first, so a grammar id that does not exist fails there
+  rather than silently rendering plain text.

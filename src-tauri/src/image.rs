@@ -53,14 +53,44 @@ pub fn mime_for(path: &str) -> Option<&'static str> {
         .map(|(_, mime)| *mime)
 }
 
+/// Reads an image for the webview.
+///
+/// `within` confines it: the resolved path must sit inside that directory,
+/// resolved too. A caller that has one passes it — a markdown document asks
+/// for its own folder, because rendering it reads every image it names with no
+/// click at all, and a repository can point a folder anywhere with a committed
+/// symlink. The terminal's overlay and the background picker pass nothing:
+/// there the user named the file.
 #[tauri::command]
-pub async fn read_image(path: String) -> Result<Preview, String> {
-    tauri::async_runtime::spawn_blocking(move || read(path))
+pub async fn read_image(path: String, within: Option<String>) -> Result<Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || read(path, within))
         .await
         .map_err(|error| error.to_string())?
 }
 
-fn read(path: String) -> Result<Preview, String> {
+/// Whether `path` resolves to somewhere inside `root`, links and all.
+///
+/// Textual checks cannot answer this: `docs/pics/x.png` is inside `docs` by
+/// spelling even when `pics` is a link to another disk. Both sides are
+/// canonicalised, so both are compared as the filesystem sees them.
+fn inside(root: &str, path: &Path) -> bool {
+    let (Ok(root), Ok(path)) = (std::fs::canonicalize(root), std::fs::canonicalize(path)) else {
+        return false;
+    };
+    path.starts_with(root)
+}
+
+#[cfg(test)]
+fn read_unconfined(path: String) -> Result<Preview, String> {
+    read(path, None)
+}
+
+fn read(path: String, within: Option<String>) -> Result<Preview, String> {
+    if let Some(root) = within.as_deref() {
+        if !inside(root, Path::new(&path)) {
+            return Err(format!("outside this document's folder: {path}"));
+        }
+    }
     let mime = mime_for(&path).ok_or_else(|| format!("not a previewable image: {path}"))?;
 
     // `symlink_metadata` does not follow the link, which is the point: a

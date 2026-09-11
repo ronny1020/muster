@@ -76,3 +76,93 @@ fn detection_answers_without_erroring_on_this_machine() {
         assert!(KNOWN.iter().any(|(command, _)| *command == editor.command));
     }
 }
+
+#[test]
+fn an_installed_bundle_is_found_without_a_shell_command() {
+    // macOS leaves `PATH` alone when it installs an editor: VS Code's `code`
+    // arrives only if you run it from the palette, so looking for the command
+    // alone reported nothing but Neovim on a machine with two editors on it.
+    let root = std::env::temp_dir().join(format!(
+        "muster-apps-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let bundle = root.join("Visual Studio Code.app");
+    std::fs::create_dir_all(&bundle).expect("mkdir");
+
+    let roots = [root.clone()];
+    let found = bundle_in(&roots, "Visual Studio Code");
+    let missing = bundle_in(&roots, "Cursor");
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert_eq!(found.as_deref(), Some(bundle.as_path()));
+    assert_eq!(missing, None);
+}
+
+#[test]
+fn the_tool_inside_a_bundle_is_preferred_to_the_bundle_itself() {
+    // It takes the same flags as the shell command, including the one that
+    // opens a file at a line; `open -a` takes none of them.
+    let root = std::env::temp_dir().join(format!(
+        "muster-cli-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let bundle = root.join("Visual Studio Code.app");
+    let bin = bundle.join("Contents/Resources/app/bin");
+    std::fs::create_dir_all(&bin).expect("mkdir");
+
+    assert_eq!(bundle_cli(&bundle, "code"), None, "no tool shipped yet");
+    std::fs::write(bin.join("code"), "#!/bin/sh\n").expect("write");
+    let cli = bundle_cli(&bundle, "code");
+    // A bundle listed with no tool is never probed for one.
+    assert_eq!(bundle_cli(&bundle, ""), None);
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert_eq!(cli.as_deref(), Some(bin.join("code").as_path()));
+}
+
+#[test]
+fn an_editor_with_no_bundle_is_left_to_the_login_shell() {
+    // Which is the only route on Linux and Windows, where the installer puts
+    // the command on `PATH` itself.
+    assert_eq!(launcher("nvim"), Launcher::Shell);
+}
+
+#[test]
+fn the_tool_is_not_always_named_after_the_command() {
+    // Antigravity's editor is `Antigravity IDE`, whose tool is
+    // `antigravity-ide`; plain `Antigravity.app` beside it is a language
+    // server and opens nothing.
+    let entry = BUNDLES
+        .iter()
+        .find(|(command, _, _)| *command == "antigravity")
+        .expect("antigravity is a known editor");
+
+    assert_eq!((entry.1, entry.2), ("Antigravity IDE", "antigravity-ide"));
+}
+
+#[test]
+fn every_bundle_names_an_editor_the_table_knows() {
+    // A bundle for a command that is not in `KNOWN` could never be launched:
+    // `open_in_editor` refuses anything outside that table.
+    for (command, app, _) in BUNDLES {
+        assert!(
+            KNOWN.iter().any(|(known, _)| known == command),
+            "{app} claims the unknown command {command}"
+        );
+    }
+}
+
+#[test]
+fn every_editor_that_ships_a_vs_code_launcher_jumps_to_the_line() {
+    // The bundles carrying a `Contents/Resources/app/bin` tool are the VS Code
+    // family, and the flag comes with the fork. Antigravity IDE's launcher is
+    // byte-identical to VS Code's.
+    for (command, app, cli) in BUNDLES.iter().filter(|(_, _, cli)| !cli.is_empty()) {
+        assert!(
+            GOTO_FLAG.contains(command),
+            "{app} ships {cli} but is not offered a line number"
+        );
+    }
+}

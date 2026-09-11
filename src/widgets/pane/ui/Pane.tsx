@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   type DeckAction,
+  type ReviewView,
   type Tab,
   tabSession,
 } from '../../../entities/tab/model/deck'
@@ -9,9 +10,12 @@ import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
 import { useHomeDir } from '../model/useHomeDir'
 import { useWorkspace } from '../../../features/workspace/model/useWorkspace'
+import { treeRevision } from '../../../features/workspace/model/status'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import {
+  dropPaths,
+  gitChanges,
   type ImagePreview as Image,
   type LinkMeta,
   linkPreview,
@@ -20,8 +24,16 @@ import {
   readImage,
   report,
 } from '../../../shared/ipc'
+import {
+  absolutePath,
+  matchChanged,
+} from '../../../features/review/model/changes'
+import { lineOpener } from '../../../features/review/model/openline'
+import type { Viewed } from '../../../features/review/model/viewed'
+import { FileViewer } from '../../../features/review/ui/FileViewer'
+import { ReviewPanel } from '../../../features/review/ui/ReviewPanel'
 import { decideBellResponse, notify } from '../../../shared/lib/notify'
-import { isImagePath } from '../../../features/terminal/model/termlinks'
+import { isImagePath } from '../../../shared/lib/imagepaths'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
 import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
@@ -77,6 +89,36 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
     [dispatch, tab.id],
   )
 
+  const reviewOpen = tab.reviewOpen
+  const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
+  /** A control naming a view: open it, switch to it, or close it. */
+  const showReview = (view: ReviewView) =>
+    dispatch({ type: 'showReview', id: tab.id, view })
+  /**
+   * What the content column is showing.
+   *
+   * Held here rather than in the drawer because the column is the drawer's
+   * sibling, not its child: a file needs width the drawer does not have, and
+   * covering the terminal to show one would defeat the point of reading it
+   * next to the agent that wrote it.
+   */
+  const [viewed, setViewed] = useState<Viewed | null>(null)
+  /** Which branch the drawer and the column compare against. */
+  const [base, setBase] = useState('')
+  /** Changes when the working tree does, which is what re-reads git. */
+  const revision = treeRevision(cwd, git ?? null)
+
+  // A session that `cd`s elsewhere is looking at another tree: a file from the
+  // last one, and a base branch that may not exist in this one, are both stale
+  // rather than merely old.
+  useEffect(() => {
+    setViewed(null)
+    setBase('')
+  }, [cwd])
+  // Filled in by the terminal once it exists, so the panel and a file drop
+  // can both put text in front of the agent.
+  const paste = useRef<((text: string) => void) | null>(null)
+
   const home = useHomeDir()
   const [preview, setPreview] = useState<ImagePreviewState>({
     image: null,
@@ -104,22 +146,64 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
     )
   }, [])
 
+  /**
+   * A path clicked in the output.
+   *
+   * A file the agent has just changed opens in the review panel, because the
+   * diff is what the user is looking for at that moment — the surrounding
+   * output is the agent saying it edited that file. Everything else keeps the
+   * behaviour it had: a folder is revealed, a file opens in the editor.
+   *
+   * git is asked per click rather than polled: the answer is only needed when
+   * a path is clicked, and a poll here would run in every mounted pane.
+   */
   const onPath = useCallback(
     (path: string, line?: number) => {
-      // A folder belongs in the file manager, not an editor — and only the
-      // filesystem can say which one a path is.
-      void pathKind(path).then(
-        (kind) => {
-          if (kind === 'directory') {
-            void revealItemInDir(path).catch(report)
+      void changedFile(cwdRef.current, path, baseRef.current).then(
+        (changed) => {
+          if (changed) {
+            setViewed({ kind: 'diff', ...changed, line: line ?? null })
+            // Named, not just opened: the drawer keeps whichever view it was
+            // last on, and the file tree is not what you asked for by
+            // clicking a changed path.
+            dispatch({ type: 'setReviewView', id: tab.id, view: 'changes' })
+            dispatch({ type: 'setReview', id: tab.id, open: true })
             return
           }
-          openFile(path, line)
+          // A folder belongs in the file manager, not an editor — and only the
+          // filesystem can say which one a path is.
+          void pathKind(path).then(
+            (kind) => {
+              if (kind === 'directory') {
+                void revealItemInDir(path).catch(report)
+                return
+              }
+              openFile(path, line)
+            },
+            () => openFile(path, line),
+          )
         },
-        () => openFile(path, line),
       )
     },
-    [openFile],
+    [dispatch, openFile, tab.id],
+  )
+
+  /** Read through refs: `onPath` is built once, these move under it. */
+  const cwdRef = useRef(cwd)
+  cwdRef.current = cwd
+  const baseRef = useRef(base)
+  baseRef.current = base
+
+  /** Puts a path in front of the agent, quoted as a drop would be. */
+  const sendPath = useCallback(
+    (path: string) => {
+      const backend = session?.backend
+      if (!backend) return
+      void dropPaths([path], backend)
+        .then((text) => paste.current?.(text))
+        .catch(report)
+    },
+    [session?.backend],
   )
 
   const [link, setLink] = useState<LinkState>({
@@ -199,24 +283,68 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
       {session && (
         <>
           <div className="flex min-h-0 flex-1">
-            <TerminalView
-              sessionId={tab.id}
-              session={session}
-              active={active}
-              onBell={onBell}
-              cwd={cwd}
-              home={home}
-              onPath={onPath}
-              onUrl={onUrl}
-              findOpen={tab.findOpen}
-              onCloseFind={closeFind}
-            />
+            {/* The floor is here rather than on the terminal because this is
+                the flex child: the drawers can be dragged wider than the
+                window, and a terminal fitted to zero columns is not one. */}
+            <div className="relative flex min-h-0 min-w-64 flex-1">
+              <TerminalView
+                sessionId={tab.id}
+                session={session}
+                active={active}
+                onBell={onBell}
+                cwd={cwd}
+                home={home}
+                onPath={onPath}
+                onUrl={onUrl}
+                findOpen={tab.findOpen}
+                onCloseFind={closeFind}
+                paste={paste}
+              />
+            </div>
+            {viewed && (
+              <FileViewer
+                viewed={viewed}
+                cwd={cwd}
+                base={base}
+                revision={revision}
+                active={active}
+                opener={lineOpener(editor, viewed.absolute)}
+                onUrl={onUrl}
+                onClose={() => setViewed(null)}
+              />
+            )}
+            {reviewOpen && (
+              <ReviewPanel
+                cwd={cwd}
+                revision={revision}
+                base={base}
+                onBase={setBase}
+                view={tab.reviewView}
+                onView={(view) =>
+                  dispatch({ type: 'setReviewView', id: tab.id, view })
+                }
+                viewed={viewed}
+                onOpenDiff={(file, root) =>
+                  setViewed({
+                    kind: 'diff',
+                    relative: file.path,
+                    absolute: absolutePath(root, file.path),
+                    line: null,
+                  })
+                }
+                onOpenFile={(path) =>
+                  setViewed({ kind: 'file', absolute: path })
+                }
+                onSend={sendPath}
+                onClose={toggleReview}
+              />
+            )}
             {historyOpen && git && (
               <HistoryPanel
                 cwd={cwd}
                 git={git}
                 limit={settings.historyLimit}
-                revision={`${cwd}:${git.branch}:${git.ahead}:${git.staged}:${git.modified}`}
+                revision={revision}
                 onClose={toggleHistory}
                 onSwitched={refresh}
               />
@@ -248,11 +376,46 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
             state={tab.exitCode === null ? '' : tab.detail}
             exited={tab.exitCode !== null && tab.exitCode !== 0}
             historyOpen={historyOpen}
+            reviewOpen={reviewOpen}
             editor={editor}
+            reviewView={tab.reviewView}
             onToggleHistory={toggleHistory}
+            onShowReview={showReview}
+            // Toggles, like the branch button beside it and the review
+            // groups: every control in the bar names a surface, and a second
+            // click on the one you are looking at closes it.
+            onShowHistory={toggleHistory}
           />
         </>
       )}
     </section>
   )
+}
+
+/**
+ * The repo-relative path of a changed file an absolute path names, or `null`.
+ *
+ * Asked of git at click time. The panel's own list is not consulted because it
+ * only exists while the panel is open, and the first click is usually what
+ * opens it.
+ */
+async function changedFile(
+  cwd: string,
+  path: string,
+  base: string,
+): Promise<{ relative: string; absolute: string } | null> {
+  // The same base the drawer is listing against, or a path changed in an
+  // earlier commit on this branch would match nothing and open in the editor
+  // while the drawer shows it as a change.
+  const changes = await gitChanges(cwd, base || undefined).catch(() => null)
+  if (!changes?.repo) return null
+  const found = matchChanged(changes.files, path, changes.root)
+  return found
+    ? {
+        relative: found.path,
+        // Rebuilt from the root rather than reusing the clicked path: the two
+        // can differ in case or separators, and the editor gets this one.
+        absolute: absolutePath(changes.root, found.path),
+      }
+    : null
 }

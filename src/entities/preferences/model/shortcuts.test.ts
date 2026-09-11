@@ -131,3 +131,16 @@ test('find is ⌘F on macOS and Ctrl+Shift+F elsewhere', () => {
 test('plain Ctrl+F stays with the program, which uses it to page forward', () => {
   expect(matchShortcut(press({ key: 'f', ctrlKey: true }), false)).toBeNull()
 })
+
+test('review is on G, the key every editor gives source control', () => {
+  expect(matchShortcut(press({ key: 'g', metaKey: true }), true)).toEqual({
+    type: 'toggleReview',
+  })
+  expect(
+    matchShortcut(press({ key: 'g', ctrlKey: true, shiftKey: true }), false),
+  ).toEqual({ type: 'toggleReview' })
+})
+
+test('a bare Ctrl+G still reaches the terminal, where readline owns it', () => {
+  expect(matchShortcut(press({ key: 'g', ctrlKey: true }), false)).toBeNull()
+})

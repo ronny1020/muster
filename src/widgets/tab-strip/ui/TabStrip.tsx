@@ -127,6 +127,11 @@ function TabButton({ tab, active, onSelect, onClose }: TabButtonProps) {
         type="button"
         tabIndex={-1}
         aria-label="Close tab"
+        // The tab selects on `mousedown`, which has already fired by the time
+        // a click arrives — so stopping the click alone still left the tab
+        // selected, and closing a background tab moved you off the one you
+        // were working in.
+        onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation()
           onClose()

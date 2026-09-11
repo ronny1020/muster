@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { matchBranches, switchWarning } from '../model/branches'
 import { branchLabel } from '../model/status'
+import { DragEdge } from '../../../shared/ui/DragEdge'
+import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
 import {
   type Branch,
   type Commit,
@@ -22,6 +24,9 @@ export interface HistoryPanelProps {
   onSwitched(): void
 }
 
+/** Enough for a commit subject without wrapping every one of them. */
+const DEFAULT_WIDTH = 320
+
 /** Right-hand drawer listing the working directory's commits. */
 export function HistoryPanel({
   cwd,
@@ -33,6 +38,7 @@ export function HistoryPanel({
 }: HistoryPanelProps) {
   const [commits, setCommits] = useState<Commit[] | null>(null)
   const [switching, setSwitching] = useState(false)
+  const size = usePanelWidth('muster.historyWidth', DEFAULT_WIDTH)
 
   const load = useCallback(
     async (live: () => boolean = () => true) => {
@@ -58,7 +64,13 @@ export function HistoryPanel({
   useEffect(() => setSwitching(false), [cwd])
 
   return (
-    <aside className="flex w-[320px] flex-none flex-col border-l border-line bg-chrome">
+    <aside
+      style={{ width: size.width, maxWidth: '80%' }}
+      // Not `flex-none`: with both drawers open the dragged width is a
+      // preference, and the flex row is what keeps the terminal a column.
+      className="relative flex flex-col border-l border-line bg-chrome"
+    >
+      <DragEdge size={size} label="Resize the history drawer" />
       <header className="flex h-8 flex-none items-center gap-2 border-b border-line px-2.5">
         <span className="flex-1 truncate text-[11px] tracking-[0.06em] text-muted uppercase">
           History · {branchLabel(git)}

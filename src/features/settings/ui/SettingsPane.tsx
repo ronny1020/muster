@@ -147,6 +147,7 @@ export function SettingsPane() {
           </Row>
           <NumberRow label="Font size" field="fontSize" suffix="px" />
           <NumberRow label="Line height" field="lineHeight" />
+          <NumberRow label="Text width" field="letterSpacing" suffix="px" />
           <NumberRow label="Scrollback" field="scrollback" suffix="lines" />
           <Row label="Blinking cursor">
             <Toggle

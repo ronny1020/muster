@@ -4,6 +4,7 @@ export type ShortcutAction =
   | { type: 'open' }
   | { type: 'openSettings' }
   | { type: 'toggleHistory' }
+  | { type: 'toggleReview' }
   | { type: 'find' }
   | { type: 'closeActive' }
   | { type: 'cycle'; step: number }
@@ -65,6 +66,8 @@ const LETTER_ACTIONS: Record<string, ShortcutAction> = {
   t: { type: 'open' },
   w: { type: 'closeActive' },
   y: { type: 'toggleHistory' },
+  // `G` for the same reason VS Code uses it: this is the source-control view.
+  g: { type: 'toggleReview' },
   f: { type: 'find' },
 }
 
@@ -77,6 +80,7 @@ export function shortcutLabels(isMac: boolean) {
     open: letter('T'),
     closeActive: letter('W'),
     toggleHistory: letter('Y'),
+    toggleReview: letter('G'),
     find: letter('F'),
     openSettings: isMac ? '⌘,' : 'Ctrl+,',
     previous: isMac ? '⌘⇧[' : 'Ctrl+PageUp',

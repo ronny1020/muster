@@ -10,6 +10,7 @@ export interface TabShortcuts {
   open(): void
   openSettings(): void
   toggleHistory(): void
+  toggleReview(): void
   find(): void
   closeActive(): void
   cycle(step: number): void
@@ -27,6 +28,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     cycle,
     activateIndex,
     toggleHistory,
+    toggleReview,
     find,
     openSettings,
   } = handlers
@@ -42,6 +44,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
         cycle,
         activateIndex,
         toggleHistory,
+        toggleReview,
         find,
         openSettings,
       })
@@ -55,6 +58,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     cycle,
     activateIndex,
     toggleHistory,
+    toggleReview,
     find,
     openSettings,
   ])
@@ -68,6 +72,8 @@ function run(action: ShortcutAction, handlers: TabShortcuts) {
       return handlers.openSettings()
     case 'toggleHistory':
       return handlers.toggleHistory()
+    case 'toggleReview':
+      return handlers.toggleReview()
     case 'find':
       return handlers.find()
     case 'closeActive':

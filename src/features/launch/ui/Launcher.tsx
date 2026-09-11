@@ -6,6 +6,7 @@ import {
   agentById,
   SHELL_AGENT,
 } from '../../../entities/agent/model/agents'
+import { Combobox } from '../../../shared/ui/Combobox'
 import type { LauncherStart } from '../../../entities/tab/model/deck'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
@@ -225,17 +226,17 @@ export function Launcher({
         )}
 
         <Field label="Agent">
-          <div className="flex flex-wrap gap-1.5">
-            {CHOICES.map((choice) => (
-              <Choice
-                key={choice.id}
-                label={choice.name}
-                accent={choice.accent}
-                selected={choice.id === agent.id}
-                onSelect={() => setAgent(choice)}
-              />
-            ))}
-          </div>
+          <Combobox
+            label="Agent"
+            placeholder="Type to filter…"
+            options={CHOICES.map((choice) => ({
+              id: choice.id,
+              label: choice.name,
+              accent: choice.accent,
+            }))}
+            selected={agent.id}
+            onSelect={(id) => setAgent(agentById(id))}
+          />
         </Field>
 
         {distros.length > 0 && (

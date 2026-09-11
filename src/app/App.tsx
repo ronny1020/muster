@@ -90,6 +90,10 @@ export function App() {
     () => dispatch({ type: 'toggleHistory', id: deck.activeId }),
     [deck.activeId],
   )
+  const toggleReview = useCallback(
+    () => dispatch({ type: 'toggleReview', id: deck.activeId }),
+    [deck.activeId],
+  )
   const find = useCallback(
     () => dispatch({ type: 'setFind', id: deck.activeId, open: true }),
     [deck.activeId],
@@ -105,6 +109,7 @@ export function App() {
     cycle,
     activateIndex,
     toggleHistory,
+    toggleReview,
     find,
     openSettings,
   })

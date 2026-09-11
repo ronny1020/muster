@@ -37,13 +37,13 @@ fn a_dotfile_is_not_mistaken_for_an_extension() {
 #[test]
 fn refuses_a_non_image_before_touching_the_filesystem() {
     // The path does not exist; the extension check must reject it anyway.
-    let error = read("/definitely/not/here.txt".into()).unwrap_err();
+    let error = read_unconfined("/definitely/not/here.txt".into()).unwrap_err();
     assert!(error.contains("not a previewable image"), "{error}");
 }
 
 #[test]
 fn reports_a_missing_file_rather_than_panicking() {
-    let error = read("/definitely/not/here.png".into()).unwrap_err();
+    let error = read_unconfined("/definitely/not/here.png".into()).unwrap_err();
     assert!(!error.contains("not a previewable image"), "{error}");
 }
 
@@ -51,7 +51,7 @@ fn reports_a_missing_file_rather_than_panicking() {
 fn refuses_a_directory_that_merely_looks_like_an_image() {
     let dir = std::env::temp_dir().join("muster-preview-test.png");
     std::fs::create_dir_all(&dir).expect("mkdir");
-    let error = read(dir.to_string_lossy().into()).unwrap_err();
+    let error = read_unconfined(dir.to_string_lossy().into()).unwrap_err();
     let _ = std::fs::remove_dir(&dir);
     assert!(error.contains("not a file"), "{error}");
 }
@@ -68,7 +68,7 @@ fn refuses_a_symlink_however_it_is_named() {
     let link = dir.join("diagram.png");
     std::os::unix::fs::symlink(&secret, &link).expect("symlink");
 
-    let error = read(link.to_string_lossy().into()).unwrap_err();
+    let error = read_unconfined(link.to_string_lossy().into()).unwrap_err();
     let _ = std::fs::remove_dir_all(&dir);
     assert!(error.contains("symlink"), "{error}");
 }
@@ -84,7 +84,7 @@ fn encodes_a_real_file_as_a_data_uri() {
     let path = std::env::temp_dir().join("muster-preview-test-pixel.png");
     std::fs::write(&path, PIXEL).expect("write");
 
-    let preview = read(path.to_string_lossy().into()).expect("read");
+    let preview = read_unconfined(path.to_string_lossy().into()).expect("read");
     let _ = std::fs::remove_file(&path);
 
     assert!(preview.data_url.starts_with("data:image/png;base64,"));
@@ -93,4 +93,46 @@ fn encodes_a_real_file_as_a_data_uri() {
         preview.data_url.len() > PIXEL.len(),
         "base64 expands the payload"
     );
+}
+
+#[test]
+fn an_image_outside_the_folder_that_asked_for_it_is_refused() {
+    // A document renders every image it names with no click, and a committed
+    // symlink can point a folder anywhere — so the check has to be the
+    // filesystem's, not the spelling of the path.
+    let root = std::env::temp_dir().join(format!(
+        "muster-within-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let inside = root.join("docs");
+    let elsewhere = root.join("private");
+    std::fs::create_dir_all(&inside).expect("mkdir");
+    std::fs::create_dir_all(&elsewhere).expect("mkdir");
+    let ours = inside.join("shot.png");
+    let theirs = elsewhere.join("shot.png");
+    std::fs::write(&ours, [0x89, 0x50]).expect("write");
+    std::fs::write(&theirs, [0x89, 0x50]).expect("write");
+
+    let allowed = read(
+        ours.to_string_lossy().into_owned(),
+        Some(inside.to_string_lossy().into_owned()),
+    );
+    let refused = read(
+        theirs.to_string_lossy().into_owned(),
+        Some(inside.to_string_lossy().into_owned()),
+    );
+    // A path spelled as if it were inside, but climbing out, is the real case.
+    let climbing = read(
+        inside
+            .join("../private/shot.png")
+            .to_string_lossy()
+            .into_owned(),
+        Some(inside.to_string_lossy().into_owned()),
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(allowed.is_ok(), "{allowed:?}");
+    assert!(refused.is_err());
+    assert!(climbing.is_err());
 }

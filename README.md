@@ -29,8 +29,11 @@ years. The point is that Muster knows what is _in_ the tab:
   because the reason to run several is that you are not watching this one.
 - 🌿 **The footer follows the directory and its git state** as the agent changes
   it, and the drawer switches branches without leaving the tab.
+- 🔍 **Click a file the agent just changed and its diff opens beside the
+  terminal**, syntax-highlighted, with the file tree next to it. Reviewing what
+  an agent did is the other half of running one.
 - 🖱️ **Paths, URLs and images in the output are clickable.** Agent output is full
-  of them.
+  of them, and dropping a file on a tab types its path.
 
 _To muster:_ to assemble a force, and to look it over. The launcher musters an
 agent; the status bar and the history drawer are the looking over.
@@ -113,15 +116,32 @@ toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## 🚀 Using it
 
 A new tab opens on a start screen: choose a **directory** (recent ones are one
-click away, or browse for it), an **agent**, and how the session should open.
+click away, or browse for it), an **agent** — type to filter the list, since
+there are ten of them — and how the session should open.
 Pick a mode and the terminal takes over the tab.
 
 | Agent       | Command          | New session | Continue          | Pick from past       |
 | ----------- | ---------------- | ----------- | ----------------- | -------------------- |
 | Claude Code | `claude`         | ✓           | most recent       | ✓                    |
 | Codex       | `codex`          | ✓           | most recent       | ✓                    |
+| OpenCode    | `opencode`       | ✓           | most recent       | —                    |
+| Gemini CLI  | `gemini`         | ✓           | —                 | —                    |
+| Goose       | `goose session`  | ✓           | most recent       | —                    |
+| OpenClaw    | `openclaw`       | ✓           | —                 | —                    |
+| Hermes      | `hermes`         | ✓           | —                 | —                    |
+| Aider       | `aider`          | ✓           | —                 | —                    |
 | Antigravity | `agy`            | ✓           | last conversation | `/resume` in its TUI |
 | Shell       | your login shell | ✓           | —                 | —                    |
+
+Two of those command names are shared with unrelated tools — `goose` is also a
+database-migration CLI, and `hermes` is React Native's JavaScript engine. Muster
+runs whichever one your `PATH` finds first, so if a tab starts the wrong
+program, that is why.
+
+A dash under Continue means that CLI documents no flag for it, not that Muster
+forgot: a flag a CLI does not have makes it refuse to start, so the mode is
+left off rather than guessed at. Several of them keep their own history anyway
+and pick it up when you start them.
 
 **Shell** is there for the times you want a plain terminal in the same window —
 it takes no flags, because there is no program to pass them to.
@@ -141,17 +161,27 @@ normal way to use this.
 
 Along the bottom of each tab:
 
-- **The directory**, shortened with `~`. Click it to open that folder in Finder,
-  Explorer, or your file manager.
+- **The directory**, shortened with `~`. Click it for the file tree — it names
+  the tree, so it opens the tree.
 - **The branch**, or `detached @ 1a2b3c4` when there is no branch. Click it for
   the history drawer.
 - **`↑2 ↓1`** — commits you have not pushed, and commits waiting to be pulled.
-- **`+3 ~5 ?2 !1`** — staged, modified, untracked and conflicted files. A clean
-  tree just says `clean`.
+  Click them for the history drawer, which is where commits are.
+- **`+3 ~5 ?2 !1`** — staged, modified, untracked and conflicted files, as one
+  button. Click it for the review drawer's Changes view, which is where those
+  files are. A clean tree just says `clean`, and goes nowhere.
 - **Open in …** — opens the current directory in your editor. It finds whichever
-  of VS Code (including Insiders), Cursor, Antigravity, Windsurf, Zed, Sublime
-  Text, the JetBrains IDEs, VSCodium, Neovim or Vim you have, and Settings picks
-  between them.
+  of VS Code (including Insiders), Cursor, Antigravity IDE, Windsurf, Zed,
+  Sublime Text, the JetBrains IDEs, VSCodium, Neovim or Vim you have, and
+  Settings picks between them. On macOS an installed editor is found even
+  without its shell command — VS Code's `code` only exists if you ran "Shell
+  Command: Install 'code' command" from its palette, and most people never
+  have.
+
+Each of those names what it shows rather than toggling something: clicking the
+directory while the tree is already up closes the drawer, but clicking the
+change counts switches it to Changes instead. The drawer remembers which view
+you left it on.
 
 Quitting with an agent still working asks first, and says how many sessions are
 running — then ends them, and anything they started, rather than leaving a dev
@@ -170,12 +200,18 @@ the folder it started in, and the tooltip says so.
 
 Agents print paths and URLs constantly, and all of them are live:
 
-| You click                                             | Muster does                                                                                     |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| An image path — `/tmp/shot.png`                       | Opens it in a preview overlay                                                                   |
-| A directory — `~/work/api`                            | Reveals it in Finder or your file manager                                                       |
-| Any other path — `src/entities/tab/model/deck.ts:187` | Opens it in your editor; VS Code, Cursor, Windsurf, VSCodium and Insiders also jump to the line |
-| A URL                                                 | Shows a card with the page's title, description and preview image, and a button to open it      |
+| You click                                                      | Muster does                                                                                                      |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A file the agent changed — `src/features/review/model/diff.ts` | Opens its diff in the review panel, scrolled to the line if the output named one                                 |
+| A directory — `~/work/api`                                     | Reveals it in Finder or your file manager                                                                        |
+| An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
+| Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
+| A URL                                                          | Shows a card with the page's title, description and preview image, and a button to open it                       |
+
+The rows are in the order Muster asks the questions: a path that names a changed
+file opens as a diff before anything else is considered, so an image the agent
+has just added opens in the review column as a picture rather than in the
+overlay.
 
 Paths resolve against the tab's current directory, so `src/app/App.tsx` works as
 well as an absolute path, and `~` means home. A path is only underlined when it
@@ -191,9 +227,85 @@ past — a page fetched automatically would turn any URL an agent printed into a
 tracking pixel. A URL that points straight at a private or loopback address is
 refused.
 
-> Known gap: that check runs on the URL you clicked, not on each hop of a
-> redirect, so a public page can still redirect the fetch to a private address.
-> Treat clicking an untrusted link as a request that may reach your own network.
+> Known gap: every hop of a redirect is checked, but the hostname is resolved
+> once to check it and again to connect, so a record that changes between the
+> two remains a theoretical way past it. Treat clicking an untrusted link as a
+> request that may reach your own network.
+
+## 🪣 Dropping files in
+
+Drag a file onto a tab and its path is typed at the prompt, quoted, with a space
+after it — the way terminals have handled a dropped file for thirty years, and
+the shortest route from "that file" to a prompt that needs it. Drop several and
+you get several arguments.
+
+The quoting matches the shell the tab is running, and a file dropped on a WSL
+tab arrives as the path the distro can open — `/mnt/c/…`, not `C:\…`.
+
+## 🔍 Reviewing what changed
+
+`⌘G`, or `Ctrl+Shift+G`, opens the review drawer on the right. It is a
+navigator, in two views over the same directory:
+
+**Changes** lists every file that differs, with its status letter and line
+counts. The **vs** picker compares against a branch instead of your uncommitted
+state, and it compares against the point the two branches diverged — so the
+base branch's own later commits never read as your work. Files the agent has
+only just written are in the list too; git has not seen them yet, but they are
+the change you most want to read.
+
+**Files** is the working directory's structure, a folder at a time. Dotfiles are
+left out until you press **Hidden files**, which is also where `.github/` went.
+Anything a `.gitignore` matches is dimmed rather than hidden — a `dist/` you have just
+built is something you go looking for, and it should not read as part of the
+work. **Right-click any row** — file or folder — for a menu: reveal it in Finder,
+Explorer or your file manager, copy its path, or copy it relative to the
+directory. The Menu key and `⇧F10` open the same menu from the keyboard, and
+the arrows walk it.
+
+Picking anything from either view opens it in a **column between the terminal
+and the drawer** — never over the terminal, because reading what an agent
+changed and typing the next instruction are the same activity. A changed file
+opens as a diff: two line-number gutters, added and removed lines tinted,
+syntax highlighted by [Shiki](https://shiki.style), `context` widening the
+unchanged lines around each hunk to twelve or to the whole file. It is set in
+the terminal's own font, size, line height and text width — whatever you chose
+for reading code is what a diff is worth reading in. A file from the
+tree opens as itself. Either way **Wrap** controls long lines, **clicking a line
+number opens that line in your editor**, and Escape closes the column.
+
+Images show as pictures — on a checkered ground, so a transparent logo is not
+invisible — which is also what a changed image shows instead of "binary file".
+
+Two limits worth knowing before they surprise you: a file or diff longer than
+5,000 rows is cut with a line saying how many there were, because drawing a
+quarter of a million elements locks the window; and a symlink is not read
+through, so a linked file shows a refusal rather than its target. **Re-read**
+refreshes both views, the file tree included.
+
+**Markdown you opened from the tree opens rendered**: headings, tables, lists
+and quotes, fenced code highlighted by Shiki, and ```mermaid diagrams drawn as
+diagrams. A markdown file opened from the Changes list opens as its diff — you
+asked to see a change — and The header's button switches between them, and says
+where it goes: **Preview** to render, **Raw** or **Diff** to come back. Agents write a lot of markdown, and reading the source of a
+nested table is not reading the document. Nothing in a document can act on its
+own: its own HTML is escaped, links open through the same preview card the
+terminal's URLs use — with the URL in a tooltip, so you read it before you
+commit to it — and images are read off disk rather than fetched, from inside
+the document's own folder only. One pointing outside says so instead of
+loading.
+
+**Drag any panel's left edge** to resize it; double-click the edge to put it
+back, Escape mid-drag cancels, and the width is remembered for next time. The
+history drawer resizes the same way. All three can be open at once, and the
+terminal keeps a column of its own however wide you drag them.
+
+Nothing in the drawer or the column writes. There is no staging, no discarding
+and no editing: the agent in the tab is what edits files, and a second editable
+copy of a file being rewritten underneath you is a merge conflict waiting to
+happen. What it offers instead is a button to type the file's path into the
+session — the fastest way to say "look at this one again" — plus copy-path and
+open-in-editor.
 
 ## 🌿 History and branches
 
@@ -242,7 +354,9 @@ Settings open as a tab, and changes take effect immediately — including in
 terminals that are already running.
 
 - **New tabs** — which agent and directory to start on.
-- **Terminal** — theme, font, size, line height, scrollback, blinking cursor.
+- **Terminal** — theme, font, size, line height, text width, scrollback,
+  blinking cursor. The review panel's diffs and files are drawn in the same
+  type, so a column of code reads exactly like the output beside it.
 - **Background** — an image behind the terminal, with a brightness slider and a
   preview that shows sample output over it, since brightness is only ever
   judged against the text it sits behind.
@@ -262,6 +376,7 @@ distro.
 | New tab             | `⌘T`          | `Ctrl+Shift+T`                  |
 | Close tab           | `⌘W`          | `Ctrl+Shift+W`                  |
 | Toggle git history  | `⌘Y`          | `Ctrl+Shift+Y`                  |
+| Toggle review panel | `⌘G`          | `Ctrl+Shift+G`                  |
 | Find in scrollback  | `⌘F`          | `Ctrl+Shift+F`                  |
 | Copy selection      | `⌘C`          | `Ctrl+Shift+C`                  |
 | Paste               | `⌘V`          | `Ctrl+Shift+V`                  |
@@ -270,11 +385,22 @@ distro.
 | Jump to last tab    | `⌘9`          | `Ctrl+9`                        |
 | Previous / next tab | `⌘⇧[` / `⌘⇧]` | `Ctrl+PageUp` / `Ctrl+PageDown` |
 
+In the review drawer and the file column: Tab reaches every control, Escape
+closes the column, and a panel edge can be focused and then moved with `←`/`→`
+— hold `⇧` for bigger steps, and double-click it to put the width back. A line
+number in a diff or a file is a link into your editor at that line, and `⇧F10`
+on a row in the Files tab opens its menu.
+
 Middle-click a tab to close it. Every other key goes to the agent untouched —
 which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
 SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 
 ## 🩹 If something looks wrong
+
+**A dropped file typed nothing.** A path containing a control character is
+refused rather than typed, because the sequence that ends a bracketed paste can
+be part of a filename — at which point the rest of the name would arrive as
+keystrokes. Rename the file if you meant to use it.
 
 **Warnings about taps you have never heard of.** Homebrew 6 refuses to load
 third-party taps until they are trusted, and it lists _every_ untrusted tap on
@@ -316,9 +442,17 @@ scroll up in that tab, its own output says why.
 
 ## 🔒 Your data
 
-Settings and remembered directories are stored by the app; there is no config
-file to edit yet. Nothing leaves your machine — the app only runs the CLIs you
-pick, locally.
+Settings, remembered directories and the widths you drag the panels to are
+stored by the app; there is no config file to edit yet. Everything the review drawer and the file column read is your
+own disk. A file's _contents_ are read when you open it — with one exception
+worth naming: a new file git has not seen yet is read when the changed-file
+list is built, to count the lines it would add, for the first few hundred of
+them.
+
+One thing does leave your machine, and only when you ask it to: clicking a URL —
+in the terminal or in a rendered document — fetches that page once for the
+preview card. Nothing else is sent anywhere, and the agents you run are the
+agents you picked.
 
 ## 🤝 Contributing
 

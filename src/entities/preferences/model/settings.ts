@@ -20,6 +20,12 @@ export interface Settings {
   fontFamily: string
   fontSize: number
   lineHeight: number
+  /**
+   * Extra width given to every character, in whole pixels. xterm calls it
+   * letter spacing; it is the horizontal partner of line height, and the
+   * settings pane says "Text width" because that is what it looks like.
+   */
+  letterSpacing: number
   scrollback: number
   cursorBlink: boolean
   /** How often a tab re-reads its git state, in seconds. */
@@ -50,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
     '"JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace',
   fontSize: 13,
   lineHeight: 1.25,
+  letterSpacing: 0,
   scrollback: 20000,
   cursorBlink: true,
   gitPollSeconds: 4,
@@ -67,6 +74,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export const LIMITS = {
   fontSize: { min: 9, max: 28, step: 1 },
   lineHeight: { min: 1, max: 2, step: 0.05 },
+  // Whole pixels only: xterm rounds, so a half-pixel would read as no change.
+  letterSpacing: { min: -2, max: 8, step: 1 },
   scrollback: { min: 1000, max: 200000, step: 1000 },
   gitPollSeconds: { min: 1, max: 60, step: 1 },
   historyLimit: { min: 10, max: 500, step: 10 },
@@ -105,6 +114,11 @@ export function normalizeSettings(input: unknown): Settings {
       raw.lineHeight,
       DEFAULT_SETTINGS.lineHeight,
       LIMITS.lineHeight,
+    ),
+    letterSpacing: number(
+      raw.letterSpacing,
+      DEFAULT_SETTINGS.letterSpacing,
+      LIMITS.letterSpacing,
     ),
     scrollback: number(
       raw.scrollback,

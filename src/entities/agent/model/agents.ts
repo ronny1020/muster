@@ -5,6 +5,11 @@ export interface LaunchMode {
   id: string
   label: string
   hint: string
+  /**
+   * What the CLI is started with. The first mode's arguments are whatever
+   * starts a plain session in that CLI's own spelling — usually nothing, but
+   * Goose has no bare form and wants `session`.
+   */
   args: string[]
 }
 
@@ -71,6 +76,110 @@ export const AGENTS: Agent[] = [
         label: 'Resume…',
         hint: 'Pick from past sessions',
         args: ['resume'],
+      },
+    ],
+  },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    command: 'opencode',
+    accent: '#c2703a',
+    acceptsFlags: true,
+    modes: [
+      {
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: [],
+      },
+      {
+        id: 'continue',
+        label: 'Continue',
+        hint: 'Reopen the most recent session',
+        args: ['--continue'],
+      },
+    ],
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    command: 'gemini',
+    accent: '#4285f4',
+    acceptsFlags: true,
+    modes: [
+      {
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: [],
+      },
+    ],
+  },
+  {
+    id: 'goose',
+    name: 'Goose',
+    command: 'goose',
+    accent: '#8fbf6a',
+    acceptsFlags: true,
+    modes: [
+      {
+        // `goose` alone configures and prints help; `goose session` is the
+        // plain start, which is why the first mode is not argument-free.
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: ['session'],
+      },
+      {
+        id: 'continue',
+        label: 'Continue',
+        hint: 'Reopen the most recent session',
+        args: ['session', '--resume'],
+      },
+    ],
+  },
+  {
+    id: 'openclaw',
+    name: 'OpenClaw',
+    command: 'openclaw',
+    accent: '#e0603c',
+    acceptsFlags: true,
+    modes: [
+      {
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: [],
+      },
+    ],
+  },
+  {
+    id: 'hermes',
+    name: 'Hermes',
+    command: 'hermes',
+    accent: '#9b7fd4',
+    acceptsFlags: true,
+    modes: [
+      {
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: [],
+      },
+    ],
+  },
+  {
+    id: 'aider',
+    name: 'Aider',
+    command: 'aider',
+    accent: '#59b3a9',
+    acceptsFlags: true,
+    modes: [
+      {
+        id: 'new',
+        label: 'New session',
+        hint: 'Start fresh in this directory',
+        args: [],
       },
     ],
   },

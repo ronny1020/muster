@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.1",
   "type": "module",
-  "description": "Run AI agent CLIs in Chrome-style tabs, each a real terminal with its own directory and git state.",
+  "description": "A terminal built for AI agent CLIs: tabs that know which agent they run, and a review panel for what it changed.",
   "license": "Apache-2.0",
   "keywords": [
     "terminal",
@@ -11,9 +11,18 @@
     "ai-agents",
     "claude-code",
     "codex",
+    "opencode",
+    "gemini-cli",
+    "goose",
+    "openclaw",
+    "hermes",
+    "aider",
     "antigravity",
     "pty",
     "xterm",
+    "code-review",
+    "diff",
+    "markdown-preview",
     "developer-tools"
   ],
   "engines": {
@@ -32,6 +41,8 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@shikijs/langs": "^4.4.3",
+    "@shikijs/themes": "^4.4.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-notification": "^2.4.0",
@@ -42,8 +53,11 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^5.5.0",
+    "markdown-it": "^15.0.2",
+    "mermaid": "^12.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "shiki": "^4.4.3",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
@@ -52,6 +66,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/bun": "^1.4.2",
+    "@types/markdown-it": "^14.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "bun-plugin-tailwind": "^0.1.2",

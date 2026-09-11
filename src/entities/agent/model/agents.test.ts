@@ -39,23 +39,36 @@ test('agent ids and commands are unique', () => {
 })
 
 test('the first mode of every agent starts a plain session', () => {
-  for (const agent of AGENTS) expect(agent.modes[0].args).toEqual([])
+  // Usually with no arguments at all; Goose has no bare form, so "plain" is
+  // spelled `goose session` there. What matters is that the first mode is the
+  // one the launcher offers and the default-agent setting starts.
+  const plain = Object.fromEntries(
+    AGENTS.map((agent) => [agent.id, agent.modes[0].args]),
+  )
+  expect(plain.goose).toEqual(['session'])
+  for (const agent of AGENTS.filter((agent) => agent.id !== 'goose')) {
+    expect(agent.modes[0].args).toEqual([])
+  }
 })
 
-test('the agents on offer are Claude, Codex and Antigravity', () => {
+test('the roster is these CLIs, in this order', () => {
+  // Pinned deliberately: the order is what the picker shows, and each command
+  // was read off that CLI's own documentation rather than assumed.
   expect(AGENTS.map((agent) => agent.command)).toEqual([
     'claude',
     'codex',
+    'opencode',
+    'gemini',
+    'goose',
+    'openclaw',
+    'hermes',
+    'aider',
     'agy',
   ])
 })
 
-test('every agent starts a fresh session with no arguments at all', () => {
-  for (const agent of AGENTS) {
-    const [first] = agent.modes
-    expect(first.id).toBe('new')
-    expect(first.args).toEqual([])
-  }
+test('every agent leads with its new-session mode', () => {
+  for (const agent of AGENTS) expect(agent.modes[0].id).toBe('new')
 })
 
 test('each CLI continues its last session in its own dialect', () => {
@@ -65,9 +78,17 @@ test('each CLI continues its last session in its own dialect', () => {
       agent.modes.find((mode) => mode.id === 'continue')?.args,
     ]),
   )
+  // An agent with no documented flag for it offers no Continue at all, rather
+  // than a guess: a flag a CLI does not have makes it refuse to start.
   expect(continued).toEqual({
     claude: ['--continue'],
     codex: ['resume', '--last'],
+    opencode: ['--continue'],
+    gemini: undefined,
+    goose: ['session', '--resume'],
+    openclaw: undefined,
+    hermes: undefined,
+    aider: undefined,
     antigravity: ['--continue'],
   })
 })
