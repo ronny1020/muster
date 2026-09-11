@@ -73,9 +73,12 @@ function Counts({ file }: { file: ChangedFile }) {
   }
   if (!file.counted) {
     // Not counted is not zero, and a blank column reads as an empty file.
+    // Both reasons are named because the backend has two and the row cannot
+    // tell which applied: there were too many new files to read them all, or
+    // this one is reached through a symlink and is not followed.
     return (
       <span
-        title="Too many new files to count this one's lines"
+        title="Lines not counted: too many new files, or a symlink on the way to this one"
         className="flex-none text-[10px] text-faint"
       >
         —

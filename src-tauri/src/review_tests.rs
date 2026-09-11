@@ -140,7 +140,7 @@ fn a_repository_with_no_commits_still_reports_what_is_staged() {
     std::fs::write(root.join("loose.txt"), "three\n").expect("write");
     assert!(git(&root, &["add", "tracked.txt"]).is_some(), "add");
 
-    let changes = read_changes(&root.to_string_lossy(), None);
+    let changes = read_changes(&root.to_string_lossy(), None, true);
     let _ = std::fs::remove_dir_all(&root);
 
     assert!(changes.repo);
@@ -195,7 +195,7 @@ fn a_session_in_a_subdirectory_still_reports_paths_from_the_repository_root() {
     std::fs::write(root.join("src/deep/new.ts"), "export {}\n").expect("write");
     std::fs::write(root.join("top.md"), "# top\n").expect("write");
 
-    let changes = read_changes(&root.join("src").to_string_lossy(), None);
+    let changes = read_changes(&root.join("src").to_string_lossy(), None, true);
     let paths: Vec<&str> = changes.files.iter().map(|f| f.path.as_str()).collect();
     let _ = std::fs::remove_dir_all(&root);
 
@@ -299,6 +299,10 @@ fn a_pathspec_names_one_file_and_never_git_s_own_language() {
     assert_eq!(literal_spec("!notes.md"), ":(top,literal)!notes.md");
 }
 
+/// Unix-only: `:` is reserved in a Windows filename, so the hostile name this
+/// defends against cannot be created there at all. `literal_spec`'s own test
+/// above covers the construction on every platform.
+#[cfg(unix)]
 #[test]
 fn a_new_file_named_like_a_pathspec_shows_its_own_diff() {
     let root = scratch("pathspec");
@@ -443,4 +447,38 @@ fn a_path_outside_the_root_is_not_judged_by_this() {
     let _ = std::fs::remove_dir_all(&root);
 
     assert!(!verdict);
+}
+
+#[test]
+fn asking_only_which_files_differ_reports_no_numbers() {
+    // What this pins is what is *reported*: an implementation that read each
+    // file and then discarded the answer would satisfy every assertion here.
+    // That nothing is opened has no test, and not for want of trying — the
+    // one observable difference would be a file whose open blocks, and git
+    // omits a fifo from `ls-files --others` entirely, so it never reaches the
+    // read. The property is held by the `counts &&` short-circuit in
+    // `untracked_changes`; read that line before changing it.
+    let root = scratch("no-counts");
+    assert!(git(&root, &["init", "--quiet"]).is_some(), "init");
+    std::fs::write(root.join("new.txt"), "one\ntwo\nthree\n").expect("write");
+
+    let counted = read_changes(&root.to_string_lossy(), None, true);
+    let listed = read_changes(&root.to_string_lossy(), None, false);
+    let _ = std::fs::remove_dir_all(&root);
+
+    let with = counted
+        .files
+        .iter()
+        .find(|f| f.path == "new.txt")
+        .expect("listed");
+    let without = listed
+        .files
+        .iter()
+        .find(|f| f.path == "new.txt")
+        .expect("listed");
+
+    assert_eq!((with.insertions, with.counted), (3, true));
+    // Same file, same status, no number — and the list says it took none.
+    assert_eq!((without.insertions, without.counted), (0, false));
+    assert_eq!(without.status, "untracked");
 }

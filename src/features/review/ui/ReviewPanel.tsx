@@ -65,7 +65,14 @@ export function ReviewPanel({
   const [showHidden, setShowHidden] = useState(false)
   const size = usePanelWidth('muster.reviewWidth', DEFAULT_WIDTH)
 
-  const { changes, loading, reload } = useChanges(cwd, base, revision)
+  // Only the Changes view shows a line count, and only asking for one reads
+  // the new files — so opening the drawer on the tree touches nothing.
+  const { changes, loading, reload } = useChanges(
+    cwd,
+    base,
+    revision,
+    view === 'changes',
+  )
   /**
    * Bumped by Re-read, so the button reaches the file tree too — its folders
    * follow `revision`, which a click does not move.

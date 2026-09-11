@@ -42,8 +42,9 @@ properties hold, and each has a test:
   itself and nothing else, so the diff you are shown is the diff of the file you
   clicked.
 - **Nothing is read through a symlink**, including the line count taken for a
-  new file, which happens with no click. The final component is refused by the
-  open itself (`O_NOFOLLOW`, so it cannot be raced), and for the reads that
+  new file, which happens whenever the review drawer is showing the changes.
+  The final component is refused by the open itself (`O_NOFOLLOW`, so it cannot
+  be raced), and for the reads that
   happen without a click, every directory between the repository root and the
   file is checked too — a committed `docs -> ~/.ssh` would otherwise make
   everything under it look repo-relative. The root may itself sit under a link;

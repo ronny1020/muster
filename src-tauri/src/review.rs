@@ -28,6 +28,11 @@ pub struct ChangedFile {
     /// False when the file was listed but never read for its line count, which
     /// is not the same as counting zero — the list says so rather than
     /// showing a number it did not take.
+    ///
+    /// It governs its neighbours: when it is false, `insertions`, `deletions`
+    /// and `binary` were never determined either. They read 0, 0 and false
+    /// because nothing looked, and `binary` has no flag of its own — so check
+    /// this one before trusting it.
     pub counted: bool,
 }
 
@@ -102,14 +107,19 @@ const MAX_COUNTED: usize = 512;
 /// has to be diffed against — `HEAD` does not resolve there.
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
+/// `counts` reads each new file to count the lines it would add. A caller that
+/// only wants to know *which* files differ passes `false` and touches nothing:
+/// the reads are what raise a filesystem permission prompt, and asking for one
+/// because a path was clicked in the terminal is asking too early.
 #[tauri::command]
-pub async fn git_changes(cwd: String, base: Option<String>) -> Changes {
-    tauri::async_runtime::spawn_blocking(move || read_changes(&cwd, base.as_deref()))
+pub async fn git_changes(cwd: String, base: Option<String>, counts: Option<bool>) -> Changes {
+    let counts = counts.unwrap_or(true);
+    tauri::async_runtime::spawn_blocking(move || read_changes(&cwd, base.as_deref(), counts))
         .await
         .unwrap_or_default()
 }
 
-fn read_changes(cwd: &str, base: Option<&str>) -> Changes {
+fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
     let Some(top) = repo_root(&expand_home(cwd)) else {
         return Changes::default();
     };
@@ -132,7 +142,7 @@ fn read_changes(cwd: &str, base: Option<&str>) -> Changes {
     // is two rows with the same key, both highlighting when either is picked.
     let tracked: HashSet<String> = changes.files.iter().map(|f| f.path.clone()).collect();
     changes.files.extend(
-        untracked_changes(root)
+        untracked_changes(root, counts)
             .into_iter()
             .filter(|file| !tracked.contains(&file.path)),
     );
@@ -301,8 +311,9 @@ fn status_name(letter: char) -> &'static str {
 /// Files git has never seen, which is what a new file an agent just wrote is.
 ///
 /// Their line counts cannot come from `git diff`, so the file is read and its
-/// lines counted — the same read that decides whether it is text at all.
-fn untracked_changes(root: &Path) -> Vec<ChangedFile> {
+/// lines counted — the same read that decides whether it is text at all. That
+/// read only happens when `counts` says someone is going to show the number.
+fn untracked_changes(root: &Path, counts: bool) -> Vec<ChangedFile> {
     let Some(out) = git(root, &["ls-files", "-z", "--others", "--exclude-standard"]) else {
         return Vec::new();
     };
@@ -314,7 +325,7 @@ fn untracked_changes(root: &Path) -> Vec<ChangedFile> {
             // Counted only when it is worth reading and safe to: this read
             // happens with no click at all, so a path that goes through a
             // symlink is left alone rather than followed out of the tree.
-            let counted = index < MAX_COUNTED && !links_above(root, &full);
+            let counted = counts && index < MAX_COUNTED && !links_above(root, &full);
             let (insertions, binary) = if counted {
                 new_file_lines(&full)
             } else {

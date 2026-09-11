@@ -234,7 +234,11 @@ export interface ChangedFile {
   insertions: number
   deletions: number
   binary: boolean
-  /** False when the file was listed but never read for a line count. */
+  /**
+   * False when the file was listed but never read for a line count — which
+   * also means `insertions`, `deletions` and `binary` are placeholders rather
+   * than answers. Check this before trusting any of them.
+   */
   counted: boolean
 }
 
@@ -256,9 +260,13 @@ export interface Changes {
  * Every file that differs from `base` — a branch name, or nothing for the
  * uncommitted state. Untracked files are included either way: a file an agent
  * has just written is the change you most want to read.
+ *
+ * `counts: false` asks only *which* files differ, and reads none of them. The
+ * reads are what raise a filesystem permission prompt on macOS, so a caller
+ * that will not show a line count should not cause one.
  */
-export const gitChanges = (cwd: string, base?: string) =>
-  invoke<Changes>('git_changes', { cwd, base: base ?? null })
+export const gitChanges = (cwd: string, base?: string, counts = true) =>
+  invoke<Changes>('git_changes', { cwd, base: base ?? null, counts })
 
 export interface FileDiff {
   path: string

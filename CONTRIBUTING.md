@@ -49,14 +49,21 @@ a backend.
 
 A `husky` pre-commit hook runs these for you: `lint-staged` formats the staged
 files (Prettier for everything, `rustfmt` for Rust), then the typecheck and
-tests run, with the Rust suite only when Rust changed. Run them by hand before
-opening a pull request too — `.github/workflows/ci.yml` runs the same set, and
+tests run, with `bun run check:rust` only when Rust changed — the hook calls the
+same script as CI, so neither can quietly check less than the other. Run them by
+hand before opening a pull request too — `.github/workflows/ci.yml` runs the same set, and
 clippy is `-D warnings` there.
+
+`bun run check:all` is all seven, and `bun run check:rust` the four Rust ones.
+Spelled out, because knowing which one failed is the point:
 
 ```bash
 bun run check                     # tsc --noEmit
 bun run format:check              # prettier; `bun run format` fixes it
 (cd src-tauri && cargo fmt --check) # rustfmt; `cargo fmt` fixes it
+cd src-tauri && cargo check --all-targets  # rustc alone: a compile error reads
+                                  # better here than through clippy or a test
+                                  # binary that never built
 bun test                          # settings, deck, persist, flags, git chips,
                                   # branches, agents, recents, shortcuts, paths,
                                   # notify, editors, themes, clipboard,

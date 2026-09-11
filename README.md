@@ -443,11 +443,14 @@ scroll up in that tab, its own output says why.
 ## 🔒 Your data
 
 Settings, remembered directories and the widths you drag the panels to are
-stored by the app; there is no config file to edit yet. Everything the review drawer and the file column read is your
-own disk. A file's _contents_ are read when you open it — with one exception
-worth naming: a new file git has not seen yet is read when the changed-file
-list is built, to count the lines it would add, for the first few hundred of
-them.
+stored by the app; there is no config file to edit yet. Everything the review
+drawer and the file column read is your own disk. A file's _contents_ are read
+when you open it, and the review drawer reads new files — the ones git has not
+seen — to count the lines they would add, for the first few hundred of them.
+That happens only on the Changes view, which is the one showing the numbers:
+clicking a path in the terminal, or opening the drawer on the file tree, asks
+git which files differ and reads none of them. The exception is an image path
+you click in the terminal, which is read to show you the picture you asked for.
 
 One thing does leave your machine, and only when you ask it to: clicking a URL —
 in the terminal or in a rendered document — fetches that page once for the

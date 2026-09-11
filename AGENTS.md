@@ -20,16 +20,25 @@ bun run check
 bun run format:check
 bun test
 (cd src-tauri && cargo fmt --check)
+(cd src-tauri && cargo check --all-targets)
 (cd src-tauri && cargo test --lib)
 (cd src-tauri && cargo clippy --all-targets)
 ```
 
+`bun run check:all` runs all seven in that order, and `bun run check:rust` the
+last four — the shortcut exists so "I ran the checks" means the same thing
+every time. `cargo check` earns its place ahead of the other two: a plain
+compile error reported as rustc's own diagnostic is easier to read than the
+same error arriving through clippy or a test binary that failed to build. Note it passes clippy `-D warnings`, as CI does: a warning that
+passes locally and fails in CI is the whole reason the two ever disagree.
+
 `bun run format` and `cargo fmt` fix what the two format checks report.
 
 A husky pre-commit hook covers _some_ of this: `lint-staged` formats the staged
-files, then `bun run check` and `bun test` run. It does not run either format
-check (it formats instead), and it runs the Rust suite and clippy only when a
-`.rs` file is staged. Run the six by hand before a pull request.
+files, then `bun run check` and `bun test` run, and `bun run check:rust` — the
+same script CI runs, so the two cannot drift — only when a `.rs` file is staged.
+It never runs `format:check` (Prettier formats instead). Run the seven by hand
+before a pull request.
 
 None of them lints: there is no ESLint in this repo and no lint step. A wrong
 hook dependency array — re-running the spawn effect, say — fails silently with
@@ -186,7 +195,11 @@ change here against a real name: `git ls-files -- ':/:AGENTS.md'` prints
 the same reason as `image.rs`: a repository can ship
 `docs/notes.md -> ~/.ssh/id_ed25519`, and the line count for an untracked file
 is read with no click at all. `MAX_COUNTED` bounds how many of those reads a
-single revision can cause. Confinement lives at the callers that have no click,
+single revision can cause, and `git_changes` takes a `counts` flag so a caller
+that will not show a number reads nothing at all — the click that opens a diff
+from the terminal asks only which files differ, because a read is what raises a
+filesystem permission prompt and asking for one before the panel is even open
+is asking too early. Confinement lives at the callers that have no click,
 not in the commands — `read_image` must stay unconfined, because the terminal's
 overlay and the background picker legitimately point anywhere, while
 `resolveAgainst` refuses a markdown image that climbs out of its document's own

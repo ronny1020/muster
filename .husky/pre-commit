@@ -8,8 +8,7 @@ bunx lint-staged
 bun run check
 bun test
 
+# One script, so the hook and CI cannot drift into checking different things.
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '\.rs$'; then
-  cd src-tauri
-  cargo test --lib
-  cargo clippy --all-targets -- -D warnings
+  bun run check:rust
 fi

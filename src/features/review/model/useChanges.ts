@@ -12,6 +12,10 @@ export interface ChangesSnapshot {
 /**
  * The changed-file set of a directory.
  *
+ * `counts` says whether the line counts are wanted. They cost a read of every
+ * new file, which is what raises a filesystem permission prompt — so the view
+ * that shows no numbers asks for none.
+ *
  * Deliberately has no timer of its own. Panes stay mounted for every tab, so a
  * poll here would be one per tab forever — instead `revision` is supplied by
  * the caller, which already polls git for the status bar. Re-reading when that
@@ -21,6 +25,7 @@ export function useChanges(
   cwd: string,
   base: string,
   revision: string,
+  counts: boolean,
 ): ChangesSnapshot {
   const [changes, setChanges] = useState<Changes | null>(null)
   const [loading, setLoading] = useState(false)
@@ -32,11 +37,13 @@ export function useChanges(
     if (!cwd) return
     const mine = (latest.current += 1)
     setLoading(true)
-    const next = await gitChanges(cwd, base || undefined).catch(() => null)
+    const next = await gitChanges(cwd, base || undefined, counts).catch(
+      () => null,
+    )
     if (latest.current !== mine) return
     setChanges(next)
     setLoading(false)
-  }, [cwd, base])
+  }, [cwd, base, counts])
 
   useEffect(() => {
     void read()

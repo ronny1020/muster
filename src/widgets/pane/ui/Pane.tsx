@@ -407,7 +407,10 @@ async function changedFile(
   // The same base the drawer is listing against, or a path changed in an
   // earlier commit on this branch would match nothing and open in the editor
   // while the drawer shows it as a change.
-  const changes = await gitChanges(cwd, base || undefined).catch(() => null)
+  // No counts: this asks only whether the path is in the list — see `gitChanges`.
+  const changes = await gitChanges(cwd, base || undefined, false).catch(
+    () => null,
+  )
   if (!changes?.repo) return null
   const found = matchChanged(changes.files, path, changes.root)
   return found

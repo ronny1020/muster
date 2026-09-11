@@ -34,8 +34,10 @@
     "serve": "bun --port 1420 ./index.html",
     "bundle": "bun run build.ts",
     "check": "tsc --noEmit",
+    "check:rust": "cd src-tauri && cargo fmt --check && cargo check --all-targets && cargo clippy --all-targets -- -D warnings && cargo test --lib",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "check:all": "bun run check && bun run format:check && bun test && bun run check:rust",
     "test": "bun test",
     "tauri": "tauri",
     "prepare": "husky"
