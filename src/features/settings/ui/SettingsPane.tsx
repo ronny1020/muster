@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { AGENTS } from '../../../entities/agent/model/agents'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { usePlatform } from '../../../shared/lib/usePlatform'
@@ -18,6 +20,10 @@ import { themeChoices, themeFor } from '../../../shared/lib/themes'
 export function SettingsPane() {
   const { settings, update, reset } = useSettings()
   const distros = usePlatform()?.wslDistros ?? []
+  // Read once into state: the count has to fall to zero the moment Clear is
+  // pressed, and reading storage during render leaves it stale until something
+  // unrelated re-renders the pane.
+  const [remembered, setRemembered] = useState(() => recentDirs().length)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -215,13 +221,13 @@ export function SettingsPane() {
         </Group>
 
         <Group title="Data">
-          <Row
-            label="Recent directories"
-            hint={`${recentDirs().length} remembered`}
-          >
+          <Row label="Recent directories" hint={`${remembered} remembered`}>
             <button
               type="button"
-              onClick={clearRecentDirs}
+              onClick={() => {
+                clearRecentDirs()
+                setRemembered(0)
+              }}
               className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
             >
               Clear

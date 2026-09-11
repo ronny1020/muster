@@ -367,3 +367,42 @@ test('a search opened on the launcher does not carry into the session it starts'
   })
   expect(deck.tabs[0].findOpen).toBe(false)
 })
+
+test('a change that changes nothing leaves the deck identical', () => {
+  // The git poll dispatches `workspace` per tab per interval whether or not the
+  // tree moved, and a new deck identity reads as "something happened" — which
+  // is what made it write to localStorage every few seconds.
+  const deck = deckReducer(initialDeck('tab-1'), {
+    type: 'workspace',
+    id: 'tab-1',
+    label: 'muster',
+    branch: 'main',
+    dirty: false,
+  })
+  const again = deckReducer(deck, {
+    type: 'workspace',
+    id: 'tab-1',
+    label: 'muster',
+    branch: 'main',
+    dirty: false,
+  })
+  expect(again).toBe(deck)
+})
+
+test('a real change still produces a new deck', () => {
+  const deck = initialDeck('tab-1')
+  const moved = deckReducer(deck, {
+    type: 'workspace',
+    id: 'tab-1',
+    label: 'muster',
+    branch: 'main',
+    dirty: true,
+  })
+  expect(moved).not.toBe(deck)
+  expect(moved.tabs[0]!.dirty).toBe(true)
+})
+
+test('an action for a tab that is gone leaves the deck alone', () => {
+  const deck = initialDeck('tab-1')
+  expect(deckReducer(deck, { type: 'attention', id: 'tab-404' })).toBe(deck)
+})

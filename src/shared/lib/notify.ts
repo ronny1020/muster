@@ -44,12 +44,20 @@ export function decideBellResponse(context: BellContext): BellResponse {
   }
 }
 
-let permission: boolean | null = null
+/**
+ * The one permission check, shared by every caller.
+ *
+ * The promise is stored rather than its result, because two sessions finishing
+ * together would both find an unresolved check and start their own — and the
+ * user would be asked twice for a permission this promises to request once.
+ */
+let permission: Promise<boolean> | null = null
 
 /** Asks once per launch; a refusal is remembered so nothing nags. */
-async function allowed(): Promise<boolean> {
-  permission ??=
-    (await isPermissionGranted()) || (await requestPermission()) === 'granted'
+function allowed(): Promise<boolean> {
+  permission ??= (async () =>
+    (await isPermissionGranted()) ||
+    (await requestPermission()) === 'granted')()
   return permission
 }
 

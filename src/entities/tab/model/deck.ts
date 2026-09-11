@@ -238,8 +238,20 @@ function patch(
   id: string,
   change: (tab: Tab) => Partial<Tab>,
 ): Deck {
-  const tabs = deck.tabs.map((tab) =>
-    tab.id === id ? { ...tab, ...change(tab) } : tab,
+  const index = deck.tabs.findIndex((tab) => tab.id === id)
+  if (index === -1) return deck
+
+  const tab = deck.tabs[index]!
+  const fields = change(tab)
+  // Identity is what tells React and the persistence layer that something
+  // happened, so a change that changes nothing must not produce a new deck:
+  // the git poll dispatches per tab per interval whether or not the tree moved.
+  const moved = Object.entries(fields).some(
+    ([key, value]) => tab[key as keyof Tab] !== value,
   )
-  return tabs === deck.tabs ? deck : { ...deck, tabs }
+  if (!moved) return deck
+
+  const tabs = [...deck.tabs]
+  tabs[index] = { ...tab, ...fields }
+  return { ...deck, tabs }
 }

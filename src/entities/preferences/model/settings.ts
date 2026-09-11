@@ -180,6 +180,9 @@ function number(
   fallback: number,
   { min, max }: { min: number; max: number },
 ): number {
+  // Coerced on purpose: a hand-edited `"15"` is repaired rather than discarded,
+  // which is the same "loading must be total" rule the rest of this file
+  // follows. `a_numeric_string_is_accepted` pins it.
   const parsed = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(max, Math.max(min, parsed))

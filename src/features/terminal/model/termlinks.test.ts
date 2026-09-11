@@ -120,3 +120,15 @@ test('a Windows session directory joins with a backslash', () => {
     'C:\\work\\src\\a.ts',
   )
 })
+
+test('a Windows path is recognised as an image', () => {
+  // A WSL session shows Windows paths, and splitting on `/` alone left the
+  // whole path as the filename.
+  expect(isImagePath('C:\\Users\\me\\Pictures\\shot.png')).toBe(true)
+  expect(isImagePath('C:\\Users\\me\\notes.txt')).toBe(false)
+})
+
+test('a leading-dot Windows filename is not an image', () => {
+  // The guard only worked once the filename was isolated from the path.
+  expect(isImagePath('C:\\Users\\me\\.png')).toBe(false)
+})

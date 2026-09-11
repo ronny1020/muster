@@ -119,7 +119,11 @@ export function Launcher({
       setError('Choose a directory first.')
       return
     }
-    const workspace = await workspaceInfo(directory)
+    const workspace = await workspaceInfo(directory).catch(() => null)
+    if (!workspace) {
+      setError('Could not read that directory.')
+      return
+    }
     if (!workspace.exists) {
       // Not an error yet: offer to create it, and remember which mode was
       // clicked so confirming launches straight into it.
@@ -158,7 +162,7 @@ export function Launcher({
   }
 
   const browse = async () => {
-    const picked = await pickDirectory(cwd || undefined)
+    const picked = await pickDirectory(cwd || undefined).catch(() => null)
     if (picked) {
       setCwd(picked)
       setError('')

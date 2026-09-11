@@ -13,6 +13,15 @@ import { readImage } from '../ipc'
 let decoded: { path: string; dataUrl: string } | null = null
 
 /**
+ * The read in flight, so concurrent callers share one.
+ *
+ * Panes stay mounted, so a new background starts this effect in every tab and
+ * in the settings preview at once. Caching only the result let all of them read
+ * and decode the same file — megabytes each — before the first finished.
+ */
+let loading: { path: string; image: Promise<string> } | null = null
+
+/**
  * The background image as a `data:` URI, or empty when there is none.
  *
  * Read through Rust rather than pointed at with `file://`: the webview's CSP
@@ -35,16 +44,23 @@ export function useBackground(path: string): string {
       setDataUrl(decoded.dataUrl)
       return
     }
+    if (loading?.path !== path) {
+      loading = {
+        path,
+        image: readImage(path).then(
+          (preview) => {
+            decoded = { path, dataUrl: preview.dataUrl }
+            return preview.dataUrl
+          },
+          () => '',
+        ),
+      }
+    }
+
     let cancelled = false
-    void readImage(path).then(
-      (preview) => {
-        decoded = { path, dataUrl: preview.dataUrl }
-        if (!cancelled) setDataUrl(preview.dataUrl)
-      },
-      () => {
-        if (!cancelled) setDataUrl('')
-      },
-    )
+    void loading.image.then((url) => {
+      if (!cancelled) setDataUrl(url)
+    })
     return () => {
       cancelled = true
     }

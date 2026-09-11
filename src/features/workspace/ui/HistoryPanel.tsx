@@ -34,12 +34,23 @@ export function HistoryPanel({
   const [commits, setCommits] = useState<Commit[] | null>(null)
   const [switching, setSwitching] = useState(false)
 
-  const load = useCallback(async () => {
-    setCommits(await gitLog(cwd, limit).catch(() => []))
-  }, [cwd, limit])
+  const load = useCallback(
+    async (live: () => boolean = () => true) => {
+      const commits = await gitLog(cwd, limit).catch(() => [])
+      if (live()) setCommits(commits)
+    },
+    [cwd, limit],
+  )
 
   useEffect(() => {
-    void load()
+    // A read in flight when the directory changes would otherwise land after
+    // the newer one and show the previous tree's history.
+    let cancelled = false
+    setCommits(null)
+    void load(() => !cancelled)
+    return () => {
+      cancelled = true
+    }
   }, [load, revision])
 
   // Switching to another directory should not leave a picker open over a

@@ -44,11 +44,14 @@ const POSITION = /:(\d+)(?::(\d+))?$/
 const TRAILING_NOISE = /[.,;:!?]+$/
 
 export function isImagePath(path: string): boolean {
-  const extension = path.split('/').pop()?.split('.').pop()?.toLowerCase()
+  // Both separators: a WSL session shows Windows paths, where splitting on `/`
+  // alone leaves the whole path as the "filename" and the leading-dot guard
+  // below never applies.
+  const name = path.split(/[/\\]/).pop() ?? ''
   // A leading-dot name like `.png` has no extension, only a name.
-  const name = path.split('/').pop() ?? ''
   if (name.startsWith('.') && name.indexOf('.', 1) === -1) return false
-  return Boolean(extension) && IMAGE_EXTENSIONS.has(extension!)
+  const extension = name.split('.').pop()?.toLowerCase() ?? ''
+  return IMAGE_EXTENSIONS.has(extension)
 }
 
 /**
