@@ -45,8 +45,8 @@ report what you saw.
 A change is not finished while one of these files still describes the old
 behaviour. Update them **in the same change**, not afterwards:
 
-- **AGENTS.md** — the invariants, the module list, the conventions. The module
-  list is meant to be what exists, so a new `src/<thing>.ts` belongs in it.
+- **AGENTS.md** — the invariants, the layer table, the conventions. The layer
+  table is meant to be what exists, so a new slice or segment belongs in it.
 - **CONTRIBUTING.md** — the checks, the "where things are" table, the
   procedures. A new module or command gets a row.
 - **README.md** — anything a user can see. A new setting, a new shortcut, a new
@@ -103,9 +103,10 @@ screen. `TerminalView` calls `blur()` on deactivation; the launcher claims focus
 when it comes forward.
 
 **No `StrictMode`.** Its double-invoked effects spawn two PTYs per tab in
-development. `src/main.tsx` says so — leave it.
+development. `src/app/main.tsx` says so — leave it.
 
-**Tailwind needs `@source "../src"`.** In `src/index.css`. The dev server and
+**Tailwind needs an `@source` naming `src`.** In `src/app/index.css`,
+resolved relative to that file — so moving the stylesheet breaks it. The dev server and
 the production build resolve their scan root differently, and without it the dev
 build silently emits no custom utilities.
 
@@ -165,25 +166,60 @@ them and the process inspection, never the string building.
 
 ## Architecture
 
-Dependencies point one way:
+`src-tauri/` owns processes, git and the filesystem, and knows nothing about
+tabs. The client is layered, and **the layers are the architecture** — not a
+filing convention.
 
-- `src-tauri/` owns processes, git and the filesystem. It knows nothing about
-  tabs.
-- `src/deck.ts` owns what a tab _is_ — a pure reducer over `Deck`. It knows
-  nothing about the DOM. Tab behaviour worth arguing about belongs here, where a
-  test can reach it.
-- `src/settings.ts`, `src/notify.ts`, `src/shortcuts.ts`, `src/git.ts`,
-  `src/flags.ts`, `src/paths.ts`, `src/recents.ts`, `src/termlinks.ts`,
-  `src/termcells.ts`, `src/branches.ts`, `src/clipboard.ts`, `src/persist.ts`
-  and `src/themes.ts` are
-  plain modules: no React, no runtime IPC, each with its own test file. (`src/platform.ts` sits
-  beside them but does call `invoke`, and has no test of its own.) A new
-  `src/<thing>.ts` beside them is the right home for new logic — the list is
-  what exists, not a closed set.
-- Components wire those together and hold no logic worth testing alone.
+    app        the composition root, and wiring that belongs to no slice
+    widgets    surfaces that compose several features
+    features   one user-facing capability each
+    entities   the vocabulary several features share
+    shared     no business logic; talks to the outside world
 
+**A module may import from a layer strictly below its own, and never from a
+sibling slice on its own layer.** That single rule is the point of the whole
+structure. Grouping by domain alone does not get you it: an intermediate layout
+of flat `tabs/`, `terminal/`, `settings/` and `launch/` folders put
+`tabs ⇄ terminal` and `settings ⇄ launch` into cycles within minutes, because a
+component that renders several domains has no honest home among them. Layers are
+what make the direction decidable.
+
+Two consequences worth knowing, because both surprised us:
+
+- **A component that composes several slices is not one of them.** `Pane.tsx`
+  renders the terminal, the launcher, the status bar and the history drawer;
+  `TabStrip.tsx` needs both the tab entity and the shortcut labels. Neither can
+  live in a slice without importing sideways, which is what `widgets` is for.
+- **Vocabulary sinks.** If two features need the same type, it belongs in
+  `entities`; if two layers do, it belongs in `shared`. That is why the theme
+  table and `useBackground` sit in `shared/lib` — the settings pane and the
+  terminal both need them, and neither owns them.
+
+Inside a slice, segments are named for **purpose**, not kind: `ui` for what
+renders, `model` for logic, state and the types that describe them. There is no
+`hooks`, `types` or `utils` folder anywhere: those name the essence of a file
+rather than its job, so they tell you nothing when you are looking for code. A
+hook lives in the segment whose work it does — `model` when it drives state,
+`ui` when it is presentation.
+
+The Rust side stays **one crate**. Warp splits its backend into some sixty, which
+buys parallel compile units across hundreds of thousands of lines; at ~3,000 the
+workspace plumbing and cross-crate visibility churn would cost more than they
+save. Its sibling-test-file pattern is the part worth borrowing, and
+CONTRIBUTING.md's "Where the tests live" covers it.
+
+`shared` earns its name by never importing from above. Anything that needs a
+domain type is not shared. `shared/lib` holds contained libraries with one focus
+each, not a `utils` drawer.
+
+**`test/layers.test.ts` enforces all of this**, because there is no ESLint here
+and a rule nothing checks is a comment. It fails on an upward import, a
+sideways one, and on `shared` reaching up.
+
+`src/entities/tab/model/deck.ts` remains the place tab behaviour belongs: a pure
+reducer over `Deck` that knows nothing about the DOM, where a test can reach it.
 When you find yourself wanting a test for something inside a component, that is
-the signal to move it into a module first.
+the signal to move it into a `model` segment first.
 
 ## Style
 
@@ -201,10 +237,10 @@ the signal to move it into a module first.
   semicolons (`.prettierrc`). Do not hand-format around it, and do not argue
   with it in review — run `bun run format`. JSX attributes stay double-quoted,
   which is Prettier's own default and reads as the HTML it resembles.
-- **Tailwind classes inline**, no `@apply` outside `src/index.css`'s base layer.
+- **Tailwind classes inline**, no `@apply` outside `src/app/index.css`'s base layer.
   Reach for the `@theme` tokens first (`canvas`, `chrome`, `surface`, `line`,
   `ink`, `muted`, `faint`, `brand`, `danger`). Raw hex is still in use where no
-  token fits — the git-status chip colours, the palettes in `src/themes.ts`, an
+  token fits — the git-status chip colours, the palettes in `src/shared/lib/themes.ts`, an
   agent's `accent` — so prefer promoting a repeated hex to a token over adding
   another one-off.
 
@@ -247,9 +283,9 @@ another repo, stop and say so.
 
 Two files are the seams for common asks:
 
-- **A new agent** starts as one entry in `src/agents.ts`, but the roster is also
-  pinned by `src/agents.test.ts` and written out in `README.md` and
+- **A new agent** starts as one entry in `src/entities/agent/model/agents.ts`, but the roster is also
+  pinned by `src/entities/agent/model/agents.test.ts` and written out in `README.md` and
   `package.json`'s keywords. CONTRIBUTING.md's "Adding an agent" lists every
   rule the tests enforce and every file that follows.
-- **A new user-facing preference** is one field in `src/settings.ts` — with its
+- **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.

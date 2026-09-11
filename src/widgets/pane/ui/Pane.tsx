@@ -1,0 +1,258 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import {
+  type DeckAction,
+  type Tab,
+  tabSession,
+} from '../../../entities/tab/model/deck'
+import { useSettings } from '../../../entities/preferences/model/useSettings'
+import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
+import { useHomeDir } from '../model/useHomeDir'
+import { useWorkspace } from '../../../features/workspace/model/useWorkspace'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
+
+import {
+  type ImagePreview as Image,
+  type LinkMeta,
+  linkPreview,
+  openInEditor,
+  pathKind,
+  readImage,
+  report,
+} from '../../../shared/ipc'
+import { decideBellResponse, notify } from '../../../shared/lib/notify'
+import { isImagePath } from '../../../features/terminal/model/termlinks'
+import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
+import { LinkCard } from '../../../features/terminal/ui/LinkCard'
+import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
+import {
+  Launcher,
+  type LaunchRequest,
+} from '../../../features/launch/ui/Launcher'
+import { SessionEnded } from '../../../features/terminal/ui/SessionEnded'
+import { SettingsPane } from '../../../features/settings/ui/SettingsPane'
+import { StatusBar } from '../../../features/workspace/ui/StatusBar'
+import { TerminalView } from '../../../features/terminal/ui/TerminalView'
+
+interface LinkState {
+  url: string | null
+  meta: LinkMeta | null
+  error: string | null
+}
+
+interface ImagePreviewState {
+  image: Image | null
+  error: string | null
+}
+
+export interface PaneProps {
+  tab: Tab
+  active: boolean
+  onLaunch(request: LaunchRequest): void
+  dispatch(action: DeckAction): void
+}
+
+/**
+ * One tab's content. All panes stay mounted — hidden ones keep their PTY and
+ * scrollback alive so switching tabs is instant.
+ */
+export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
+  const { settings } = useSettings()
+  const session = tabSession(tab)
+  const { cwd, workspace, tracked, refresh } = useWorkspace(
+    session && tab.id,
+    session?.cwd ?? null,
+    settings.gitPollSeconds,
+  )
+
+  const editor = preferredEditor(useEditors(), settings.editorCommand)
+  // Read through a ref: onPath is built once, the editor arrives asynchronously.
+  const editorRef = useRef(editor)
+  editorRef.current = editor
+  const git = workspace?.git
+  const historyOpen = tab.historyOpen && Boolean(git?.repo)
+  const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
+  const closeFind = useCallback(
+    () => dispatch({ type: 'setFind', id: tab.id, open: false }),
+    [dispatch, tab.id],
+  )
+
+  const home = useHomeDir()
+  const [preview, setPreview] = useState<ImagePreviewState>({
+    image: null,
+    error: null,
+  })
+
+  /**
+   * A path clicked in the output: an image opens in the overlay, anything else
+   * goes to the editor. A directory counts as "anything else" — editors open
+   * those happily.
+   */
+  const openFile = useCallback((path: string, line?: number) => {
+    if (isImagePath(path)) {
+      void readImage(path)
+        .then((image) => setPreview({ image, error: null }))
+        .catch((error) => setPreview({ image: null, error: String(error) }))
+      return
+    }
+    if (!editorRef.current) {
+      setPreview({ image: null, error: 'No editor found on your PATH.' })
+      return
+    }
+    void openInEditor(path, editorRef.current.command, line).catch((error) =>
+      setPreview({ image: null, error: String(error) }),
+    )
+  }, [])
+
+  const onPath = useCallback(
+    (path: string, line?: number) => {
+      // A folder belongs in the file manager, not an editor — and only the
+      // filesystem can say which one a path is.
+      void pathKind(path).then(
+        (kind) => {
+          if (kind === 'directory') {
+            void revealItemInDir(path).catch(report)
+            return
+          }
+          openFile(path, line)
+        },
+        () => openFile(path, line),
+      )
+    },
+    [openFile],
+  )
+
+  const [link, setLink] = useState<LinkState>({
+    url: null,
+    meta: null,
+    error: null,
+  })
+
+  /** A URL clicked in the output: read its metadata, then show the card. */
+  const onUrl = useCallback((url: string) => {
+    setLink({ url, meta: null, error: null })
+    void linkPreview(url)
+      .then((meta) => setLink({ url, meta, error: null }))
+      .catch((error) => setLink({ url, meta: null, error: String(error) }))
+  }, [])
+
+  const notifiedAt = useRef<number | null>(null)
+  /**
+   * Agents ring the terminal bell when they finish a turn and hand control
+   * back, which is the one moment worth interrupting the user for.
+   */
+  const onBell = useCallback(() => {
+    const { attention, notify: shouldNotify } = decideBellResponse({
+      enabled: settings.notifyOnDone,
+      onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
+      tabActive: active,
+      windowFocused: document.hasFocus(),
+      lastNotifiedAt: notifiedAt.current,
+      now: Date.now(),
+    })
+
+    if (attention) dispatch({ type: 'attention', id: tab.id })
+    if (!shouldNotify) return
+    notifiedAt.current = Date.now()
+    void notify(
+      `${session?.agentName ?? 'Session'} · ${tab.title}`,
+      'Waiting for you.',
+      settings.notifySound,
+    )
+  }, [
+    active,
+    dispatch,
+    session?.agentName,
+    settings.notifyOnDone,
+    settings.notifyOnlyWhenUnfocused,
+    settings.notifySound,
+    tab.id,
+    tab.title,
+  ])
+
+  useEffect(() => {
+    if (!workspace) return
+    dispatch({
+      type: 'workspace',
+      id: tab.id,
+      label: workspace.label,
+      branch: workspace.git.repo ? workspace.git.branch : '',
+      dirty: workspace.dirty,
+    })
+  }, [workspace, tab.id, dispatch])
+
+  return (
+    <section
+      className={`absolute inset-0 flex-col ${active ? 'flex' : 'hidden'}`}
+    >
+      {tab.content.type === 'settings' && <SettingsPane />}
+      {tab.content.type === 'launcher' && (
+        <Launcher
+          active={active}
+          onLaunch={onLaunch}
+          start={
+            tab.content.type === 'launcher' ? tab.content.start : undefined
+          }
+        />
+      )}
+
+      {session && (
+        <>
+          <div className="flex min-h-0 flex-1">
+            <TerminalView
+              sessionId={tab.id}
+              session={session}
+              active={active}
+              onBell={onBell}
+              cwd={cwd}
+              home={home}
+              onPath={onPath}
+              onUrl={onUrl}
+              findOpen={tab.findOpen}
+              onCloseFind={closeFind}
+            />
+            {historyOpen && git && (
+              <HistoryPanel
+                cwd={cwd}
+                git={git}
+                limit={settings.historyLimit}
+                revision={`${cwd}:${git.branch}:${git.ahead}:${git.staged}:${git.modified}`}
+                onClose={toggleHistory}
+                onSwitched={refresh}
+              />
+            )}
+          </div>
+          <LinkCard
+            url={link.url}
+            meta={link.meta}
+            error={link.error}
+            onClose={() => setLink({ url: null, meta: null, error: null })}
+          />
+          <ImagePreview
+            preview={preview.image}
+            error={preview.error}
+            onClose={() => setPreview({ image: null, error: null })}
+          />
+          {tab.exitCode !== null && (
+            <SessionEnded
+              code={tab.exitCode}
+              agentName={session.agentName}
+              onRelaunch={() => dispatch({ type: 'relaunch', id: tab.id })}
+            />
+          )}
+          <StatusBar
+            cwd={cwd}
+            workspace={workspace}
+            tracked={tracked}
+            agentName={session.agentName}
+            state={tab.exitCode === null ? '' : tab.detail}
+            exited={tab.exitCode !== null && tab.exitCode !== 0}
+            historyOpen={historyOpen}
+            editor={editor}
+            onToggleHistory={toggleHistory}
+          />
+        </>
+      )}
+    </section>
+  )
+}

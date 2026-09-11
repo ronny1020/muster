@@ -54,9 +54,11 @@ clippy is `-D warnings` there.
 bun run check                     # tsc --noEmit
 bun run format:check              # prettier; `bun run format` fixes it
 (cd src-tauri && cargo fmt --check) # rustfmt; `cargo fmt` fixes it
-bun test                          # settings, deck, flags, git chips, agents,
-                                  # recents, shortcuts, paths, notify, editors,
-                                  # termlinks
+bun test                          # settings, deck, persist, flags, git chips,
+                                  # branches, agents, recents, shortcuts, paths,
+                                  # notify, editors, themes, clipboard,
+                                  # termlinks, termcells — and `test/layers`,
+                                  # which enforces the import direction
 cd src-tauri && cargo test --lib  # git parsing, shell quoting, cwd reading, WSL
                                   # paths, image MIME, link metadata and the SSRF
                                   # guard, session lookup, directory creation,
@@ -72,39 +74,55 @@ building.
 
 ## Where things are
 
-| Piece                                        | Where                             |
-| -------------------------------------------- | --------------------------------- |
-| PTY sessions, one per tab                    | `src-tauri/src/pty.rs`            |
-| Shells, WSL and process inspection per host  | `src-tauri/src/platform.rs`       |
-| Path, git status, log, branches and checkout | `src-tauri/src/workspace.rs`      |
-| Commands exposed to the frontend             | `src-tauri/src/lib.rs`            |
-| Typed wrappers over those commands           | `src/ipc.ts`                      |
-| Tab state, as a pure reducer                 | `src/deck.ts`                     |
-| Settings model and validation                | `src/settings.ts`                 |
-| Shortcut bindings per platform               | `src/shortcuts.ts`                |
-| Notification policy                          | `src/notify.ts`                   |
-| Editor detection and launching               | `src-tauri/src/editor.rs`         |
-| Terminal colour schemes                      | `src/themes.ts`                   |
-| Clipboard key decisions                      | `src/clipboard.ts`                |
-| Remembering tabs across a restart            | `src/persist.ts`                  |
-| Branch filtering and switch warnings         | `src/branches.ts`                 |
-| Paths and URLs in terminal output            | `src/termlinks.ts`                |
-| Local image reads                            | `src-tauri/src/image.rs`          |
-| URL metadata fetching                        | `src-tauri/src/link.rs`           |
-| Agent session history                        | `src-tauri/src/sessions.rs`       |
-| Agent registry                               | `src/agents.ts`                   |
-| Terminal ↔ PTY binding                       | `src/components/TerminalView.tsx` |
-| New-tab start screen                         | `src/components/Launcher.tsx`     |
-| One tab's contents                           | `src/components/Pane.tsx`         |
+| Piece                                        | Where                                         |
+| -------------------------------------------- | --------------------------------------------- |
+| PTY sessions, one per tab                    | `src-tauri/src/pty.rs`                        |
+| Shells, WSL and process inspection per host  | `src-tauri/src/platform.rs`                   |
+| Path, git status, log, branches and checkout | `src-tauri/src/workspace.rs`                  |
+| Commands exposed to the frontend             | `src-tauri/src/lib.rs`                        |
+| Typed wrappers over those commands           | `src/shared/ipc.ts`                           |
+| Tab state, as a pure reducer                 | `src/entities/tab/model/deck.ts`              |
+| Settings model and validation                | `src/entities/preferences/model/settings.ts`  |
+| Shortcut bindings per platform               | `src/entities/preferences/model/shortcuts.ts` |
+| Notification policy                          | `src/shared/lib/notify.ts`                    |
+| Editor detection and launching               | `src-tauri/src/editor.rs`                     |
+| Terminal colour schemes                      | `src/shared/lib/themes.ts`                    |
+| Clipboard key decisions                      | `src/features/terminal/model/clipboard.ts`    |
+| Remembering tabs across a restart            | `src/entities/tab/model/persist.ts`           |
+| Branch filtering and switch warnings         | `src/features/workspace/model/branches.ts`    |
+| Paths and URLs in terminal output            | `src/features/terminal/model/termlinks.ts`    |
+| Local image reads                            | `src-tauri/src/image.rs`                      |
+| URL metadata fetching                        | `src-tauri/src/link.rs`                       |
+| Agent session history                        | `src-tauri/src/sessions.rs`                   |
+| Agent registry                               | `src/entities/agent/model/agents.ts`          |
+| Terminal ↔ PTY binding                       | `src/features/terminal/ui/TerminalView.tsx`   |
+| New-tab start screen                         | `src/features/launch/ui/Launcher.tsx`         |
+| One tab's contents                           | `src/widgets/pane/ui/Pane.tsx`                |
 
 The shape to keep in mind: `src-tauri` owns processes and the filesystem and
-knows nothing about tabs; `src/deck.ts` owns what a tab _is_ and knows nothing
-about the DOM; components wire the two together and hold no logic worth testing
-on their own. That is why the tests are almost all on plain modules.
+knows nothing about tabs; `src/entities/tab/model/deck.ts` owns what a tab _is_
+and knows nothing about the DOM; components wire the two together and hold no
+logic worth testing on their own. That is why the tests are almost all on plain
+modules.
+
+## The client's layers
+
+```
+src/app/        composition root — App, main, the stylesheet, shortcut wiring
+src/widgets/    surfaces that compose several features — Pane, TabStrip
+src/features/   one capability each — terminal, workspace, launch, settings
+src/entities/   vocabulary features share — tab, agent, preferences
+src/shared/     ipc.ts, and lib/ for contained libraries
+```
+
+Imports go strictly downward, never sideways between slices on one layer, and
+`test/layers.test.ts` fails the suite when they do not. [AGENTS.md](AGENTS.md)'s
+Architecture section has the rule, why the layers exist, and where a new file
+goes.
 
 ## Adding an agent
 
-One entry in `src/agents.ts`, then the roster tests and the two places the
+One entry in `src/entities/agent/model/agents.ts`, then the roster tests and the two places the
 roster is written out by hand. Start with the entry:
 
 ```ts
@@ -144,7 +162,7 @@ Rules the tests enforce, and the reasons for them:
 The launcher, settings picker and status bar all read the registry, so no
 component needs touching. Four other places do:
 
-- **`src/agents.test.ts`** pins the roster deliberately — the exact command
+- **`src/entities/agent/model/agents.test.ts`** pins the roster deliberately — the exact command
   list, each agent's continue dialect, which agents offer a picker, and accent
   uniqueness. Update those assertions in the same change; a new entry turns the
   suite red until you do, and that is the point.
@@ -157,6 +175,23 @@ component needs touching. Four other places do:
   Continue and Resume modes are offered at all. An agent whose session store it
   does not know returns `None`, which leaves both modes enabled.
 
+## Where the tests live
+
+Beside what they test, in both languages. TypeScript pairs `x.ts` with
+`x.test.ts`; Rust pairs `x.rs` with `x_tests.rs`, attached as a child module so
+it can still reach private items:
+
+```rust
+#[cfg(test)]
+#[path = "workspace_tests.rs"]
+mod tests;
+```
+
+A sibling `mod` would only see the public surface, and widening visibility just
+to test something is the wrong trade. The point of the split is that
+`workspace.rs` and `pty.rs` were nearly half test code, which made the parts
+that ship hard to read.
+
 ## Style
 
 Match the surrounding code. The parts worth stating:
@@ -166,8 +201,8 @@ Match the surrounding code. The parts worth stating:
   that restates the code is noise; a name that makes the comment unnecessary is
   better than both.
 - Keep logic out of components. If something is worth a test, it belongs in a
-  plain module that a test can call directly — a new `src/<thing>.ts` alongside
-  the existing ones is welcome, not a last resort.
+  plain module a test can call directly — a new file in the relevant slice's
+  `model/` segment is welcome, not a last resort.
 - There is no ESLint here, and no lint step among the checks. Nothing will catch
   a wrong hook dependency array for you, so read them.
 - Test names read as behaviours — "closing the active tab focuses the one that

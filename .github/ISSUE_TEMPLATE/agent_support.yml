@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Adding one is mostly a single entry in `src/agents.ts`. The details
+        Adding one is mostly a single entry in `src/entities/agent/model/agents.ts`. The details
         below are what cannot be guessed — getting a flag wrong ships a mode
         that only ever errors.
 

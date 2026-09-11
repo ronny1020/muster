@@ -170,14 +170,14 @@ the folder it started in, and the tooltip says so.
 
 Agents print paths and URLs constantly, and all of them are live:
 
-| You click                          | Muster does                                                                                     |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| An image path — `/tmp/shot.png`    | Opens it in a preview overlay                                                                   |
-| A directory — `~/work/api`         | Reveals it in Finder or your file manager                                                       |
-| Any other path — `src/deck.ts:187` | Opens it in your editor; VS Code, Cursor, Windsurf, VSCodium and Insiders also jump to the line |
-| A URL                              | Shows a card with the page's title, description and preview image, and a button to open it      |
+| You click                                             | Muster does                                                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| An image path — `/tmp/shot.png`                       | Opens it in a preview overlay                                                                   |
+| A directory — `~/work/api`                            | Reveals it in Finder or your file manager                                                       |
+| Any other path — `src/entities/tab/model/deck.ts:187` | Opens it in your editor; VS Code, Cursor, Windsurf, VSCodium and Insiders also jump to the line |
+| A URL                                                 | Shows a card with the page's title, description and preview image, and a button to open it      |
 
-Paths resolve against the tab's current directory, so `src/App.tsx` works as
+Paths resolve against the tab's current directory, so `src/app/App.tsx` works as
 well as an absolute path, and `~` means home. A path is only underlined when it
 carries a separator — otherwise every sentence mentioning `package.json` would
 light up.

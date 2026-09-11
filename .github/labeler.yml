@@ -14,9 +14,7 @@ terminal:
       - any-glob-to-any-file:
           - 'src-tauri/src/pty.rs'
           - 'src-tauri/src/platform.rs'
-          - 'src/components/TerminalView.tsx'
-          - 'src/termlinks.ts'
-          - 'src/termcells.ts'
+          - 'src/features/terminal/**'
 
 security:
   - changed-files:
@@ -29,7 +27,8 @@ security:
 
 agents:
   - changed-files:
-      - any-glob-to-any-file: ['src/agents.ts', 'src-tauri/src/sessions.rs']
+      - any-glob-to-any-file:
+          ['src/entities/agent/**', 'src-tauri/src/sessions.rs']
 
 documentation:
   - changed-files:
