@@ -227,3 +227,17 @@ export function agentById(id: string): Agent {
   if (id === SHELL_AGENT.id) return SHELL_AGENT
   return AGENTS.find((agent) => agent.id === id) ?? AGENTS[0]
 }
+
+/**
+ * What reopens one named conversation in this agent's own spelling, or `null`
+ * when it has no resume mode.
+ *
+ * Built from the `resume` mode rather than a second table: that mode's
+ * arguments are already the CLI's way of saying "reopen something", and every
+ * agent that has one takes the id positionally after it.
+ */
+export function resumeArgs(agent: Agent, sessionId: string): string[] | null {
+  if (!sessionId) return null
+  const mode = agent.modes.find((candidate) => candidate.id === 'resume')
+  return mode ? [...mode.args, sessionId] : null
+}

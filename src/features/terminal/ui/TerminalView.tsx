@@ -7,11 +7,13 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { type ILink, Terminal } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
+import { routePaste } from '../model/paste'
 import { clipboardIntent } from '../model/clipboard'
 import type { Session } from '../../../entities/tab/model/deck'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import {
+  attachText,
   dropPaths,
   killPty,
   report,
@@ -21,7 +23,7 @@ import {
 } from '../../../shared/ipc'
 import { IS_MAC } from '../../../shared/lib/platform'
 import { flattenLogicalLine, rangeOf } from '../model/termcells'
-import { themeFor } from '../../../shared/lib/themes'
+import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
 
 export interface TerminalViewProps {
@@ -140,19 +142,67 @@ export function TerminalView({
     term.registerLinkProvider({ provideLinks: pathLinks(term, link) })
     // Windows and Linux have no menu accelerator for copy, and Ctrl+C has to
     // stay SIGINT — so the Ctrl+Shift+C/V convention is ours to implement.
+    /**
+     * Puts pasted text in front of the agent, as text or as a path.
+     *
+     * Always through `term.paste`, never straight to the PTY: it wraps the
+     * text in the bracketed-paste markers and normalises CRLF, so a newline
+     * lands as editable text instead of submitting the line. A path is quoted
+     * by `dropPaths` — the session's shell's quoting, and a WSL session needs
+     * the path translated the way `--cd` translates it at launch.
+     */
+    const deliverPaste = async (text: string) => {
+      if (routePaste(text).kind === 'inline') {
+        if (text) term.paste(text)
+        return
+      }
+      try {
+        const path = await attachText(text)
+        const quoted = await dropPaths([path], launch.current.backend)
+        term.paste(quoted)
+      } catch {
+        // Better the old behaviour than no paste at all — a full disk must not
+        // swallow what the user was trying to hand over.
+        term.paste(text)
+      }
+    }
+
+    // macOS routes Cmd+V through the native menu, so the key handler below
+    // never sees it and this is the only place an oversized paste can be
+    // caught there. Capture phase, on the host rather than xterm's own
+    // textarea: the textarea is created by `open()` and replaced on a reset.
+    const onDomPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData('text') ?? ''
+      // Left entirely alone unless it is going to become a file: claiming an
+      // ordinary paste would take over bracketed-paste handling xterm already
+      // has right.
+      if (routePaste(text).kind === 'inline') return
+      // `stopPropagation`, not `preventDefault`. xterm registers its own paste
+      // listener on both its textarea and its element — descendants of this
+      // host — and `handlePasteEvent` never consults `defaultPrevented`: it
+      // reads the clipboard and sends it to the PTY itself. Preventing default
+      // only suppresses the browser's own insertion, which xterm does not rely
+      // on, so the giant paste still arrived as keystrokes *and* the path did.
+      // Stopping propagation in the capture phase is what keeps the event from
+      // ever reaching those listeners.
+      event.stopPropagation()
+      event.preventDefault()
+      void deliverPaste(text)
+    }
+    element.addEventListener('paste', onDomPaste, true)
+
     term.attachCustomKeyEventHandler((event) => {
       const intent = clipboardIntent(event, IS_MAC)
       if (!intent) return true
       if (intent === 'copy') {
         void writeClipboard(term.getSelection())
       } else {
-        void readClipboard().then((text) => {
-          // Through the terminal, never straight to the PTY: `paste` wraps the
-          // text in the bracketed-paste markers and normalises CRLF, so a
-          // newline in the clipboard lands as editable text instead of
-          // submitting the line. `onData` then forwards it to the PTY.
-          if (text) term.paste(text)
-        })
+        // Prevented as well as claimed: returning false stops xterm, not the
+        // browser, and `Ctrl+Shift+V` is a paste accelerator in its own right
+        // — so the DOM listener would see the same text and attach it a second
+        // time, writing two files and typing two paths.
+        event.preventDefault()
+        void readClipboard().then((text) => void deliverPaste(text))
       }
       return false
     })
@@ -190,7 +240,7 @@ export function TerminalView({
         return
       }
       started = true
-      const { cwd, program, args, backend, distro } = launch.current
+      const { agentId, cwd, program, args, backend, distro } = launch.current
       void spawnPty(
         {
           id: sessionId,
@@ -202,6 +252,12 @@ export function TerminalView({
           cols: term.cols,
           rows: term.rows,
           loginShell: true,
+          // Read through the ref, like every other setting here: flipping it
+          // must never re-run the spawn effect and start a second PTY.
+          journal: latest.current.journalEnabled,
+          // So a record remembers which agent wrote it, and the panel can
+          // offer that agent's own resume for the conversation.
+          agentId,
         },
         (bytes) => term.write(bytes),
       ).catch((error) =>
@@ -215,6 +271,7 @@ export function TerminalView({
 
     return () => {
       observer.disconnect()
+      element.removeEventListener('paste', onDomPaste, true)
       bestEffort(killPty(sessionId))
       // Before the terminal, so the renderer releases its context first.
       webgl?.dispose()
@@ -557,16 +614,4 @@ async function readClipboard(): Promise<string> {
   } catch {
     return ''
   }
-}
-
-/** Fully transparent, so a background image shows through the grid. */
-const CLEAR = '#00000000'
-
-/**
- * The palette to hand xterm: the chosen theme, with its background dropped when
- * an image sits behind the grid.
- */
-function paletteFor(themeId: string, hasBackground: boolean) {
-  const { name: _name, ...colours } = themeFor(themeId)
-  return hasBackground ? { ...colours, background: CLEAR } : colours
 }

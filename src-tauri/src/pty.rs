@@ -9,7 +9,6 @@ use std::{
     },
 };
 
-#[cfg(unix)]
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -19,6 +18,7 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
+use crate::journal::{Journal, JournalMeta};
 use crate::platform::{self, Backend, Launch};
 
 /// Live handles for one tab.
@@ -107,6 +107,14 @@ pub struct SpawnOptions {
     /// Which distro, when the backend is WSL. Empty means the default one.
     #[serde(default)]
     pub distro: String,
+    /// Record this session's output so it outlives the process. Off unless the
+    /// caller asks: the record holds whatever the agent printed.
+    #[serde(default)]
+    pub journal: bool,
+    /// Which agent this is, so a record remembers what wrote it and the panel
+    /// can offer that agent's own resume.
+    #[serde(default)]
+    pub agent_id: String,
 }
 
 /// Session-scoped variables an agent CLI exports for the processes it spawns.
@@ -126,6 +134,12 @@ const INHERITED_SESSION_MARKERS: &[&str] = &[
     "CLAUDE_EFFORT",
     "CLAUDE_PID",
 ];
+
+/// How long to watch for the agent to publish its session id. Generous, since
+/// a cold start behind a login shell can take seconds, and cheap: one stat per
+/// tick against one file.
+const SESSION_ID_ATTEMPTS: u32 = 40;
+const SESSION_ID_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Emitted once a session's process exits, so the tab can show its status.
 #[derive(Clone, serde::Serialize)]
@@ -151,6 +165,8 @@ pub fn pty_spawn(
         login_shell,
         backend,
         distro,
+        journal,
+        agent_id,
     } = options;
 
     let pair = native_pty_system()
@@ -223,6 +239,23 @@ pub fn pty_spawn(
         .take_writer()
         .map_err(|e| on_partial_failure(e.to_string()))?;
 
+    let mut journal = journal.then(|| Journal::open(&app, &cwd, &id)).flatten();
+    // The record's own name, captured before the journal moves into the reader
+    // thread. Naming a sidecar after the tab instead puts it where no reader
+    // looks and the next sweep deletes it as an orphan.
+    let record = journal.as_ref().map(|journal| journal.name().to_string());
+    if let Some(record) = &record {
+        crate::journal::remember(
+            &app,
+            &cwd,
+            record,
+            JournalMeta {
+                agent_id: agent_id.clone(),
+                session_id: String::new(),
+            },
+        );
+    }
+
     let (stdin, queued) = mpsc::channel::<Vec<u8>>();
     let killed = Arc::new(AtomicBool::new(false));
 
@@ -253,13 +286,58 @@ pub fn pty_spawn(
         end(&previous);
     }
 
+    // The agent's own id for this conversation, which is the only thing that
+    // can reopen it later. It is published shortly *after* the CLI starts, so
+    // this watches for it rather than asking once, and gives up rather than
+    // waiting on an agent that never publishes one.
+    if let (Some(record), Some(pid)) = (record.clone(), group) {
+        let app = app.clone();
+        let cwd = cwd.clone();
+        let agent_id = agent_id.clone();
+        // Stops as soon as the session does, rather than statting a pid the OS
+        // is free to hand to another process — which would otherwise record
+        // some unrelated conversation's id against this tab's record.
+        let ended = killed.clone();
+        std::thread::spawn(move || {
+            for _ in 0..SESSION_ID_ATTEMPTS {
+                std::thread::sleep(SESSION_ID_INTERVAL);
+                if ended.load(Ordering::SeqCst) {
+                    return;
+                }
+                let found = crate::sessions::published_session_id(&agent_id, pid as u32);
+                if let Some(session_id) = found {
+                    crate::journal::remember(
+                        &app,
+                        &cwd,
+                        &record,
+                        JournalMeta {
+                            agent_id: String::new(),
+                            session_id,
+                        },
+                    );
+                    return;
+                }
+            }
+        });
+    }
+
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         while let Ok(len) = reader.read(&mut buf) {
-            if len == 0
-                || on_output
-                    .send(InvokeResponseBody::Raw(buf[..len].to_vec()))
-                    .is_err()
+            if len == 0 {
+                break;
+            }
+            // Recorded before it is sent, so a chunk is never dropped from
+            // the record because the send failed. Note the loop still ends on
+            // a failed send: the frontend going away means the window is
+            // closing, and reading a pty nobody is displaying is not worth a
+            // parked thread.
+            if let Some(journal) = journal.as_mut() {
+                journal.write(&buf[..len]);
+            }
+            if on_output
+                .send(InvokeResponseBody::Raw(buf[..len].to_vec()))
+                .is_err()
             {
                 break;
             }
@@ -269,7 +347,14 @@ pub fn pty_spawn(
         // mounted behind the "session ended" overlay, so nothing else will.
         app.state::<Sessions>().forget(&id);
         // A deliberate close needs no banner; the tab is already a launcher.
-        if !killed.load(Ordering::SeqCst) {
+        let deliberate = killed.load(Ordering::SeqCst);
+        // Set after that read, never before: this flag is also how anything
+        // watching the session learns it is over, and the most common way a
+        // session ends is the child exiting on its own — which nothing else
+        // records. Without it the session-id watcher keeps statting a pid the
+        // OS may already have given to another process.
+        killed.store(true, Ordering::SeqCst);
+        if !deliberate {
             let _ = app.emit("pty://exit", ExitPayload { id, code });
         }
     });

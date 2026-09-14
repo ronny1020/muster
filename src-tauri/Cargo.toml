@@ -24,6 +24,11 @@ parking_lot = "0.12"
 tauri-plugin-notification = "2"
 base64 = "0.23.1"
 ureq = "3.2.1"
+tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = "2"
+# Pinned exactly: it is the only dependency that injects script into
+# this app's own webview, so a floating minor is a channel for page code.
+tauri-plugin-prevent-default = "=5.0.2"
 
 [profile.release]
 codegen-units = 1
@@ -31,6 +36,14 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+[target."cfg(windows)".dependencies]
+# `preventDefault` from a page listener does not reliably stop WebView2's own
+# `F5`/`Ctrl+R`; this feature disables the browser accelerator keys natively,
+# which is the entire reason the plugin is here.
+tauri-plugin-prevent-default = { version = "=5.0.2", features = [
+  "platform-windows",
+] }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.189"

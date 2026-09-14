@@ -1,10 +1,4 @@
-import {
-  type Deck,
-  type LauncherStart,
-  newTab,
-  type Tab,
-  tabSession,
-} from './deck'
+import { type Deck, type LauncherStart, newTab, startOf } from './deck'
 import type { Backend } from '../../../shared/lib/platform'
 
 /**
@@ -31,26 +25,6 @@ interface StoredDeck {
   /** One entry per tab, `null` for a tab that had nothing chosen yet. */
   tabs: (LauncherStart | null)[]
   activeIndex: number
-}
-
-/** What to write for a tab: its session's launch details, or nothing. */
-export function startOf(tab: Tab): LauncherStart | null {
-  const session = tabSession(tab)
-  if (session) {
-    return {
-      agentId: session.agentId,
-      cwd: session.cwd,
-      backend: session.backend,
-      distro: session.distro,
-      // The args a session was launched with include its mode (`--continue`),
-      // which is a choice to make again rather than one to replay.
-      flags: '',
-    }
-  }
-  if (tab.content.type === 'launcher' && tab.content.start) {
-    return tab.content.start
-  }
-  return null
 }
 
 export function saveDeck(deck: Deck) {

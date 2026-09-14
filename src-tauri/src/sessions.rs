@@ -89,3 +89,31 @@ pub fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 #[path = "sessions_tests.rs"]
 mod tests;
+
+/// The agent's own session id for a running child, where the CLI publishes one.
+///
+/// Claude Code keeps a live registry at `~/.claude/sessions/<pid>.json` and
+/// writes it shortly after starting, which is why the caller polls rather than
+/// asking once. This is the only id that can resume *that* conversation — our
+/// own journal is keyed on the tab, which outlives any one session.
+pub fn published_session_id(agent_id: &str, pid: u32) -> Option<String> {
+    if agent_id != "claude" {
+        return None;
+    }
+    let home = platform::home()?;
+    let path = Path::new(&home)
+        .join(".claude")
+        .join("sessions")
+        .join(format!("{pid}.json"));
+    let text = std::fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let id = value.get("sessionId")?.as_str()?;
+    // Refused rather than trusted: it is written by another program and ends up
+    // in an argv, so it may only be the shape an id actually is.
+    let usable = !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    usable.then(|| id.to_string())
+}

@@ -37,6 +37,10 @@ import { isImagePath } from '../../../shared/lib/imagepaths'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
 import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
+import type { Agent } from '../../../entities/agent/model/agents'
+import { JournalPanel } from '../../../features/journal/ui/JournalPanel'
+import { collisionSummary } from '../../../features/fleet/model/collisions'
+import { useCollisions } from '../../../features/fleet/model/useCollisions'
 import {
   Launcher,
   type LaunchRequest,
@@ -96,6 +100,68 @@ export function Pane({
     () => dispatch({ type: 'setFind', id: tab.id, open: false }),
     [dispatch, tab.id],
   )
+
+  /**
+   * The directory whose recorded sessions this tab can offer.
+   *
+   * The session's **launch** directory, never the live one from
+   * `useWorkspace`: `Journal::open` keys the folder on what `pty_spawn` was
+   * given, so reading on the foreground process group's cwd finds nothing the
+   * moment an agent `cd`s — and finds nothing from the very first poll when
+   * any component of the path is a symlink, since the live cwd comes back
+   * fully resolved. For a launcher it is whatever the tab is pre-filled with,
+   * which is the restored and just-relaunched case.
+   */
+  const journalCwd =
+    session?.cwd ??
+    (tab.content.type === 'launcher' ? (tab.content.start?.cwd ?? '') : '')
+  const journalOpen = tab.journalOpen && Boolean(journalCwd)
+  const toggleJournal = () => dispatch({ type: 'toggleJournal', id: tab.id })
+
+  // Read from the one detector above the panes: a comparison across tabs
+  // cannot be made by a tab, and running it per pane would run it N times.
+  const collisions = useCollisions(tab.id)
+  /**
+   * Reopen a recorded conversation here, ending whatever is running first.
+   *
+   * Routed through the tab's own start screen rather than launched directly,
+   * and that is load-bearing. `TerminalView` spawns from an effect keyed on the
+   * session id — which is the tab id, and does not change — so dispatching a
+   * new session over a live one leaves the view mounted, the effect dormant and
+   * nothing spawned: the old child is killed and the tab looks alive with no
+   * process behind it. Sending the tab back to a launcher first unmounts the
+   * view, so the next render mounts it fresh and it spawns.
+   */
+  const [resuming, setResuming] = useState<LaunchRequest | null>(null)
+  const resumeHere = (agent: Agent, args: string[]) => {
+    // The launcher's pre-fill is the only place the backend survives: a
+    // just-ended or restored tab has no session, and defaulting to the host
+    // would resume a recorded WSL conversation on the Windows side.
+    const start =
+      tab.content.type === 'launcher' ? tab.content.start : undefined
+    const request: LaunchRequest = {
+      agent,
+      cwd: journalCwd,
+      args,
+      title: agent.name,
+      backend: start?.backend ?? session?.backend ?? 'native',
+      distro: start?.distro ?? session?.distro ?? '',
+    }
+    if (!session) {
+      onLaunch(request)
+      return
+    }
+    setResuming(request)
+    dispatch({ type: 'relaunch', id: tab.id })
+  }
+
+  // The relaunch has landed and the terminal has unmounted, so the new session
+  // can start into a fresh one.
+  useEffect(() => {
+    if (!resuming || session) return
+    setResuming(null)
+    onLaunch(resuming)
+  }, [resuming, session, onLaunch])
 
   const reviewOpen = tab.reviewOpen
   const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
@@ -279,13 +345,25 @@ export function Pane({
     >
       {tab.content.type === 'settings' && <SettingsPane />}
       {tab.content.type === 'launcher' && (
-        <Launcher
-          active={active}
-          onLaunch={onLaunch}
-          start={
-            tab.content.type === 'launcher' ? tab.content.start : undefined
-          }
-        />
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 min-w-64 flex-1">
+            <Launcher
+              active={active}
+              onLaunch={onLaunch}
+              start={tab.content.start}
+            />
+          </div>
+          {journalOpen && (
+            <JournalPanel
+              cwd={journalCwd}
+              liveId={null}
+              recording={settings.journalEnabled}
+              busy={false}
+              onResume={resumeHere}
+              onClose={toggleJournal}
+            />
+          )}
+        </div>
       )}
 
       {session && (
@@ -347,6 +425,19 @@ export function Pane({
                 onClose={toggleReview}
               />
             )}
+            {journalOpen && (
+              <JournalPanel
+                cwd={journalCwd}
+                // Only while the process is alive. Once it has exited its
+                // record is the most useful one in the list — it is the run
+                // the user just watched fail — so it stops being excluded.
+                liveId={tab.exitCode === null ? tab.id : null}
+                recording={settings.journalEnabled}
+                busy={tab.exitCode === null}
+                onResume={resumeHere}
+                onClose={toggleJournal}
+              />
+            )}
             {historyOpen && git && (
               <HistoryPanel
                 cwd={cwd}
@@ -395,6 +486,10 @@ export function Pane({
         historyOpen={historyOpen}
         reviewOpen={reviewOpen}
         editor={session ? editor : null}
+        collision={session ? collisionSummary(collisions) : ''}
+        journal={Boolean(journalCwd)}
+        journalOpen={journalOpen}
+        onToggleJournal={toggleJournal}
         reviewView={tab.reviewView}
         onToggleHistory={toggleHistory}
         onShowReview={showReview}

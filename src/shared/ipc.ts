@@ -47,6 +47,25 @@ export interface SpawnOptions {
   backend: Backend
   /** Which WSL distro, when the backend is `wsl`. Empty means the default one. */
   distro: string
+  /** Record this session's output so it outlives the process. */
+  journal: boolean
+  /** Which agent this is, so a record remembers what wrote it. */
+  agentId: string
+}
+
+/** One recorded session, as the journal panel lists it. */
+export interface JournalEntry {
+  id: string
+  bytes: number
+  /** Seconds since the epoch, from when the session last printed. */
+  endedAt: number
+  /** Which agent wrote it; empty for a record from before this was kept. */
+  agentId: string
+  /**
+   * The agent's own id for the conversation, where it publishes one. Empty
+   * means it cannot be reopened — only this agent's own picker can find it.
+   */
+  sessionId: string
 }
 
 export function spawnPty(
@@ -68,6 +87,18 @@ export const writePty = (id: string, data: string) =>
 export const resizePty = (id: string, cols: number, rows: number) =>
   invoke<void>('pty_resize', { id, cols, rows })
 export const killPty = (id: string) => invoke<void>('pty_kill', { id })
+
+export const journalSessions = (cwd: string) =>
+  invoke<JournalEntry[]>('journal_sessions', { cwd })
+/** `live` names the tabs whose journals are open, which are never deleted. */
+export const journalSweep = (days: number, live: string[]) =>
+  invoke<void>('journal_sweep', { days, live })
+
+/** Writes pasted text to a file and answers with its absolute path. */
+export const attachText = (text: string) =>
+  invoke<string>('attach_text', { text })
+export const attachSweep = (days: number) =>
+  invoke<void>('attach_sweep', { days })
 /** Live working directory of the session's foreground process, if readable. */
 export const ptyCwd = (id: string) => invoke<string | null>('pty_cwd', { id })
 
@@ -167,6 +198,14 @@ export const onPtyExit = (
     handler(event.payload),
   )
 
+/**
+ * A second launch handed this one a directory — `muster ~/proj` while the app
+ * is already open. The first instance keeps the window; this is how it hears
+ * what the second one was asked for.
+ */
+export const onOpenDirectory = (handler: (cwd: string) => void) =>
+  listen<string>('muster://open-directory', (event) => handler(event.payload))
+
 export async function pickDirectory(defaultPath?: string) {
   const picked = await open({
     directory: true,
@@ -250,6 +289,12 @@ export interface Changes {
    * to the session's directory, so matching a clicked path needs this.
    */
   root: string
+  /**
+   * What makes two working trees the same repository. A linked worktree has
+   * its own root and its own index, so `root` cannot say whether two tabs are
+   * editing one project — see `common_dir` in `review.rs`.
+   */
+  commonDir: string
   /** The branch being compared against, or `''` for uncommitted work. */
   base: string
   /** Set when a base branch was asked for and git could not resolve it. */

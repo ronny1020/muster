@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AGENTS } from '../../../entities/agent/model/agents'
 import { useBackground } from '../../../shared/lib/useBackground'
@@ -14,6 +14,7 @@ import {
   LIMITS,
   type Settings,
 } from '../../../entities/preferences/model/settings'
+import { fontChoices, installedFonts } from '../../../shared/lib/fonts'
 import { themeChoices, themeFor } from '../../../shared/lib/themes'
 
 /** Settings live in a tab of their own, the way Chrome's do. */
@@ -24,6 +25,9 @@ export function SettingsPane() {
   // pressed, and reading storage during render leaves it stale until something
   // unrelated re-renders the pane.
   const [remembered, setRemembered] = useState(() => recentDirs().length)
+  // Measured once: detection lays out a probe string per candidate family, and
+  // the answer cannot change while the pane is open.
+  const fonts = useMemo(() => installedFonts(), [])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -137,13 +141,31 @@ export function SettingsPane() {
               </select>
             </div>
           </Row>
-          <Row label="Font family">
-            <input
+          <Row
+            label="Font family"
+            hint="Each choice falls back to whatever monospace font this machine has"
+          >
+            <select
+              // `Row`'s label is a span, not a `<label>`, so nothing here is
+              // named programmatically — a gap every row in this pane shares,
+              // and one this control at least does not add to.
+              aria-label="Font family"
               value={settings.fontFamily}
-              spellCheck={false}
               onChange={(event) => update({ fontFamily: event.target.value })}
-              className="h-8 w-[300px] rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-brand focus:outline-none"
-            />
+              className="h-8 w-[300px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+            >
+              {fontChoices(settings.fontFamily, fonts).map((font) => (
+                <option
+                  key={font.stack}
+                  value={font.stack}
+                  // Shown in its own face, so the list is a sample rather than
+                  // a set of names you have to try one at a time.
+                  style={{ fontFamily: font.stack }}
+                >
+                  {font.name}
+                </option>
+              ))}
+            </select>
           </Row>
           <NumberRow label="Font size" field="fontSize" suffix="px" />
           <NumberRow label="Line height" field="lineHeight" />
@@ -218,6 +240,24 @@ export function SettingsPane() {
             label="History length"
             field="historyLimit"
             suffix="commits"
+          />
+        </Group>
+
+        <Group title="Session records">
+          <Row
+            label="Record what sessions print"
+            hint="Kept verbatim, so earlier sessions in a folder can be listed and reopened"
+          >
+            <Toggle
+              checked={settings.journalEnabled}
+              onChange={(journalEnabled) => update({ journalEnabled })}
+              label="Record what sessions print"
+            />
+          </Row>
+          <NumberRow
+            label="Keep records for"
+            field="journalRetentionDays"
+            suffix="days"
           />
         </Group>
 

@@ -29,11 +29,21 @@ export interface StatusBarProps {
   exited: boolean
   historyOpen: boolean
   reviewOpen: boolean
+  /**
+   * What another tab is changing at the same time, already phrased — empty
+   * when nothing is. Handed over as a sentence rather than as the collisions
+   * themselves: the bar renders, it does not decide what a collision means.
+   */
+  collision: string
+  /** Whether a directory is known, so there is somewhere to look for records. */
+  journal: boolean
+  journalOpen: boolean
   /** Which view the review drawer is on, so a second click can close it. */
   reviewView: ReviewView
   /** Editor to offer for this directory, or `null` when none was found. */
   editor: Editor | null
   onToggleHistory(): void
+  onToggleJournal(): void
   /**
    * Show the review drawer on this view — or close it, when it is already
    * open on it. Each control names what it wants to see rather than toggling
@@ -56,6 +66,10 @@ export function StatusBar({
   reviewOpen,
   reviewView,
   editor,
+  collision,
+  journal,
+  journalOpen,
+  onToggleJournal,
   onToggleHistory,
   onShowReview,
   onShowHistory,
@@ -125,6 +139,25 @@ export function StatusBar({
         </span>
       )}
 
+      {/* The region is always mounted and only its text changes: inserting a
+          region that already has content in it is typically announced to
+          nobody, which would miss the first collision — the interesting one. */}
+      <span
+        role="status"
+        title={
+          collision
+            ? `${collision}. Two tabs changing one file diverge until one of them rebases.`
+            : undefined
+        }
+        // Not a colour alone: the word "also" carries the meaning for anyone
+        // who cannot see the tint.
+        className={`min-w-0 truncate text-danger ${
+          collision ? 'rounded border border-danger/40 px-1' : ''
+        }`}
+      >
+        {collision}
+      </span>
+
       <span className="flex-1" />
 
       {editor && (
@@ -135,6 +168,20 @@ export function StatusBar({
           className="min-w-0 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink"
         >
           Open in {editor.name}
+        </button>
+      )}
+      {journal && (
+        <button
+          type="button"
+          title="Earlier sessions recorded in this directory"
+          aria-label="Earlier sessions"
+          aria-expanded={journalOpen}
+          onClick={onToggleJournal}
+          className={`flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink ${
+            journalOpen ? 'bg-surface text-ink' : ''
+          }`}
+        >
+          <Icon name="terminal" className="h-3.5 w-3.5" />
         </button>
       )}
       {state && <span className={exited ? 'text-danger' : ''}>{state}</span>}

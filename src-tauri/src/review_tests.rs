@@ -482,3 +482,36 @@ fn asking_only_which_files_differ_reports_no_numbers() {
     assert_eq!((without.insertions, without.counted), (0, false));
     assert_eq!(without.status, "untracked");
 }
+
+#[test]
+fn this_repo_reports_the_directory_its_worktrees_would_share() {
+    // The identity two tabs are compared on. A main checkout's common dir is
+    // its own `.git`; what matters here is that it is absolute, stable and
+    // present, because an empty one would silently group every repo together.
+    let changes = read_changes(env!("CARGO_MANIFEST_DIR"), None, false);
+    assert!(changes.repo);
+    assert!(
+        Path::new(&changes.common_dir).is_absolute(),
+        "common dir {} is not absolute",
+        changes.common_dir
+    );
+    assert!(changes.common_dir.ends_with(".git"));
+}
+
+#[test]
+fn a_directory_outside_any_repo_shares_nothing() {
+    let changes = read_changes("/", None, false);
+    assert!(!changes.repo);
+    assert!(changes.common_dir.is_empty());
+}
+
+#[test]
+fn the_repo_root_is_a_path_git_and_the_frontend_both_understand() {
+    // The value reaches the frontend as `Changes.root`, is compared against a
+    // clicked path to find its diff, and becomes the cwd of later `git` calls.
+    // Windows' `canonicalize` answers `\\?\C:\repo`, which none of those three
+    // accept, so the prefix must not survive.
+    let root = repo_root(env!("CARGO_MANIFEST_DIR")).expect("a repo");
+    assert!(!root.starts_with(r"\\?\"), "{root} kept a verbatim prefix");
+    assert!(Path::new(&root).join(".git").exists() || Path::new(&root).join("..").exists());
+}

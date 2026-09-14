@@ -17,16 +17,66 @@ product, and `pty_spawn` grants it by design.
 What _is_ in scope is anything that gives one of these three a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                          |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the app's only network egress.                                                                                         |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams. |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, and can carry inline-image escape sequences.                                                              |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                    |
+| Actor                                      | Why it counts                                                                                                                                                                                  |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the app's only network egress.                                                                                                                 |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                         |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, and can carry inline-image escape sequences.                                                                                      |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                            |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`. |
 
-None of those four is you, and none of them should be able to reach the
+None of those five is you, and none of them should be able to reach the
 network on your behalf, read a file you did not choose, or put an argument in
 front of a program you did not type.
+
+The last one is worth spelling out, because it is the only inbound channel this
+app has. What a sender can reach is `first_directory` and then a **pre-filled
+launcher tab** — no spawn, no file written, no path but the one it named, and
+the agent and flags come from your own settings. What it does gain is that the
+window is raised and that tab made active, so a stray Return in the focused
+directory field would start a session in a directory the sender chose.
+
+## What the session journal keeps, and for how long
+
+Recording a session writes the pty stream verbatim to
+`<app data>/journal/<directory>/<tab id>-<started at>.log` — which means it holds whatever
+the agent printed, including anything secret that reached the screen. Anything
+running as you can read it, this app included: a second agent in another tab
+can read what the first one printed, which was previously only in the webview's
+memory. Four properties bound it:
+
+- **It is a setting, and it is the user's** — though it currently defaults to
+  **on**, and the paste copies below have no switch at all, only the shared
+  retention period. `pty_spawn` records only when the caller passes
+  `journal: true`, which is that toggle and nothing else. This one is enforced in `pty_spawn` and **is not
+  covered by a test**; the three below each have one in `journal_tests.rs`.
+- **One session cannot grow without limit.** Past 4 MB the older half is
+  dropped, so a tab that prints for a day costs a bounded amount of disk and
+  keeps the tail.
+- **Records expire.** A sweep at startup deletes anything past the retention
+  period, and removes a directory once it holds nothing.
+- **A tab id cannot become a path.** Ids are minted by `crypto.randomUUID`, and
+  `file_stem` refuses anything carrying a separator, a dot or a non-ASCII
+  character — so a crafted id reaches no file but its own. The directory half
+  is confined separately, by `key`, which flattens the whole path to one
+  component through `sessions::normalize_key` and appends a digest. The digest
+  makes a shared folder unlikely rather than impossible — it is an identity,
+  not a security boundary, and a collision costs two directories one folder.
+
+Oversized pasted text is written the same way, to
+`<app data>/attachments/paste-<ms>.<ext>`, and expires on the same setting.
+`attachment_name` builds a bare filename from a timestamp and a sniffed
+extension — never from the pasted text — so nothing in the clipboard can decide
+where the file lands, and `the_name_is_a_bare_filename` pins it.
+
+Neither refuses a symlink today, which is a **known gap** — listed below.
+
+The journal is never sent anywhere. `journal_read` is the only way to read one
+back, and it is confined to the journal root the same way. The sidecar beside
+each record holds an agent's own session id, which is read back into an argv —
+so `published_session_id` accepts only the shape an id has (ASCII
+alphanumerics, `-`, `_`, at most 64 characters) rather than trusting what
+another program wrote.
 
 ## What the review panel will not do
 
@@ -66,6 +116,26 @@ preview card a terminal URL uses, and mermaid runs at `securityLevel: strict`.
 ## Known gaps
 
 Named rather than hidden, because the code carries the same notes:
+
+- **The journal's own reads and writes do not refuse a symlink.** `review.rs`
+  and `image.rs` both check `symlink_metadata` before reading, because a
+  repository can ship `docs/notes.md -> ~/.ssh/id_ed25519`. Three paths added
+  with the session journal do not: `journal.rs`'s retention sweep walks and
+  **deletes** through a symlinked directory under the journal root, with no
+  click and at every launch; `attach.rs` writes a pasted attachment with
+  `fs::write`, which follows a pre-planted link at that name; and
+  `sessions.rs`'s `published_session_id` reads `~/.claude/sessions/<pid>.json`
+  without the check. All three are dominated by the fact that an agent with a
+  pty can run `rm` itself, which is why they are gaps rather than
+  vulnerabilities — but the invariant AGENTS.md states is not currently kept,
+  and the fixes are one `symlink_metadata` call, one `create_new(true)`, and
+  one more `symlink_metadata`.
+- **A paste is not scanned for a bracketed-paste end marker.** `drop_text`
+  refuses control bytes in a dropped path for exactly this reason, but text
+  reaching `term.paste` is not filtered: xterm wraps it in `ESC[200~`…`ESC[201~`
+  by plain concatenation and strips nothing, so a clipboard carrying
+  `ESC[201~` ends paste mode early and the rest arrives as typed keys. It
+  requires the user to copy hostile content, and it predates the journal work.
 
 - **Redirects in the link preview.** The private-address check validates every
   hop of a redirect chain, but DNS is resolved twice — once to validate and

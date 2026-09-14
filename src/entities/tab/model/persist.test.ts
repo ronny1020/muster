@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from 'bun:test'
 
 import { deckReducer, initialDeck, type Session } from './deck'
-import { loadDeck, normalizeDeck, saveDeck, startOf } from './persist'
+import { loadDeck, normalizeDeck, saveDeck } from './persist'
+import { startOf } from './deck'
 
 const session = (over: Partial<Session> = {}): Session => ({
   agentId: 'claude',

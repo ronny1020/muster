@@ -1,3 +1,4 @@
+import { stackFor } from '../../../shared/lib/fonts'
 import type { Backend } from '../../../shared/lib/platform'
 import { DEFAULT_THEME_ID, THEMES } from '../../../shared/lib/themes'
 
@@ -40,6 +41,14 @@ export interface Settings {
   /** Stay quiet while the user is already looking at that very tab. */
   notifyOnlyWhenUnfocused: boolean
   notifySound: boolean
+  /**
+   * Record each session's output so it outlives the process. The record is
+   * verbatim — whatever the agent printed, secrets included — which is why it
+   * is a setting and why it expires.
+   */
+  journalEnabled: boolean
+  /** How long a recorded session is kept, in days. */
+  journalRetentionDays: number
   /** Image drawn behind the terminal; empty for the plain background. */
   backgroundImage: string
   /** Brightness applied to that image, as a percentage. */
@@ -52,8 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultBackend: 'native',
   defaultDistro: '',
   themeId: DEFAULT_THEME_ID,
-  fontFamily:
-    '"JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+  fontFamily: stackFor('JetBrains Mono'),
   fontSize: 13,
   lineHeight: 1.25,
   letterSpacing: 0,
@@ -65,6 +73,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyOnDone: true,
   notifyOnlyWhenUnfocused: true,
   notifySound: true,
+  journalEnabled: true,
+  journalRetentionDays: 14,
   backgroundImage: '',
   // Wallpaper at full brightness makes terminal text unreadable, so the
   // default is already dimmed — the setting is there to bring it back up.
@@ -79,6 +89,7 @@ export const LIMITS = {
   scrollback: { min: 1000, max: 200000, step: 1000 },
   gitPollSeconds: { min: 1, max: 60, step: 1 },
   historyLimit: { min: 10, max: 500, step: 10 },
+  journalRetentionDays: { min: 1, max: 365, step: 1 },
   backgroundBrightness: { min: 5, max: 100, step: 5 },
 } as const
 
@@ -147,6 +158,12 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.notifyOnlyWhenUnfocused,
     ),
     notifySound: flag(raw.notifySound, DEFAULT_SETTINGS.notifySound),
+    journalEnabled: flag(raw.journalEnabled, DEFAULT_SETTINGS.journalEnabled),
+    journalRetentionDays: number(
+      raw.journalRetentionDays,
+      DEFAULT_SETTINGS.journalRetentionDays,
+      LIMITS.journalRetentionDays,
+    ),
     // Not through `text()`: it trims, and a filename may legally end in a
     // space — trimming would silently point at a different file.
     backgroundImage:

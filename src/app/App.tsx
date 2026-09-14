@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { Pane } from '../widgets/pane/ui/Pane'
+import {
+  CollisionProvider,
+  type FleetTab,
+} from '../features/fleet/model/useCollisions'
 import type { LaunchRequest } from '../features/launch/ui/Launcher'
 import { TabStrip } from '../widgets/tab-strip/ui/TabStrip'
 import {
@@ -11,7 +15,12 @@ import {
 } from '../entities/tab/model/deck'
 import { useSettings } from '../entities/preferences/model/useSettings'
 import { useTabShortcuts } from './useTabShortcuts'
-import { onPtyExit } from '../shared/ipc'
+import {
+  attachSweep,
+  journalSweep,
+  onOpenDirectory,
+  onPtyExit,
+} from '../shared/ipc'
 import { loadDeck, saveDeck } from '../entities/tab/model/persist'
 import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
@@ -61,7 +70,33 @@ export function App() {
   // Remembered on every change rather than at quit: the window can be closed
   // by the OS, and `beforeunload` is not reliable in a webview.
   useEffect(() => saveDeck(deck), [deck])
+
   const { settings } = useSettings()
+  // Retention is enforced here rather than in Rust because the period is a
+  // user setting, and settings live in `localStorage` where only the webview
+  // can read them — and so is the list of tabs currently recording, which the
+  // sweep must not delete out from under. Re-runs when either changes, which
+  // is rare: the records expire by the day.
+  const retention = settings.journalRetentionDays
+  // Serialised so the effect does not restart on every unrelated render.
+  // Gated on the exit code as well as the session: a tab keeps its session
+  // after the process ends, and treating those as live would protect their
+  // records from the sweep forever, so nothing would ever expire.
+  const liveTabs = JSON.stringify(
+    deck.tabs
+      .filter((tab) => tabSession(tab) && tab.exitCode === null)
+      .map((tab) => tab.id),
+  )
+  useEffect(() => {
+    // Attachments expire on the same setting: both are records of a session,
+    // and a second retention preference would be a second thing to explain.
+    void Promise.all([
+      journalSweep(retention, JSON.parse(liveTabs) as string[]),
+      attachSweep(retention),
+    ]).catch(() => {
+      /* a sweep that cannot run is not worth interrupting a launch for */
+    })
+  }, [retention, liveTabs])
   // The exit listener is registered once, so it reads live state through refs.
   const current = useRef({ deck, settings })
   current.current = { deck, settings }
@@ -122,6 +157,28 @@ export function App() {
     return () => void unlisten.then((stop) => stop())
   }, [])
 
+  // A second launch was turned away and handed its directory here. It opens a
+  // tab ready to start rather than started: the shell that ran `muster ~/proj`
+  // asked for a place to work, not for an agent to be running in it.
+  const defaults = useRef(settings)
+  defaults.current = settings
+  useEffect(() => {
+    const unlisten = onOpenDirectory((cwd) =>
+      dispatch({
+        type: 'open',
+        id: nextTabId(),
+        start: {
+          agentId: defaults.current.defaultAgentId,
+          cwd,
+          backend: defaults.current.defaultBackend,
+          distro: defaults.current.defaultDistro,
+          flags: '',
+        },
+      }),
+    )
+    return () => void unlisten.then((stop) => stop())
+  }, [])
+
   const launch = (id: string) => (request: LaunchRequest) =>
     dispatch({
       type: 'start',
@@ -139,6 +196,18 @@ export function App() {
       },
     })
 
+  // Every tab with a session, for the one comparison no tab can make about
+  // itself. Built here because this is the only place that holds the deck.
+  const watched: FleetTab[] = deck.tabs.flatMap((tab) => {
+    const session = tabSession(tab)
+    // A tab keeps its session after the process exits, so gate on the exit
+    // code too: a dead tab has no working tree anyone is racing for, and it
+    // would otherwise keep warning about a file nothing is editing.
+    return session && tab.exitCode === null
+      ? [{ id: tab.id, title: tab.title, cwd: session.cwd }]
+      : []
+  })
+
   return (
     <div className="flex h-full flex-col">
       <TabStrip
@@ -149,16 +218,18 @@ export function App() {
         onOpen={open}
       />
       <main className="relative min-h-0 flex-1">
-        {deck.tabs.map((tab) => (
-          <Pane
-            key={tab.id}
-            tab={tab}
-            active={tab.id === deck.activeId}
-            onLaunch={launch(tab.id)}
-            onOpenSettings={openSettings}
-            dispatch={dispatch}
-          />
-        ))}
+        <CollisionProvider tabs={watched} pollSeconds={settings.gitPollSeconds}>
+          {deck.tabs.map((tab) => (
+            <Pane
+              key={tab.id}
+              tab={tab}
+              active={tab.id === deck.activeId}
+              onLaunch={launch(tab.id)}
+              onOpenSettings={openSettings}
+              dispatch={dispatch}
+            />
+          ))}
+        </CollisionProvider>
       </main>
     </div>
   )

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { AGENTS, agentById, SHELL_AGENT } from './agents'
+import { AGENTS, agentById, SHELL_AGENT, resumeArgs } from './agents'
 
 test('every agent id resolves to itself', () => {
   for (const agent of AGENTS) expect(agentById(agent.id)).toBe(agent)
@@ -106,4 +106,25 @@ test('no two agents share an id or an accent', () => {
   const all = [...AGENTS, SHELL_AGENT]
   expect(new Set(all.map((agent) => agent.id)).size).toBe(all.length)
   expect(new Set(all.map((agent) => agent.accent)).size).toBe(all.length)
+})
+
+test("resuming a named conversation uses the agent's own resume spelling", () => {
+  const claude = AGENTS.find((agent) => agent.id === 'claude')!
+  expect(resumeArgs(claude, 'abc-123')).toEqual(['--resume', 'abc-123'])
+})
+
+test('an agent with no resume mode offers no way to reopen one', () => {
+  // Better no button than a button that starts a fresh session while claiming
+  // to reopen a conversation.
+  const withoutResume = AGENTS.filter(
+    (agent) => !agent.modes.some((mode) => mode.id === 'resume'),
+  )
+  for (const agent of withoutResume) {
+    expect(resumeArgs(agent, 'abc-123')).toBeNull()
+  }
+})
+
+test('no session id means nothing to resume', () => {
+  const claude = AGENTS.find((agent) => agent.id === 'claude')!
+  expect(resumeArgs(claude, '')).toBeNull()
 })

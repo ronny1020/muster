@@ -51,6 +51,8 @@ export interface Tab {
   historyOpen: boolean
   /** Whether this tab's review panel is open. */
   reviewOpen: boolean
+  /** Whether this tab's earlier-sessions drawer is open. */
+  journalOpen: boolean
   reviewView: ReviewView
   /** Whether this tab's scrollback search bar is open. */
   findOpen: boolean
@@ -68,7 +70,7 @@ export interface Deck {
 }
 
 export type DeckAction =
-  | { type: 'open'; id: string }
+  | { type: 'open'; id: string; start?: LauncherStart }
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
   | { type: 'activate'; id: string }
@@ -83,6 +85,7 @@ export type DeckAction =
       dirty: boolean
     }
   | { type: 'toggleHistory'; id: string }
+  | { type: 'toggleJournal'; id: string }
   | { type: 'toggleReview'; id: string }
   | { type: 'setHistory'; id: string; open: boolean }
   | { type: 'setReview'; id: string; open: boolean }
@@ -104,11 +107,38 @@ export const newTab = (
   exitCode: null,
   historyOpen: false,
   reviewOpen: false,
+  journalOpen: false,
   reviewView: 'changes',
   findOpen: false,
   attention: false,
   content,
 })
+
+/**
+ * What a tab would be pre-filled with: its session's launch details, or
+ * whatever it was last pre-filled with, or nothing.
+ *
+ * Used both to persist a tab across a restart and to send one back to its own
+ * start screen, which are the same question asked at two moments.
+ */
+export function startOf(tab: Tab): LauncherStart | null {
+  const session = tabSession(tab)
+  if (session) {
+    return {
+      agentId: session.agentId,
+      cwd: session.cwd,
+      backend: session.backend,
+      distro: session.distro,
+      // The args a session was launched with include its mode (`--continue`),
+      // which is a choice to make again rather than one to replay.
+      flags: '',
+    }
+  }
+  if (tab.content.type === 'launcher' && tab.content.start) {
+    return tab.content.start
+  }
+  return null
+}
 
 /**
  * What the tab strip says before a session starts.
@@ -135,7 +165,13 @@ export const initialDeck = (id: string): Deck => ({
 export function deckReducer(deck: Deck, action: DeckAction): Deck {
   switch (action.type) {
     case 'open':
-      return { tabs: [...deck.tabs, newTab(action.id)], activeId: action.id }
+      return {
+        tabs: [
+          ...deck.tabs,
+          newTab(action.id, { type: 'launcher', start: action.start }),
+        ],
+        activeId: action.id,
+      }
 
     case 'openSettings':
       return openSettings(deck, action.id)
@@ -182,9 +218,15 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
 
     case 'relaunch':
       // Back to the start screen with the tab's identity intact, so a session
-      // that failed to start is recoverable without opening a new tab.
-      return patch(deck, action.id, () => ({
-        content: { type: 'launcher' },
+      // that failed to start is recoverable without opening a new tab — and
+      // pre-filled from the session that just ended, which is also what keeps
+      // its own recording reachable: a launcher with no directory has nowhere
+      // to look for one.
+      return patch(deck, action.id, (tab) => ({
+        content: {
+          type: 'launcher',
+          start: startOf(tab) ?? undefined,
+        },
         title: 'New session',
         detail: '',
         dirty: false,
@@ -192,6 +234,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         attention: false,
         historyOpen: false,
         reviewOpen: false,
+        journalOpen: false,
       }))
 
     case 'attention':
@@ -206,6 +249,11 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
     // these": a chip counting commits must not close the drawer listing them.
     case 'setHistory':
       return patch(deck, action.id, () => ({ historyOpen: action.open }))
+
+    case 'toggleJournal':
+      return patch(deck, action.id, (tab) => ({
+        journalOpen: !tab.journalOpen,
+      }))
 
     case 'toggleReview':
       return patch(deck, action.id, (tab) => ({

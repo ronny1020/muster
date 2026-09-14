@@ -1,7 +1,10 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+mod attach;
 mod editor;
 mod image;
+mod journal;
 mod link;
 mod platform;
 mod pty;
@@ -16,6 +19,50 @@ mod config_tests;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // First, as the plugin's own docs require: a second launch has to be
+        // turned away before anything else in this chain has run. It matters
+        // more here than in most apps — two instances would each restore the
+        // same tab list, each spawn its own PTYs for them, and each record and
+        // sweep the same per-directory journal folders.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let Some(window) = app.get_webview_window("main") else {
+                return;
+            };
+            // The gesture was "open Muster", so answer it: an unfocused or
+            // minimised window that merely exists is indistinguishable from
+            // the app having ignored the launch.
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            // `muster ~/proj` from a shell, with the app already open. The
+            // argv is the user's own — they typed it — so unlike a URL scheme
+            // this needs no trust decision; it still only ever produces a
+            // pre-filled launcher, never a spawned session.
+            if let Some(dir) = first_directory(&argv, &cwd) {
+                let _ = app.emit("muster://open-directory", dir);
+            }
+        }))
+        // Size and position across restarts. Without it every launch reopens
+        // at the config's 1180x760, wherever the window was left.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Deliberately not `all()`. DECORATIONS would let a saved
+                // state fight `tauri.windows.conf.json`, which turns the frame
+                // off on purpose; VISIBLE could restore a window hidden, which
+                // on a single-window app leaves no way to get it back.
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
+        // The webview's own browser shortcuts, turned off. `Ctrl+R` or `F5`
+        // reaching WebView2 reloads the page, which remounts every pane and
+        // throws away all of xterm's scrollback — while the PTYs carry on in
+        // Rust, so the sessions survive and the record of them does not. That
+        // is the one thing this app exists to keep.
+        .plugin(prevent_default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -38,6 +85,11 @@ pub fn run() {
             workspace::home_dir,
             workspace::create_directory,
             sessions::agent_sessions,
+            journal::journal_sessions,
+            journal::journal_read,
+            journal::journal_sweep,
+            attach::attach_text,
+            attach::attach_sweep,
             editor::editors,
             editor::open_in_editor,
             image::read_image,
@@ -73,8 +125,120 @@ pub fn run() {
         .run(|handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 handle.state::<pty::Sessions>().end_all();
+                // Saved here rather than left to the plugin's own window
+                // hooks, for the reason the cleanup above is here: `Cmd+Q` and
+                // the app menu's Quit emit only `LoopDestroyed`, so a window
+                // never sees `CloseRequested` or `Destroyed` — and the most
+                // common quit gesture on macOS would silently save nothing.
+                let _ = handle.save_window_state(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                );
             }
         });
+}
+
+/// The shortcut-swallowing plugin, with the native Windows path actually
+/// switched on.
+///
+/// `with_flags` alone leaves `PlatformOptions` at its default, so the
+/// `platform-windows` feature compiles in and then does nothing: the injected
+/// page listener is all that remains, and page-level `preventDefault` does not
+/// reliably stop WebView2's own `F5`. `browser_accelerator_keys(false)` is what
+/// reaches `SetAreBrowserAcceleratorKeysEnabled`, which is the whole reason
+/// this plugin is here at all.
+fn prevent_default<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    let builder = tauri_plugin_prevent_default::Builder::new().with_flags(prevented_shortcuts());
+    #[cfg(windows)]
+    let builder = builder.platform(
+        tauri_plugin_prevent_default::PlatformOptions::new().browser_accelerator_keys(false),
+    );
+    builder.build()
+}
+
+/// Which webview shortcuts to swallow.
+///
+/// Deliberately not `Flags::debug()`, which is everything: two of its flags
+/// would break promises this app makes elsewhere.
+///
+/// `FOCUS_MOVE` is `Shift+Tab`, and blocking it breaks backward keyboard
+/// navigation — against the Level AA bar in AGENTS.md, and against
+/// `shared/ui/ContextMenu`, which exists to be reachable from the keyboard.
+/// `CONTEXT_MENU` is the right click the file tree's own menu is built on, and
+/// AGENTS.md notes that hanging it off `onContextMenu` is what also makes it
+/// answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
+/// the native menu away risks taking that with it.
+///
+/// `DEV_TOOLS` is left alone in a debug build for the obvious reason.
+fn prevented_shortcuts() -> tauri_plugin_prevent_default::Flags {
+    use tauri_plugin_prevent_default::Flags;
+
+    // `FIND` is included on purpose: the app has its own scrollback search on
+    // the same key, and the webview's find bar must not answer first.
+    let base = Flags::RELOAD
+        | Flags::FIND
+        | Flags::PRINT
+        | Flags::OPEN
+        | Flags::SOURCE
+        | Flags::DOWNLOADS
+        | Flags::CARET_BROWSING;
+    if cfg!(debug_assertions) {
+        base
+    } else {
+        base | Flags::DEV_TOOLS
+    }
+}
+
+/// The first argument naming a directory that exists, expanded and made
+/// absolute against the directory the *second* launch was run from.
+///
+/// That base is load-bearing: this process is the first instance, whose own cwd
+/// is launchd's or the desktop session's, not the shell the user typed in. So
+/// `muster .` would resolve `.` against the app's directory — and `.` is always
+/// a directory, so it passes every check and silently opens the wrong place.
+///
+/// Only a directory: a file would be a different gesture — "open this in an
+/// editor" — and this app's unit of work is a folder a session runs in.
+fn first_directory(argv: &[String], cwd: &str) -> Option<String> {
+    argv.iter()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-'))
+        .map(|arg| {
+            let expanded = workspace::expand_home(arg);
+            let path = std::path::Path::new(&expanded);
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                std::path::Path::new(cwd).join(path)
+            }
+        })
+        .map(without_dot_segments)
+        .find(|path| path.is_dir())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// A path with its `.` and `..` segments resolved away, without touching the
+/// filesystem.
+///
+/// `muster .` otherwise yields `<cwd>/.`, which is a real directory and passes
+/// every check — and then titles the tab "." and keys its journal folder on a
+/// spelling `one_spelling` does not collapse, so the drawer reads a different
+/// folder from the same directory opened any other way.
+fn without_dot_segments(path: std::path::PathBuf) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut out = std::path::PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Asks before closing over running sessions, then closes for real.

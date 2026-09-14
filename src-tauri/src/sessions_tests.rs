@@ -77,3 +77,19 @@ fn counts_only_transcript_files() {
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(counted, 2);
 }
+
+#[test]
+fn only_claude_publishes_a_session_id_we_know_how_to_read() {
+    // Every other agent's store is unverified here, and guessing an id that
+    // then reaches an argv is worse than offering no resume at all.
+    assert_eq!(published_session_id("codex", std::process::id()), None);
+    assert_eq!(published_session_id("gemini", std::process::id()), None);
+    assert_eq!(published_session_id("shell", std::process::id()), None);
+}
+
+#[test]
+fn a_pid_with_no_registry_entry_yields_nothing_rather_than_erroring() {
+    // A session that has not written its entry yet is the normal case for the
+    // first moments after a spawn.
+    assert_eq!(published_session_id("claude", 0), None);
+}

@@ -44,6 +44,13 @@ pub struct Changes {
     /// Absolute repository root. Every `path` here is relative to it — not to
     /// the session's directory — so a click on a path needs it to match.
     pub root: String,
+    /// What makes two working trees the same repository.
+    ///
+    /// A linked worktree has its own root and its own index, so `root` cannot
+    /// answer "are these two tabs editing one project" — which is precisely
+    /// the arrangement parallel agents are run in. `--git-common-dir` resolves
+    /// every worktree of a repo to the one directory they share.
+    pub common_dir: String,
     /// What the diff is against: a branch name, or empty for uncommitted work.
     pub base: String,
     /// Set when a base branch was asked for and git could not resolve it.
@@ -128,6 +135,7 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
     let mut changes = Changes {
         repo: true,
         root: top.clone(),
+        common_dir: common_dir(root).unwrap_or_else(|| top.clone()),
         base: base.unwrap_or_default().to_string(),
         ..Default::default()
     };
@@ -149,7 +157,15 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
     changes
 }
 
-/// The repository a directory is in, or `None` when it is not in one.
+/// The repository a directory is in, canonicalised, or `None` when it is not
+/// in one.
+///
+/// Canonicalised for the same reason `common_dir` is: `--show-toplevel` echoes
+/// the spelling of the directory it was asked from, so one worktree reached
+/// through a symlink — `/tmp` for `/private/tmp`, or a linked home — answers
+/// two different strings. Two tabs on one tree would then compare unequal and
+/// warn about every file they share, which is the always-on warning the
+/// collision detector exists to avoid.
 ///
 /// Every git call here runs from the top level rather than the session's own
 /// directory, and that is load-bearing: run from a subdirectory, `git diff`
@@ -159,7 +175,46 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
 /// paths. One directory for all of them is what keeps every path in this
 /// module root-relative.
 fn repo_root(cwd: &str) -> Option<String> {
-    git(Path::new(cwd), &["rev-parse", "--show-toplevel"]).filter(|top| !top.is_empty())
+    let top = git(Path::new(cwd), &["rev-parse", "--show-toplevel"]).filter(|t| !t.is_empty())?;
+    let resolved = std::fs::canonicalize(&top)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| top.clone());
+    // Windows' `canonicalize` answers an extended-length path (`\\?\C:\repo`).
+    // That spelling is not interchangeable with the one git prints: this value
+    // is handed to the frontend as `Changes.root`, compared against a clicked
+    // path to find its diff, joined back into absolute paths for the editor,
+    // and used as the working directory for every later `git` call — and
+    // `CreateProcessW` will not take a verbatim prefix. So the prefix is
+    // dropped, keeping the resolution without the spelling.
+    Some(match resolved.strip_prefix(r"\\?\UNC\") {
+        Some(share) => format!(r"\\{share}"),
+        None => resolved
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&resolved)
+            .to_string(),
+    })
+}
+
+/// The directory every worktree of this repository shares.
+///
+/// Relative for a main checkout (`.git`) and absolute for a linked worktree,
+/// so it is resolved against the root to give one spelling either way.
+fn common_dir(root: &Path) -> Option<String> {
+    let common = git(root, &["rev-parse", "--git-common-dir"]).filter(|dir| !dir.is_empty())?;
+    let path = Path::new(&common);
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    // Canonicalised so a path reached through a symlink — a temp directory
+    // usually is one — matches the same repo reached directly.
+    Some(
+        std::fs::canonicalize(&joined)
+            .unwrap_or(joined)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// What to diff against: the point the branches diverged for a base branch,

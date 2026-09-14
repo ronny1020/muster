@@ -117,3 +117,97 @@ fn macos_keeps_its_frame_and_hides_only_the_title() {
     );
     assert_eq!(base.get("hiddenTitle"), Some(&Value::Bool(true)));
 }
+
+#[test]
+fn a_directory_argument_is_recognised_and_a_flag_is_not() {
+    // `muster ~/proj` while the app is open, as a shell would pass it.
+    let here = env!("CARGO_MANIFEST_DIR").to_string();
+    let argv = vec!["muster".to_string(), here.clone()];
+    assert_eq!(super::first_directory(&argv, "/"), Some(here.clone()));
+
+    // The binary's own path is skipped even though it is inside a directory,
+    // and a flag that happens to name one is still a flag.
+    assert_eq!(
+        super::first_directory(std::slice::from_ref(&here), "/"),
+        None
+    );
+    assert_eq!(
+        super::first_directory(&["muster".to_string(), format!("--cwd={here}")], "/"),
+        None
+    );
+}
+
+#[test]
+fn a_path_that_is_not_a_directory_is_ignored() {
+    // A file is a different gesture, and a missing path is a typo — neither
+    // should silently open a tab somewhere unexpected.
+    let file = format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"));
+    assert_eq!(
+        super::first_directory(&["muster".to_string(), file], "/"),
+        None
+    );
+    assert_eq!(
+        super::first_directory(&["muster".to_string(), "/no/such/dir".to_string()], "/"),
+        None
+    );
+}
+
+#[test]
+fn the_keyboard_shortcuts_the_app_needs_are_never_swallowed() {
+    use tauri_plugin_prevent_default::Flags;
+    let prevented = super::prevented_shortcuts();
+
+    // `Shift+Tab`. Blocking it breaks backward keyboard navigation, which is
+    // the Level AA bar AGENTS.md sets and what `shared/ui/ContextMenu` needs.
+    assert!(!prevented.contains(Flags::FOCUS_MOVE));
+    // Right click, which the file tree's own menu is built on — and which is
+    // also what makes that menu answer the Menu key and Shift+F10.
+    assert!(!prevented.contains(Flags::CONTEXT_MENU));
+    // The reason the plugin is here at all: a reload discards every pane's
+    // scrollback while the PTYs keep running.
+    assert!(prevented.contains(Flags::RELOAD));
+    // The app answers this key itself, with its own scrollback search.
+    assert!(prevented.contains(Flags::FIND));
+}
+
+#[test]
+fn devtools_stay_reachable_in_a_debug_build_and_not_in_a_release_one() {
+    use tauri_plugin_prevent_default::Flags;
+    let prevented = super::prevented_shortcuts();
+    assert_eq!(
+        prevented.contains(Flags::DEV_TOOLS),
+        !cfg!(debug_assertions)
+    );
+}
+
+#[test]
+fn a_relative_argument_resolves_against_the_shell_that_sent_it() {
+    // This process is the first instance, whose cwd is launchd's rather than
+    // the shell the user typed in — so `muster .` resolved locally would
+    // always pass (`.` is a directory) and open the wrong place.
+    let here = env!("CARGO_MANIFEST_DIR").to_string();
+    let argv = vec!["muster".to_string(), ".".to_string()];
+    let resolved = super::first_directory(&argv, &here).expect("a directory");
+    assert!(
+        resolved.starts_with(&here),
+        "{resolved} did not resolve against the sender's cwd"
+    );
+
+    // And a relative name below it.
+    let argv = vec!["muster".to_string(), "src".to_string()];
+    let resolved = super::first_directory(&argv, &here).expect("a directory");
+    assert!(resolved.ends_with("src"), "{resolved}");
+}
+
+#[test]
+fn a_dot_argument_names_the_directory_itself_not_a_dot_inside_it() {
+    // `<cwd>/.` is a real directory and passes every check, then titles the tab
+    // "." and keys its journal on a spelling nothing else produces.
+    let here = env!("CARGO_MANIFEST_DIR").to_string();
+    let argv = vec!["muster".to_string(), ".".to_string()];
+    assert_eq!(super::first_directory(&argv, &here), Some(here.clone()));
+
+    // And `..` resolves rather than being carried along.
+    let argv = vec!["muster".to_string(), "src/..".to_string()];
+    assert_eq!(super::first_directory(&argv, &here), Some(here));
+}

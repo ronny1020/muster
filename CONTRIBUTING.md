@@ -106,6 +106,7 @@ building.
 | Notification policy                                | `src/shared/lib/notify.ts`                    |
 | Editor detection and launching                     | `src-tauri/src/editor.rs`                     |
 | Terminal colour schemes                            | `src/shared/lib/themes.ts`                    |
+| Detecting the machine's monospace fonts            | `src/shared/lib/fonts.ts`                     |
 | Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`    |
 | Remembering tabs across a restart                  | `src/entities/tab/model/persist.ts`           |
 | Branch filtering and switch warnings               | `src/features/workspace/model/branches.ts`    |
@@ -114,6 +115,12 @@ building.
 | Local image reads                                  | `src-tauri/src/image.rs`                      |
 | URL metadata fetching                              | `src-tauri/src/link.rs`                       |
 | Agent session history                              | `src-tauri/src/sessions.rs`                   |
+| Recording a session, and what a record remembers   | `src-tauri/src/journal.rs`                    |
+| Second-launch, window state, swallowed shortcuts   | `src-tauri/src/lib.rs`                        |
+| Files two tabs are changing at once                | `src/features/fleet/model/collisions.ts`      |
+| Whether a paste becomes text or a file             | `src/features/terminal/model/paste.ts`        |
+| Writing pasted text out for an agent to read       | `src-tauri/src/attach.rs`                     |
+| Earlier-sessions drawer                            | `src/features/journal/ui/JournalPanel.tsx`    |
 | Agent registry                                     | `src/entities/agent/model/agents.ts`          |
 | Terminal ↔ PTY binding                             | `src/features/terminal/ui/TerminalView.tsx`   |
 | New-tab start screen                               | `src/features/launch/ui/Launcher.tsx`         |
@@ -162,7 +169,7 @@ modules.
 src/app/        composition root — App, main, the stylesheet, shortcut wiring
 src/widgets/    surfaces that compose several features — Pane, TabStrip
 src/features/   one capability each — terminal, workspace, launch, settings,
-                review
+                review, journal, fleet
 src/entities/   vocabulary features share — tab, agent, preferences
 src/shared/     ipc.ts, lib/ for contained libraries, ui/ for presentation
                 with no domain in it
@@ -274,9 +281,10 @@ to test something is the wrong trade. The point of the split is that
 `workspace.rs` and `pty.rs` were nearly half test code, which made the parts
 that ship hard to read.
 
-`config_tests.rs` is the odd one out: it tests two JSON files rather than any
+`config_tests.rs` began as the odd one out — two JSON files rather than any
 Rust, holding `tauri.windows.conf.json` to what AGENTS.md's "Windows has no
-frame" invariant requires of it. It hangs off `lib.rs`, which owns neither file
+frame" invariant requires of it. It now also covers `lib.rs`'s own helpers:
+which webview shortcuts are swallowed, and how a second launch's argv resolves. It hangs off `lib.rs`, which owns neither file
 but is the only module above both.
 
 ## Accessibility

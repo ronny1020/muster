@@ -124,6 +124,56 @@ resolved relative to that file — so moving the stylesheet breaks it. The dev s
 the production build resolve their scan root differently, and without it the dev
 build silently emits no custom utilities.
 
+**Output is recorded before it is sent, and every bound on it is load-bearing.**
+The reader thread writes to the journal before `Channel::send`, because a
+frontend that has gone away is exactly when the record is the only copy left.
+The file is the pty stream verbatim, so it holds whatever the agent printed —
+which is why recording is a setting, why one session is capped at 4 MB with the
+older half dropped rather than rotated, why a sweep expires records on startup,
+and why `file_stem` refuses any tab id that is not a bare name. Retention lives
+in the frontend because it is a user setting and settings are in
+`localStorage`; the cap lives in Rust because only the writer can enforce it.
+Loosen any one of those and the feature becomes an unbounded, permanent copy of
+everything every agent ever printed.
+
+**An oversized paste is caught in two places, because macOS has no third.**
+`Cmd+V` is a native menu accelerator, so `attachCustomKeyEventHandler` never
+sees it and `clipboardIntent` returns `null` on macOS by design — the DOM
+`paste` listener is the only route there. `Ctrl+Shift+V` goes through the key
+handler on Windows and Linux, and every other paste gesture on those platforms
+(`Ctrl+V`, right-click, middle-click) reaches the DOM listener too, which is
+registered on every platform. Both funnel into one `deliverPaste`, and the DOM
+listener claims the event **only** when the text is going to become a file:
+taking an ordinary paste would override bracketed-paste handling xterm already
+has right.
+
+The call that matters there is **`stopPropagation`, not `preventDefault`**.
+xterm registers its own paste listener on both its textarea and its element —
+both descendants of the host this listener sits on — and that handler never
+consults `defaultPrevented`: it reads the clipboard and sends it to the pty
+itself. With `preventDefault` alone an oversized paste is delivered twice, once
+as the giant keystroke run the feature exists to prevent, and nothing fails
+loudly. Stopping propagation in the capture phase is what keeps the event from
+reaching it at all. The path is delivered through `dropPaths`, never formatted
+here — the quoting is the session's shell's, and a WSL session needs the
+translation `--cd` does at launch.
+
+**Two tabs in one working tree are not a collision.** `collisionsByTab` groups
+tabs by `--git-common-dir`, so every worktree of a repository is compared — that
+is the arrangement parallel agents run in, and two worktrees have separate
+indexes. But tabs sharing a `root` are one tree, so they share every changed
+file by definition; warning about that lights the chip permanently and teaches
+everyone to ignore it. The `root` check is what keeps the warning worth reading,
+and the test named "a third tab in a shared tree does not hide a real collision"
+(`collisions.test.ts`, not a Rust test) pins that it suppresses the pair
+without suppressing the real overlap.
+
+The detector is mounted once, above the panes, for the reason every deck-wide
+thing is: a hook called inside `Pane` runs in every mounted tab, and each copy
+would poll every _other_ tab's directory. It also polls at a multiple of the
+user's git interval, because "another tab is editing this" changes on the scale
+of an agent finishing an edit rather than of a keystroke.
+
 **`Channel` payloads must be owned.** PTY output goes over
 `Channel<InvokeResponseBody>` and sends `InvokeResponseBody::Raw(...)`. A
 borrowed `&[u8]` cannot outlive the command, and the reader thread needs it to.
@@ -142,6 +192,37 @@ trade than telling them to run `brew reinstall --cask` by hand.
 
 This is invisible from a developer machine, where the tap is already present and
 trusted. Test from a wiped one — see "Verifying an install" in CONTRIBUTING.md.
+
+**Window state is saved on `RunEvent::Exit` too, and for the same reason.**
+`tauri-plugin-window-state` saves from its own window hooks, which `Cmd+Q`
+never reaches — so the most common quit gesture on macOS would restore the
+window to wherever it was two quits ago, silently. `save_window_state` is
+called beside `end_all` for that reason. The flags are explicit rather than
+`all()`: `DECORATIONS` would let a saved state fight
+`tauri.windows.conf.json`, which turns the frame off on purpose, and `VISIBLE`
+could restore a hidden window, which on a single-window app leaves no way to
+get it back.
+
+**A reload is the one browser shortcut this app cannot survive.** `Ctrl+R` or
+`F5` reaching WebView2 reloads the page, which remounts every pane and discards
+all of xterm's scrollback — while the PTYs carry on in Rust, so the sessions
+live and the record of them does not. `tauri-plugin-prevent-default` swallows
+it. The flag set is curated rather than `Flags::debug()`, and two exclusions are
+load-bearing: `FOCUS_MOVE` is `Shift+Tab`, so blocking it breaks backward
+keyboard navigation and the Level AA bar below; `CONTEXT_MENU` is the right
+click the file tree's menu is built on, which is also what makes that menu
+answer the Menu key and `Shift+F10`. `FIND` _is_ swallowed on purpose — the app
+answers that key with its own scrollback search and the webview's find bar must
+not get there first. `config_tests.rs` pins all four.
+
+**`single-instance` is registered first, and it has to be.** The plugin's own
+docs require it, and the cost here is higher than in most apps: a second
+instance would restore the same tab list, spawn its own PTYs for every one of
+them, and record into and sweep the same per-directory journal folders as the
+first. Its callback also carries the second launch's `argv`, which is how
+`muster ~/proj` reaches an app that is already open — and that only ever opens
+a **pre-filled launcher**, never a spawned session, because the gesture asked
+for a place to work rather than for an agent to be running in it.
 
 **Cleanup runs on `RunEvent::Exit`, not on a window event.** `Cmd+Q` and the
 app menu's Quit reach tao as `terminate:`, which emits only `LoopDestroyed` — so
@@ -543,8 +624,24 @@ These are the seams for common asks:
   pinned by `src/entities/agent/model/agents.test.ts` and written out in `README.md` and
   `package.json`'s keywords. CONTRIBUTING.md's "Adding an agent" lists every
   rule the tests enforce and every file that follows.
+- **A session record** is `src-tauri/src/journal.rs` and the
+  `src/features/journal` slice. Two files per session: the pty stream, and a
+  `.meta` sidecar naming the agent and the agent's own conversation id. The
+  sidecar is what makes a record actionable — our file is keyed on the _tab_,
+  which outlives any one session, so only the id the CLI published can reopen
+  a conversation. `resumeArgs` builds the argv from the agent's existing
+  `resume` mode rather than a second table.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.
+- **A new font choice** is one name in `CANDIDATES` in
+  `src/shared/lib/fonts.ts`, and it appears only on machines that have it.
+  Neither webview can enumerate installed fonts — Chromium's
+  `queryLocalFonts` needs a permission prompt and WKWebView lacks it entirely —
+  so the list is a filter over known families, measured by laying out a probe
+  string against a family that cannot exist. Two consequences worth keeping:
+  a family nobody thought to list stays invisible however installed it is, and
+  every stack must still end in `monospace`, because a stored choice outlives
+  the machine it was made on and a proportional fallback misaligns the grid.
 - **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
   "Adding an icon" has where the path data comes from. A new file-type icon is
   one more line in `src/shared/ui/fileicon.ts`, and its test asserts every

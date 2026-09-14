@@ -169,3 +169,15 @@ export const themeFor = (id: string): TerminalTheme =>
 /** Id and display name for each theme, for a picker. */
 export const themeChoices = () =>
   Object.entries(THEMES).map(([id, theme]) => ({ id, name: theme.name }))
+
+/** Fully transparent, so a background image shows through the grid. */
+const CLEAR = '#00000000'
+
+/**
+ * The palette to hand xterm: the chosen theme, with its background dropped when
+ * an image sits behind the grid.
+ */
+export function paletteFor(themeId: string, hasBackground: boolean) {
+  const { name: _name, ...colours } = themeFor(themeId)
+  return hasBackground ? { ...colours, background: CLEAR } : colours
+}

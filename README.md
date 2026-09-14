@@ -177,6 +177,10 @@ Along the bottom of each tab:
 - **`+3 ~5 ?2 !1`** — staged, modified, untracked and conflicted files, as one
   button. Click it for the review drawer's Changes view, which is where those
   files are. A clean tree just says `clean`, and goes nowhere.
+- **`src/auth.ts also in …`** — a file another tab is changing at the same time.
+  See "When two tabs touch one file".
+- **The Earlier sessions button** — conversations recorded in this directory,
+  with a way back into one. See "Earlier sessions".
 - **Open in …** — opens the current directory in your editor. It finds whichever
   of VS Code (including Insiders), Cursor, Antigravity IDE, Windsurf, Zed,
   Sublime Text, the JetBrains IDEs, VSCodium, Neovim or Vim you have, and
@@ -347,6 +351,68 @@ far above the fold is still findable.
 Agents print hundreds of lines and the interesting error is always the one that
 has scrolled away.
 
+## 📋 Pasting something large
+
+Paste a 2,000-line log or a long diff into a session and it arrives as 2,000
+lines of keystrokes for the agent's own editor to reflow — which is why the
+agent CLIs collapse a big paste to a placeholder you cannot open afterwards.
+Muster writes it to a file instead and types the path, so the agent reads it
+with a file tool and it is still there later. Anything under 5,000 characters
+pastes exactly as before.
+
+The files sit beside the session records and expire with them — not in the
+system temp directory, which the OS can clear before the agent reads the path,
+and not in your repository, where they would show up as changes the agent did
+not make.
+
+## ⚠️ When two tabs touch one file
+
+Run two agents on one repository — two worktrees, two branches — and the first
+you hear of them editing the same file is usually a merge conflict, after both
+have already produced diffs that cannot both apply. Muster owns every tab, so it
+can see it happening: the status bar names the file and which other tab has it.
+
+Tabs in the _same_ directory are left alone. They are one working tree, so they
+share every file by definition, and a warning that is always on is one nobody
+reads.
+
+## 📼 Earlier sessions
+
+A terminal's scrollback dies with the window, and the agent CLIs keep their
+conversations behind their own pickers — so "what was I doing in this folder
+yesterday" means leaving the tab to go and look. Muster records each session as
+it runs, so the **Earlier sessions** button in the status bar lists what has
+happened in this directory: which agent, how long ago it last printed, and how
+much it said. One row per run, including runs of the tab you are in.
+
+Where the agent published an id for the conversation, the row offers **Resume
+in this tab** — it ends whatever is running there and reopens that conversation
+in place, using the agent's own resume flag. Claude Code publishes one; the
+others do not, and their rows say so rather than offering a button that would
+quietly start something new.
+
+The button is there whenever a directory is: while a session runs, and on a
+restored or just-ended tab before the next one starts.
+
+The records are verbatim, so they hold whatever the agent printed — including
+anything secret that reached the screen, and anything running as you can read
+them. Recording is a setting, each session is capped at 4 MB with the tail
+kept, and records are deleted after the retention period you set. Nothing is
+ever sent anywhere, and nothing currently displays a record's contents — the
+list is built from each file's size and age.
+
+## 🪟 One window, where you left it
+
+Muster remembers its size, position and whether it was maximised, so a restart
+reopens the window you were using rather than the default one.
+
+Launching it twice focuses the window you already have instead of opening a
+second copy — which matters because two copies would restore the same tabs,
+start their own sessions for all of them, and record over each other. And
+`muster ~/some/project` from a shell, with the app already open, opens a tab
+ready to start in that directory. It is left ready rather than started: asking
+for a folder is not asking for an agent to be running in it.
+
 ## 🔔 Notifications
 
 Agents ring the terminal bell when they finish a turn and hand control back, so
@@ -363,11 +429,14 @@ with the exit code when they failed. All of it is adjustable, including off.
 
 Press the settings shortcut or click the gear at the right of the status bar.
 Settings open as a tab, and changes take effect immediately — including in
-terminals that are already running.
+terminals that are already running. The one exception is **Record what sessions
+print**: it is read when a session starts, so switching it off stops the next
+session rather than the ones already going.
 
 - **New tabs** — which agent and directory to start on.
-- **Terminal** — theme, font, size, line height, text width, scrollback,
-  blinking cursor. The review panel's diffs and files are drawn in the same
+- **Terminal** — theme, font (known monospace families, filtered to the ones
+  this machine actually has),
+  size, line height, text width, scrollback, blinking cursor. The review panel's diffs and files are drawn in the same
   type, so a column of code reads exactly like the output beside it.
 - **Background** — an image behind the terminal, with a brightness slider and a
   preview that shows sample output over it, since brightness is only ever
@@ -376,6 +445,8 @@ terminals that are already running.
 - **Notifications** — whether to notify, whether to stay quiet on the tab you
   are watching, whether to play a sound.
 - **Git** — how often to re-read status, how many commits history loads.
+- **Session records** — whether to record what sessions print, and how long to
+  keep those records.
 - **Data** — clear remembered directories, or restore every default.
 
 On Windows with WSL installed, **New tabs** also chooses between Windows and a
@@ -455,7 +526,13 @@ scroll up in that tab, its own output says why.
 ## 🔒 Your data
 
 Settings, remembered directories and the widths you drag the panels to are
-stored by the app; there is no config file to edit yet. Everything the review
+stored by the app; there is no config file to edit yet. Three things more are kept on disk, all expiring after the retention period in
+Settings → Session records: a verbatim recording of what every session printed,
+a small file beside each recording naming the agent and conversation, and a copy
+of every oversized paste. The recording is **on by default** and has a switch in
+that same place; the paste copies have no switch — they are written whenever a
+paste is large enough to become a file. See "Earlier sessions" above for what a
+recording holds. Everything the review
 drawer and the file column read is your own disk. A file's _contents_ are read
 when you open it, and the review drawer reads new files — the ones git has not
 seen — to count the lines they would add, for the first few hundred of them.
