@@ -1,6 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import type { Backend } from './lib/platform'
 
@@ -329,3 +330,21 @@ export const listDirectory = (path: string) =>
  */
 export const dropPaths = (paths: string[], backend: Backend) =>
   invoke<string>('drop_paths', { paths, backend })
+
+/**
+ * The window's own controls, for the caption buttons drawn where the OS draws
+ * none.
+ *
+ * `async` is load-bearing: unlike `invoke`, `getCurrentWindow()` is synchronous
+ * and reads a global only Tauri supplies, so a plain arrow would throw at the
+ * call site instead of rejecting — and thrown from an effect that unmounts the
+ * app rather than degrading it. Resolving per call keeps the same throw out of
+ * import time, where nothing could catch it.
+ */
+export const minimizeWindow = async () => getCurrentWindow().minimize()
+export const toggleMaximizeWindow = async () =>
+  getCurrentWindow().toggleMaximize()
+export const closeWindow = async () => getCurrentWindow().close()
+export const isWindowMaximized = async () => getCurrentWindow().isMaximized()
+export const onWindowResized = async (run: () => void) =>
+  getCurrentWindow().onResized(run)

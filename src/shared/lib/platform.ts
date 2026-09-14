@@ -31,6 +31,9 @@ export const OS: PlatformInfo['os'] = /Macintosh|Mac OS X/.test(
 
 export const IS_MAC = OS === 'macos'
 
+/** Where the native frame is off, so the tab strip has to draw the caption. */
+export const IS_WINDOWS = OS === 'windows'
+
 /** Where this platform's file manager shows a directory. */
 export const REVEAL_LABEL = {
   macos: 'Reveal in Finder',

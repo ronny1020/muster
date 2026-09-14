@@ -80,8 +80,9 @@ cd src-tauri && cargo test --lib  # git parsing, shell quoting, cwd reading, WSL
                                   # editor argv, diff and numstat parsing, drop
                                   # text and what it refuses, literal pathspecs,
                                   # symlink refusal, verbatim patches, ignored
-                                  # entries, and the pty killer
-cd src-tauri && cargo clippy --all-targets
+                                  # entries, the two window configs agreeing,
+                                  # and the pty killer
+cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
 
 Every command line the backend builds — POSIX, PowerShell and WSL alike — is
@@ -145,6 +146,9 @@ building.
 | Text a dropped file types                          | `src-tauri/src/platform.rs`                   |
 | Drawer widths, dragged and remembered              | `src/shared/lib/usePanelWidth.ts`             |
 | Which paths are images                             | `src/shared/lib/imagepaths.ts`                |
+| Windows' caption buttons                           | `src/shared/ui/WindowControls.tsx`            |
+| The frame Windows does not draw                    | `src-tauri/tauri.windows.conf.json`           |
+| The scrollbar the webview would draw itself        | `src/app/index.css`                           |
 
 The shape to keep in mind: `src-tauri` owns processes and the filesystem and
 knows nothing about tabs; `src/entities/tab/model/deck.ts` owns what a tab _is_
@@ -247,6 +251,12 @@ bun remove @material-symbols/svg-400
 The package is not a dependency — it exists only for this. Keep the key the
 icon's own Material name, because that is what makes the next one findable.
 
+`window_minimize`, `window_maximize` and `window_restore` break that rule and
+say so: they are drawn here rather than traced, for the reason AGENTS.md's icon
+invariant gives. Drawing one is the exception, not an option — reach for it only
+when the upstream glyph is wrong for the job, keep Material's 960 grid and match
+the 80-unit stroke those three use, and say in a comment that it is not traced.
+
 ## Where the tests live
 
 Beside what they test, in both languages. TypeScript pairs `x.ts` with
@@ -263,6 +273,11 @@ A sibling `mod` would only see the public surface, and widening visibility just
 to test something is the wrong trade. The point of the split is that
 `workspace.rs` and `pty.rs` were nearly half test code, which made the parts
 that ship hard to read.
+
+`config_tests.rs` is the odd one out: it tests two JSON files rather than any
+Rust, holding `tauri.windows.conf.json` to what AGENTS.md's "Windows has no
+frame" invariant requires of it. It hangs off `lib.rs`, which owns neither file
+but is the only module above both.
 
 ## Accessibility
 
@@ -331,7 +346,7 @@ tell you the install worked when it did not. Confirm the running binary with
 
 ## Pull requests
 
-- Run the six checks.
+- Run `bun run check:all`.
 - One commit is fine and preferred; there is no changelog to update.
 - Write the subject as a
   [Conventional Commit](https://www.conventionalcommits.org) —

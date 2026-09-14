@@ -7,6 +7,7 @@ import {
 } from '../../../shared/ipc'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
 import type { ReviewView } from '../../../entities/tab/model/deck'
+import { Icon } from '../../../shared/ui/Icon'
 
 const CHIP_TONE: Record<GitChip['tone'], string> = {
   neutral: 'text-faint',
@@ -18,6 +19,7 @@ const CHIP_TONE: Record<GitChip['tone'], string> = {
 }
 
 export interface StatusBarProps {
+  /** Empty on a tab with no session — the bar then carries settings alone. */
   cwd: string
   workspace: Workspace | null
   /** Whether `cwd` follows the session or is still its launch directory. */
@@ -39,6 +41,7 @@ export interface StatusBarProps {
    */
   onShowReview(view: ReviewView): void
   onShowHistory(): void
+  onOpenSettings(): void
 }
 
 /** Footer with the tab's working directory and the git state of that tree. */
@@ -56,6 +59,7 @@ export function StatusBar({
   onToggleHistory,
   onShowReview,
   onShowHistory,
+  onOpenSettings,
 }: StatusBarProps) {
   const git = workspace?.git
   const groups = git?.repo ? chipGroups(git) : null
@@ -63,32 +67,34 @@ export function StatusBar({
   const showing = (view: ReviewView) => reviewOpen && reviewView === view
 
   return (
-    <footer className="flex h-6 flex-none items-center gap-2.5 border-t border-line bg-chrome px-2.5 text-[11px] whitespace-nowrap text-muted">
+    <footer className="flex h-6 flex-none items-center gap-2.5 overflow-hidden border-t border-line bg-chrome px-2.5 text-[11px] whitespace-nowrap text-muted">
       {/* The directory names the tree, so it opens the tree. */}
-      <button
-        type="button"
-        aria-expanded={showing('files')}
-        title={
-          tracked
-            ? `Browse this directory · ${SHORTCUTS.toggleReview}`
-            : `Browse this directory · ${SHORTCUTS.toggleReview} — the one this session started in`
-        }
-        onClick={() => onShowReview('files')}
-        className={`max-w-[46%] overflow-hidden text-ellipsis hover:text-ink hover:underline ${
-          showing('files') ? 'text-ink' : ''
-        } ${workspace && !workspace.exists ? 'text-danger' : ''}`}
-      >
-        {workspace?.path ?? cwd}
-      </button>
+      {cwd && (
+        <button
+          type="button"
+          aria-expanded={showing('files')}
+          title={
+            tracked
+              ? `Browse this directory · ${SHORTCUTS.toggleReview}`
+              : `Browse this directory · ${SHORTCUTS.toggleReview} — the one this session started in`
+          }
+          onClick={() => onShowReview('files')}
+          className={`max-w-[46%] overflow-hidden text-ellipsis hover:text-ink hover:underline ${
+            showing('files') ? 'text-ink' : ''
+          } ${workspace && !workspace.exists ? 'text-danger' : ''}`}
+        >
+          {workspace?.path ?? cwd}
+        </button>
+      )}
 
       {git?.repo && (
-        <span className="flex items-center gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
           <button
             type="button"
             aria-expanded={historyOpen}
             onClick={onToggleHistory}
             title={`Show history${git.upstream ? ` · tracking ${git.upstream}` : ' · no upstream'}`}
-            className={`flex items-center gap-1 rounded px-1 hover:bg-surface-hover hover:text-ink ${
+            className={`flex min-w-0 items-center gap-1 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink ${
               historyOpen ? 'bg-surface text-ink' : 'text-[#a8b4c8]'
             }`}
           >
@@ -126,13 +132,27 @@ export function StatusBar({
           type="button"
           title={`Open this directory in ${editor.name}`}
           onClick={() => void openInEditor(cwd, editor.command).catch(report)}
-          className="rounded px-1 hover:bg-surface-hover hover:text-ink"
+          className="min-w-0 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink"
         >
           Open in {editor.name}
         </button>
       )}
       {state && <span className={exited ? 'text-danger' : ''}>{state}</span>}
-      <span className="text-faint">{agentName}</span>
+      {agentName && <span className="text-faint">{agentName}</span>}
+
+      {/* Settings ends the bar rather than the tab strip — see `TabStrip`. It
+          keeps the bar's padding rather than the corner, which an undecorated
+          window claims for its resize grip, and `flex-none` with the `min-w-0`
+          above is what keeps it on screen — see AGENTS.md's far-right rule. */}
+      <button
+        type="button"
+        title={`Settings (${SHORTCUTS.openSettings})`}
+        aria-label="Settings"
+        onClick={onOpenSettings}
+        className="flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink"
+      >
+        <Icon name="settings" className="h-3.5 w-3.5" />
+      </button>
     </footer>
   )
 }

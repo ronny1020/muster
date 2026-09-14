@@ -109,8 +109,8 @@ function TextBody({ path, wrap, revision, opener }: TextBodyProps) {
         <div key={index} className="flex">
           <Gutter line={index + 1} opener={opener} />
           <code
-            className={`flex-1 pr-1.5 ${
-              wrap ? 'break-words whitespace-pre-wrap' : 'whitespace-pre'
+            className={`min-w-0 flex-1 pr-1.5 ${
+              wrap ? 'wrap-anywhere whitespace-pre-wrap' : 'whitespace-pre'
             }`}
           >
             <TokenLine tokens={tokens?.[index]} text={text} />
@@ -177,7 +177,7 @@ function ImageBody({ path }: { path: string }) {
   )
 }
 
-const GUTTER = 'flex-none pr-2 text-right tabular-nums select-none'
+const GUTTER = 'flex-none self-start pr-2 text-right tabular-nums select-none'
 
 /** In characters, so the column follows the font rather than a pixel guess. */
 const GUTTER_WIDTH = { minWidth: '4ch' }

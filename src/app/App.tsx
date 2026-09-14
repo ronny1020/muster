@@ -147,7 +147,6 @@ export function App() {
         onSelect={(id) => dispatch({ type: 'activate', id })}
         onClose={close}
         onOpen={open}
-        onOpenSettings={openSettings}
       />
       <main className="relative min-h-0 flex-1">
         {deck.tabs.map((tab) => (
@@ -156,6 +155,7 @@ export function App() {
             tab={tab}
             active={tab.id === deck.activeId}
             onLaunch={launch(tab.id)}
+            onOpenSettings={openSettings}
             dispatch={dispatch}
           />
         ))}

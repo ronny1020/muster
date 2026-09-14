@@ -157,6 +157,13 @@ Quoted values stay in one piece.
 scrollback is lost, so leaving an agent to work and coming back later is the
 normal way to use this.
 
+**The tabs are the title bar.** On macOS they sit inside the system one, behind
+the traffic lights; on Windows there is no system title bar at all, and the
+minimize, maximize and close buttons are drawn at the right of the strip — so
+you get one row of window chrome rather than two stacked. Dragging the strip
+moves the window and double-clicking it maximizes, as a title bar should.
+Linux keeps its desktop's own decorations above the strip.
+
 ## 📊 The status bar
 
 Along the bottom of each tab:
@@ -177,6 +184,9 @@ Along the bottom of each tab:
   without its shell command — VS Code's `code` only exists if you ran "Shell
   Command: Install 'code' command" from its palette, and most people never
   have.
+- **The gear**, at the far right, opens Settings. The bar is there on every
+  tab, including one that has not launched anything yet, so the gear always is
+  too.
 
 Each of those names what it shows rather than toggling something: clicking the
 directory while the tree is already up closes the drawer, but clicking the
@@ -271,7 +281,9 @@ syntax highlighted by [Shiki](https://shiki.style), `context` widening the
 unchanged lines around each hunk to twelve or to the whole file. It is set in
 the terminal's own font, size, line height and text width — whatever you chose
 for reading code is what a diff is worth reading in. A file from the
-tree opens as itself. Either way **Wrap** controls long lines, **clicking a line
+tree opens as itself. Either way **Wrap** controls long lines — and breaks
+inside a word when a word is the long line, so a minified bundle or a base64
+blob folds into the column instead of scrolling it sideways — **clicking a line
 number opens that line in your editor**, and Escape closes the column.
 
 Images show as pictures — on a checkered ground, so a transparent logo is not
@@ -349,7 +361,7 @@ with the exit code when they failed. All of it is adjustable, including off.
 
 ## ⚙️ Settings
 
-Press the settings shortcut or click the gear at the right of the tab strip.
+Press the settings shortcut or click the gear at the right of the status bar.
 Settings open as a tab, and changes take effect immediately — including in
 terminals that are already running.
 

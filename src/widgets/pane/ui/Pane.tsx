@@ -61,6 +61,8 @@ export interface PaneProps {
   tab: Tab
   active: boolean
   onLaunch(request: LaunchRequest): void
+  /** Passed rather than dispatched here: a new tab's id is minted in `App`. */
+  onOpenSettings(): void
   dispatch(action: DeckAction): void
 }
 
@@ -68,7 +70,13 @@ export interface PaneProps {
  * One tab's content. All panes stay mounted — hidden ones keep their PTY and
  * scrollback alive so switching tabs is instant.
  */
-export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
+export function Pane({
+  tab,
+  active,
+  onLaunch,
+  onOpenSettings,
+  dispatch,
+}: PaneProps) {
   const { settings } = useSettings()
   const session = tabSession(tab)
   const { cwd, workspace, tracked, refresh } = useWorkspace(
@@ -368,26 +376,34 @@ export function Pane({ tab, active, onLaunch, dispatch }: PaneProps) {
               onRelaunch={() => dispatch({ type: 'relaunch', id: tab.id })}
             />
           )}
-          <StatusBar
-            cwd={cwd}
-            workspace={workspace}
-            tracked={tracked}
-            agentName={session.agentName}
-            state={tab.exitCode === null ? '' : tab.detail}
-            exited={tab.exitCode !== null && tab.exitCode !== 0}
-            historyOpen={historyOpen}
-            reviewOpen={reviewOpen}
-            editor={editor}
-            reviewView={tab.reviewView}
-            onToggleHistory={toggleHistory}
-            onShowReview={showReview}
-            // Toggles, like the branch button beside it and the review
-            // groups: every control in the bar names a surface, and a second
-            // click on the one you are looking at closes it.
-            onShowHistory={toggleHistory}
-          />
         </>
       )}
+
+      {/* Outside the session block so the launcher and the settings tab keep a
+          footer, which is where settings is reached. The tree props are gated
+          on `session` rather than on their own values: `useWorkspace` keeps its
+          last snapshot when its session goes away — Relaunch does exactly that —
+          so the start screen would otherwise draw the dead session's directory
+          and branch as controls opening drawers this block no longer renders. */}
+      <StatusBar
+        cwd={session ? cwd : ''}
+        workspace={session ? workspace : null}
+        tracked={session ? tracked : false}
+        agentName={session?.agentName ?? ''}
+        state={tab.exitCode === null ? '' : tab.detail}
+        exited={tab.exitCode !== null && tab.exitCode !== 0}
+        historyOpen={historyOpen}
+        reviewOpen={reviewOpen}
+        editor={session ? editor : null}
+        reviewView={tab.reviewView}
+        onToggleHistory={toggleHistory}
+        onShowReview={showReview}
+        // Toggles, like the branch button beside it and the review
+        // groups: every control in the bar names a surface, and a second
+        // click on the one you are looking at closes it.
+        onShowHistory={toggleHistory}
+        onOpenSettings={onOpenSettings}
+      />
     </section>
   )
 }

@@ -1,4 +1,5 @@
-# The five checks CONTRIBUTING.md asks contributors to run.
+# The seven checks CONTRIBUTING.md asks contributors to run, as `check:all`
+# runs them. Keep the two in step: a step added here belongs in that script.
 name: ci
 
 on:

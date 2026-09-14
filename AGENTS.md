@@ -12,8 +12,8 @@ Practical setup, commands and file map: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Before you claim a change works
 
-All six. The first three run from the repo root, the last three from
-`src-tauri`:
+All seven, in this order — the first three from the repo root, the last four
+from `src-tauri`:
 
 ```bash
 bun run check
@@ -21,8 +21,8 @@ bun run format:check
 bun test
 (cd src-tauri && cargo fmt --check)
 (cd src-tauri && cargo check --all-targets)
+(cd src-tauri && cargo clippy --all-targets -- -D warnings)
 (cd src-tauri && cargo test --lib)
-(cd src-tauri && cargo clippy --all-targets)
 ```
 
 `bun run check:all` runs all seven in that order, and `bun run check:rust` the
@@ -59,8 +59,8 @@ behaviour. Update them **in the same change**, not afterwards:
 - **SECURITY.md** — what the app promises about the three parties it does not
   trust. A new command that reads the filesystem, or a new renderer fed by file
   contents, changes what that document has to claim.
-- **docs/RELEASE.md** — the release runbook, including how many checks there
-  are to run.
+- **docs/RELEASE.md** — the release runbook. It names `bun run check:all`
+  rather than a count, and should stay that way: the count is what went stale.
 - **CONTRIBUTING.md** — the checks, the "where things are" table, the
   procedures. A new module or command gets a row.
 - **README.md** — anything a user can see. A new setting, a new shortcut, a new
@@ -278,7 +278,55 @@ a list that does not exist yet.
 holds the `d` attributes traced from Material Symbols. A webfont would need a
 `font-src` the policy does not grant, and an icon font that fails to load
 renders tofu boxes rather than nothing — a failure that looks like a bug in the
-app.
+app. The three `window_*` glyphs are the exception to the tracing: Material's
+window icons are several times the weight of the hairline squares a titlebar
+draws, so those are drawn to the same 960 grid rather than copied.
+
+**Windows has no frame, and the two window configs must say the same things.**
+`tauri.windows.conf.json` sets `decorations: false` — the tab strip is that
+platform's titlebar, and a native caption above it reads as two stacked title
+bars. macOS keeps its frame, because `titleBarStyle: Overlay` already puts the
+tabs inside it and dropping the frame there would lose window snapping and
+tiling; Linux keeps its desktop's decorations, because a GTK window with none
+loses whatever its window manager alone provides, and nobody has run this on
+enough of them to know what that costs.
+
+Windows pays a smaller version of that cost knowingly: tao still hit-tests the
+borders itself, so edge-drag resizing and `Win`+arrow snapping survive, but the
+Windows 11 Snap Layouts flyout does not — it needs `WM_NCHITTEST` to answer
+`HTMAXBUTTON`, which no `<button>` can. One row of chrome instead of two was
+judged the better trade.
+
+The trap is the merge. Tauri merges the platform file over `tauri.conf.json`
+with JSON Merge Patch (RFC 7396) semantics, which **replaces** an array rather
+than merging its entries — and `app.windows` is an array. So the Windows file cannot say only
+"turn the frame off": it restates the whole window, and a size or a background
+changed in one file would silently apply on two platforms out of three.
+`config_tests.rs` fails when the two disagree.
+
+**Nothing may put a control at the strip's far right.** That corner is close —
+drawn by Windows before this app took the frame off, and by `WindowControls`
+after — so a gear or a menu one pixel from it is a misclick that quits the app.
+Settings sits at the end of the status bar instead, which is also why that bar
+renders on every tab: a launcher tab has no session, and would otherwise have no
+way to reach settings but the shortcut. The bar's own last item needs
+`flex-none`, and something before it needs `min-w-0`, or a long branch name
+pushes settings past the edge at the window's 620px floor.
+
+**A styled scrollbar uses the `-webkit-` pseudo-elements, never
+`scrollbar-color`.** WKWebView
+draws macOS's overlay scrollbar and WebView2 draws Windows' opaque grey one in
+the system's colours, so the same panel looked like two different applications.
+`scrollbar-color` would not fix that but widen it: WebView2 honours it and then
+ignores every `::-webkit-scrollbar` rule, while WKWebView's support for it is
+newer than the macOS versions this app runs on. The cost, accepted knowingly,
+is that a styled scrollbar is no longer an overlay on macOS — it takes its 10px
+from the layout, as it always did on Windows.
+
+Those two engines are the ones this was reasoned about and looked at. Linux's
+WebKitGTK is a third, and nobody has checked it: if it ignores the rules, that
+host keeps its GTK scrollbar and nothing breaks — so do not write that all
+three match until someone has run it there.
 
 **A panel's width is a preference, not a fixed size.** All three right-hand
 panels — the review drawer, the file column, the history drawer — are dragged by

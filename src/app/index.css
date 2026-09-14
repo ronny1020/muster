@@ -36,6 +36,34 @@
   button {
     @apply cursor-default;
   }
+
+  /* One scrollbar whatever the webview draws by default. `-webkit-`
+     pseudo-elements only, never `scrollbar-color` — see AGENTS.md's
+     "Scrollbars are styled" invariant for why, and for what it costs. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    /* `faint` rather than `line`, which is a border colour: a thumb is a
+       control, so 1.4.11 wants 3:1 against the page and `line` gives 1.33:1.
+       The engines' own scrollbars met their platform's bar; ours has to too. */
+    @apply rounded-full bg-faint;
+    /* Drawn inside a transparent border, which is the only way to inset a
+       scrollbar thumb: there is no padding on these pseudo-elements. */
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted;
+  }
 }
 
 /**

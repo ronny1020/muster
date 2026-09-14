@@ -16,8 +16,9 @@ tag:
 | `src-tauri/Cargo.toml`      | `version` under `[package]` |
 
 Then `bun install` and `(cd src-tauri && cargo build)` so both lockfiles pick up
-the new number, and run the six checks from
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+the new number, and run `bun run check:all` — every check
+[CONTRIBUTING.md](../CONTRIBUTING.md) lists, so the count here cannot go stale
+again.
 
 ## 2. Tag and push
 

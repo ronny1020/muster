@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 import { type Tab, tabSession } from '../../../entities/tab/model/deck'
-import { IS_MAC } from '../../../shared/lib/platform'
+import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
+import { WindowControls } from '../../../shared/ui/WindowControls'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
 
 export interface TabStripProps {
@@ -10,7 +11,6 @@ export interface TabStripProps {
   onSelect(id: string): void
   onClose(id: string): void
   onOpen(): void
-  onOpenSettings(): void
 }
 
 /** Chrome-style strip: tabs sit in the titlebar, active tab merges with the pane. */
@@ -20,7 +20,6 @@ export function TabStrip({
   onSelect,
   onClose,
   onOpen,
-  onOpenSettings,
 }: TabStripProps) {
   const strip = useRef<HTMLDivElement>(null)
 
@@ -38,7 +37,9 @@ export function TabStrip({
       className="flex h-[38px] flex-none items-end gap-0.5 border-b border-line bg-chrome px-2"
     >
       {/* Clears the macOS traffic lights, which sit inside the titlebar.
-          Windows and Linux keep their own decorations above this strip. */}
+          Windows has no frame at all — this strip is its titlebar, so the
+          caption buttons are drawn at the other end. Linux keeps its own
+          decorations above the strip. */}
       {IS_MAC && (
         <div data-tauri-drag-region className="h-full w-[72px] flex-none" />
       )}
@@ -71,15 +72,15 @@ export function TabStrip({
 
       <div data-tauri-drag-region className="h-full min-w-3 flex-1" />
 
-      <button
-        type="button"
-        title={`Settings (${SHORTCUTS.openSettings})`}
-        aria-label="Settings"
-        onClick={onOpenSettings}
-        className="mb-1 h-[26px] w-[26px] flex-none rounded-[7px] text-sm leading-none text-muted hover:bg-surface-hover hover:text-ink"
-      >
-        ⚙
-      </button>
+      {/* Negative margin because a caption button reaches the window's corner:
+          a gap there is dead space where Windows users throw the pointer to
+          close. Settings lives in the status bar for the same reason — see
+          `StatusBar`. */}
+      {IS_WINDOWS && (
+        <div className="-mr-2 h-full self-stretch">
+          <WindowControls />
+        </div>
+      )}
     </header>
   )
 }

@@ -9,6 +9,10 @@ mod review;
 mod sessions;
 mod workspace;
 
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_tests;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

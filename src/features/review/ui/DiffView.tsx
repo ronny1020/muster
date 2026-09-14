@@ -264,8 +264,8 @@ function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
         {MARKER[row.kind]}
       </span>
       <code
-        className={`flex-1 pr-1.5 ${
-          wrap ? 'break-words whitespace-pre-wrap' : 'whitespace-pre'
+        className={`min-w-0 flex-1 pr-1.5 ${
+          wrap ? 'wrap-anywhere whitespace-pre-wrap' : 'whitespace-pre'
         }`}
       >
         <TokenLine tokens={tokens} text={row.text} />
@@ -274,7 +274,7 @@ function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
   )
 }
 
-const GUTTER = 'flex-none pr-1.5 text-right tabular-nums select-none'
+const GUTTER = 'flex-none self-start pr-1.5 text-right tabular-nums select-none'
 
 /** In characters, so the column follows the font rather than a pixel guess. */
 const GUTTER_WIDTH = { minWidth: '4ch' }

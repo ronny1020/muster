@@ -6,6 +6,10 @@
  * `font-src` the content security policy does not grant, and an icon that
  * silently falls back to a tofu box is worse than no icon at all.
  *
+ * The three `window_*` caption glyphs are the exception and are drawn here, for
+ * the reason AGENTS.md's icon invariant gives. Do not go looking for them
+ * upstream.
+ *
  * All of them share Material's own `0 -960 960 960` viewBox, which is why
  * `Icon` can draw any of them without a per-icon size.
  */
@@ -45,6 +49,13 @@ export const ICONS = {
     'M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm270-250H180v190h270v-190Zm60 0v190h270v-190H510Zm-60-60v-190H180v190h270Zm60 0h270v-190H510v190ZM180-680h600v-100H180v100Z',
   terminal:
     'M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z',
+  // The three caption glyphs are drawn rather than traced — see the note above.
+  // They share a 520-unit width, and maximize and restore a 520-unit box, so
+  // the mark does not change size when maximizing swaps one for the other.
+  window_maximize: 'M220-740h520v520H220Zm80 80v360h360v-360Z',
+  window_minimize: 'M220-520h520v80H220Z',
+  window_restore:
+    'M340-740h400v400h-80v-320H340ZM220-620h400v400H220Zm80 80v240h240v-240Z',
   wrap_text:
     'M579-130 440-270l139-141 42 43-67 69h141q35 0 60-25.5t25-60.5q0-35-25-60t-60-25H160v-60h535q60 0 102.5 42.5T840-385q0 60-42.5 103T695-239H554l67 66-42 43ZM160-239v-60h200v60H160Zm0-461v-60h640v60H160Z',
 } as const
