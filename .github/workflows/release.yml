@@ -1,6 +1,18 @@
-# Builds the installers users download. Tagging is the whole release process:
-# push `v0.2.0` and every platform's artifact lands on a draft release for
-# review before publishing.
+# Builds the installers users download, in two modes.
+#
+# **Tag** (`push: tags: v*`) is the real release: every platform's artifact
+# lands on a draft release for review before publishing.
+#
+# **Manual** (`workflow_dispatch`) is either: it rehearses by default, and
+# releases when `release` is ticked and a `tag` given — for re-cutting a
+# release whose run failed halfway, without deleting and re-pushing the tag.
+#
+# **Anything else** is a rehearsal. The same four bundles are built and
+# attached to the run as artifacts, but no release is created — `tagName` is
+# what makes `tauri-action` publish, so leaving it empty is the whole switch.
+# Pull requests get this automatically, because a bundle that fails to build
+# is otherwise only discovered after a tag is pushed, which then has to be
+# deleted and re-cut.
 #
 # Nothing here is code-signed. macOS is ad-hoc signed (`signingIdentity: "-"`
 # in tauri.conf.json) and Windows is unsigned, so no Apple or Windows signing
@@ -10,11 +22,24 @@ name: release
 on:
   push:
     tags: ['v*']
+  pull_request:
+    # Prose cannot break a bundle, and four platforms is not a cheap run.
+    paths-ignore: ['**/*.md', 'docs/**', 'dist-packaging/**']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Cut a draft release rather than only building
+        type: boolean
+        default: false
+      tag:
+        description: The tag to release as, e.g. v0.2.2 (required when releasing)
+        required: false
 
-# Two tags pushed together would otherwise race for the same draft release.
+# Two tags pushed together would otherwise race for the same draft release, so
+# a release run is never cancelled. A superseded rehearsal is just waste.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ !(github.event_name == 'push' || inputs.release) }}
 
 jobs:
   bundle:
@@ -39,7 +64,18 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
+      - name: Refuse to release without a tag
+        if: inputs.release && !inputs.tag
+        run: |
+          echo "::error::Ticking 'release' needs a 'tag' — without one the run" \
+            "would build and silently create nothing."
+          exit 1
+
       - uses: actions/checkout@v4
+        with:
+          # The tag when releasing one, so the build matches what the tag says
+          # rather than whatever branch the run was dispatched from.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install the webview toolkit (Linux only)
         # Matched on the prefix, so bumping the runner cannot silently skip
@@ -73,11 +109,14 @@ jobs:
       # `beforeBuildCommand` typechecks and bundles the frontend, so this is the
       # only build step.
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Muster ${{ github.ref_name }}
+          # Empty on a rehearsal, which is what keeps it from creating a
+          # release. Every other input below is then ignored.
+          tagName: ${{ github.event_name == 'push' && github.ref_name || inputs.tag || '' }}
+          releaseName: ${{ (github.event_name == 'push' && format('Muster {0}', github.ref_name)) || (inputs.tag && format('Muster {0}', inputs.tag)) || '' }}
           releaseBody: |
             Download the installer for your platform below.
 
@@ -88,3 +127,16 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Attach the bundles to the run (rehearsal only)
+        if: github.event_name != 'push' && !inputs.release
+        uses: actions/upload-artifact@v4
+        with:
+          # Indexed rather than named after `matrix.args`, which holds spaces.
+          name: bundle-${{ matrix.platform }}-${{ strategy.job-index }}
+          # Both layouts: a `--target` build nests under the triple.
+          path: |
+            src-tauri/target/release/bundle/**
+            src-tauri/target/*/release/bundle/**
+          if-no-files-found: error
+          retention-days: 7
