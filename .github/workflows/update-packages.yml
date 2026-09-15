@@ -1,30 +1,31 @@
 # Pushes a published release's version and checksums into the Homebrew tap and
 # the Scoop bucket, so a release is one action rather than three.
 #
-# DISABLED. `if: false` on the job below keeps it from running. Before enabling:
+# Runs on every published release, and can be run by hand for a release whose
+# event has already passed:
 #
-#   1. Create both repositories:
-#        ronny1020/homebrew-tap   with Casks/muster.rb   (copy from
-#                                 dist-packaging/homebrew/Casks/muster.rb)
-#        ronny1020/scoop-bucket   with bucket/muster.json (copy from
-#                                 dist-packaging/scoop/bucket/muster.json)
-#   2. Create a fine-grained PAT with Contents: read and write on those two
-#      repositories only, and save it as the PACKAGES_PAT secret here.
-#   3. Delete the `if: false` line from the job.
+#   gh workflow run update-packages.yml -f version=v0.2.1
 #
-# Until then, update the two manifests by hand — docs/RELEASE.md says how.
+# It needs one secret: PACKAGES_PAT, a fine-grained token with Contents: read
+# and write on ronny1020/homebrew-tap and ronny1020/scoop-bucket only. Without
+# it the checkout steps fail, and the two manifests have to be edited by hand —
+# docs/RELEASE.md says how.
 name: update-packages
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release tag to publish manifests for, e.g. v0.2.1
+        required: true
 
 jobs:
   publish-manifests:
-    if: false # remove to enable; see the header
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ github.event.release.tag_name }}
+      VERSION: ${{ github.event.release.tag_name || inputs.version }}
     steps:
       - name: Download the release assets
         run: |

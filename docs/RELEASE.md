@@ -65,9 +65,18 @@ Templates for both live in [`dist-packaging/`](../dist-packaging), and are the
 right thing to copy when first creating those repositories.
 
 **Automatically** — `.github/workflows/update-packages.yml` does exactly the
-above on `release: published`. It ships disabled; its header comment lists the
-three steps to turn it on (create the two repositories, add a `PACKAGES_PAT`
-secret, delete the `if: false`).
+above on `release: published`, which makes step 4 nothing at all. It needs one
+secret, `PACKAGES_PAT`: a fine-grained token with Contents read and write on
+`ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. Without it the
+checkout steps fail and the manifests stay where they are.
+
+For a release whose event has already passed — one published before the secret
+existed, or a run that failed — trigger it by hand:
+
+```bash
+gh workflow run update-packages.yml -f version=v0.2.1
+gh run watch "$(gh run list --workflow=update-packages.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
 
 ## Signing, later
 
