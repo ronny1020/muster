@@ -34,21 +34,36 @@ pub struct Workspace {
     pub path: String,
     pub label: String,
     pub exists: bool,
+    /// Exists and cannot be read. Always `false` unless the caller asked to
+    /// probe — see `workspace_info`.
+    pub denied: bool,
     pub git: GitStatus,
     /// True when the directory holds uncommitted work.
     pub dirty: bool,
 }
 
+/// Facts about a directory, and — only when asked — whether it can be read.
+///
+/// `probe` defaults to **off**, and that default is the whole point. Answering
+/// it costs a `read_dir`, which is enumeration rather than a stat, and on
+/// macOS enumeration is what raises the TCC prompt. The only caller that needs
+/// the answer is the launcher, on a click; the status footer polls this same
+/// command on a timer, in every mounted pane, against the directory the
+/// *agent* has since `cd`-ed into. Probing there would put a permission
+/// dialog on screen at a moment the user did nothing to cause — and a "Don't
+/// Allow" is remembered, which is the unrecoverable state `blocked.ts` exists
+/// to explain. Same reasoning, and the same shape, as `git_changes(counts)`.
 #[tauri::command]
-pub async fn workspace_info(cwd: String) -> Workspace {
+pub async fn workspace_info(cwd: String, probe: Option<bool>) -> Workspace {
+    let probe = probe.unwrap_or(false);
     let fallback = cwd.clone();
-    tauri::async_runtime::spawn_blocking(move || read_workspace(cwd))
+    tauri::async_runtime::spawn_blocking(move || read_workspace(cwd, probe))
         .await
-        .unwrap_or_else(|_| read_workspace(fallback))
+        .unwrap_or_else(|_| read_workspace(fallback, probe))
 }
 
 /// Two `git` subprocesses, so it belongs on the blocking pool.
-fn read_workspace(cwd: String) -> Workspace {
+fn read_workspace(cwd: String, probe: bool) -> Workspace {
     let cwd = expand_home(&cwd);
     let path = Path::new(&cwd);
     let git = git_status(path);
@@ -60,6 +75,7 @@ fn read_workspace(cwd: String) -> Workspace {
         dirty: git.dirty(),
         git,
         exists: path.is_dir(),
+        denied: probe && is_unreadable(path),
         path: collapse_home(&cwd),
     }
 }
@@ -282,6 +298,31 @@ fn kind_of(path: &str) -> &'static str {
         Ok(_) => "file",
         Err(_) => "missing",
     }
+}
+
+/// Whether a directory exists but this app is not allowed to read it.
+///
+/// Worth telling apart from "missing", because the two need opposite things
+/// from the user and the wrong one is actively misleading: the launcher offers
+/// to *create* a missing directory, and offering that for a directory already
+/// there — full of their work — reads as the app having lost it.
+///
+/// `read_dir` rather than `metadata`, and asked of every directory rather than
+/// only of one that failed `is_dir`: `metadata` merely stats, which needs
+/// nothing but search permission on the parent, so an unreadable directory
+/// still answers `is_dir() == true` and only enumeration is refused. Gating
+/// this on `!is_dir()` skips exactly the case it exists for. Enumerating is
+/// also what a shell, `git` and an agent each do in a working directory, and
+/// on macOS it is what the permission covers.
+pub fn is_unreadable(path: &Path) -> bool {
+    match std::fs::read_dir(path) {
+        Ok(_) => false,
+        Err(error) => is_denied(&error),
+    }
+}
+
+fn is_denied(error: &std::io::Error) -> bool {
+    matches!(error.kind(), std::io::ErrorKind::PermissionDenied)
 }
 
 #[tauri::command(async)]

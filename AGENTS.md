@@ -193,6 +193,52 @@ trade than telling them to run `brew reinstall --cask` by hand.
 This is invisible from a developer machine, where the tap is already present and
 trusted. Test from a wiped one — see "Verifying an install" in CONTRIBUTING.md.
 
+**The shell is not in any agent picker.** A stored `defaultAgentId`, a restored
+tab and a resumed session can all still carry `shell`, so `agentById` must keep
+resolving it while everything that _displays_ a selection goes through
+`pickableAgent` — see its doc comment for why. Both the launcher and the
+settings pane read `defaultAgentId`, so both need it; guarding only one leaves a
+`<select>` on a value no option carries, which renders blank.
+
+**Closing the last window exits the app; minimizing it does not.**
+`tauri-runtime-wry` emits `ExitRequested` when the window list empties and
+nothing here calls `prevent_exit`, so there is no window-less state to rebuild
+from — anything written against one is unreachable. `RunEvent::Reopen` is still
+worth handling, because a _minimized_ window keeps the app alive and the Dock
+click arrives there with `has_visible_windows: false`, which suppresses
+AppKit's own deminiaturize. `unminimize` is the call that restores it: tao's
+`set_focus` is a no-op while miniaturized and `show` will not restore one
+either, so without it the click does nothing at all. The `show` and
+`set_focus` beside it are not redundant — a window can also be hidden or
+merely unfocused, and they are what answers the click then.
+
+**A blocked directory is not a missing one, and `metadata` cannot tell you
+which.** It only stats, so an unreadable directory still answers
+`is_dir() == true` — the first version of this gated the check on `!is_dir()`
+and therefore skipped every case it existed for, silently. `is_unreadable` asks
+`read_dir`, and `Workspace::denied` is the answer — but only when the caller
+asks for it, for the reason the `workspace_info` invariant below gives. The
+launcher's response to _missing_ is to offer to create it, which for a
+directory full of someone's work reads as the app having lost it.
+
+**Blocked warns; it does not refuse.** `read_dir` answers "cannot be listed",
+which is not the same question as "cannot be worked in": a directory with
+search permission and no read permission (`0311`) takes a `cd` and opens every
+path already known, so refusing there blocks a session that would have run.
+The warning has to survive the click that raised it, though — `onLaunch`
+replaces the whole launcher with the terminal — so the first click on a
+blocked directory only warns, and the second goes through. The `warned` ref
+records which directories have been warned about, kept apart from the
+`blocked` notice so that dismissing the notice leaves the acknowledgement
+standing, and a ref rather than state so a second click sees the first one's
+answer without waiting for a render.
+
+The hint that follows is per-host because the hosts differ in kind, not wording
+— `blocked.ts` holds the three, and its tests pin that only macOS blames a
+prompt. That macOS case is not hypothetical here: the app is ad-hoc signed, so
+TCC keys its grants to the binary's hash and every release is new code with no
+permissions.
+
 **Window state is saved on `RunEvent::Exit` too, and for the same reason.**
 `tauri-plugin-window-state` saves from its own window hooks, which `Cmd+Q`
 never reaches — so the most common quit gesture on macOS would restore the
@@ -249,10 +295,56 @@ respawn the PTY. So it is always on, and whether the grid is actually
 transparent is decided by the theme's alpha. For the same reason every theme's
 `background` must stay an opaque `#rrggbb`: the pane paints it behind the grid.
 
-**Dispose the WebGL addon before the terminal.** The renderer has to release its
-GPU context first, and `onContextLoss` must null the handle so cleanup cannot
-double-dispose. A lost context with no fallback stops the terminal painting
-entirely rather than dropping back to the DOM renderer.
+**Dispose every addon before the terminal, and hold a handle to each so you
+can.** `Terminal.dispose()` tears `_core` down and only _then_ lets its addon
+manager dispose whatever is still registered — so an addon that reaches through
+`_terminal._core` dereferences what was just freed and throws
+`undefined is not an object`. The image addon reads `_renderService`,
+`_inputHandler`, `screenElement` and more; fit reads the render service. This
+cost a crash on closing a tab, because the image addon was loaded anonymously
+(`term.loadAddon(new ImageAddon({…}))`) and there was no handle to dispose
+first.
+
+TypeScript cannot see any of it: `dispose()` is typed `(): void` on both sides,
+so the whole failure is invisible until a tab closes. Disposing an addon
+explicitly is safe — `loadAddon` replaces `addon.dispose` with a wrapper that
+early-returns when already disposed and splices the addon out of the manager's
+list, so nothing is disposed twice.
+
+The renderer keeps its place at the front of that queue: WebGL has to release
+its GPU context first, and `onContextLoss` must null the handle so cleanup
+cannot double-dispose. A lost context with no fallback stops the terminal
+painting entirely rather than dropping back to the DOM renderer.
+
+**`@xterm/addon-webgl` is pinned exactly, and nothing else pins the rest.** The same reach through `terminal._core` is why: the addons ship on their
+own version lines, none declares a peer range tight enough to catch a
+mismatch, and a field renamed upstream reads as `undefined` rather than
+failing. `@xterm/addon-webgl@0.19.0` is built for xterm 6, where `Disposable`
+holds a `_store`; beside xterm 5.5.0, which still calls it `_disposables`, the
+only line that reads it is the addon's own dispose callback — so every
+terminal rendered correctly and closing a tab threw, on every close, whatever
+the dispose order. So the pin is `0.18.0` — the build that pairs with xterm
+5.5.0 — exactly rather than ranged;
+the other four addons and the core keep `^` ranges, and `test/xterm.test.ts`
+is what stands behind them — it fails when an addon names a core field this
+xterm does not have. Read its doc comment before trusting a green run: the
+bundles are minified, so it sees only the literal `_core.x` spelling and not
+the aliased reads that most of them compile to.
+
+**`workspace_info` does not add a `read_dir` unless it is asked to.** `denied`
+costs one, and `read_dir` is enumeration where `metadata` is a stat — on macOS
+enumeration is what raises the TCC prompt. This does not make the command
+prompt-free: `git_status` runs `git status` on the same path either way, and
+that walks the tree in a child process. What the gate removes is the app's
+_own_ enumeration, on a timer, of a directory nobody asked about. The status footer polls this
+same command on a timer _and_ on window focus, in every mounted pane, against
+the directory the **agent** has since `cd`-ed into; the only caller that reads
+`denied` is the launcher, on a click. So `probe` defaults to off, and the
+first version of this — which computed it unconditionally — put a permission
+dialog on screen at a moment the user did nothing to cause, where a reflexive
+"Don't Allow" is remembered and unrecoverable. That is the state `blocked.ts`
+exists to explain, so causing it would have been the feature defeating itself.
+Same shape and the same reason as `git_changes(counts)`.
 
 **Nothing an agent names may reach a session as keystrokes.** `drop_text`
 refuses any path carrying a control byte, because quoting is not the only
@@ -549,6 +641,34 @@ the signal to move it into a `model` segment first.
   agent's `accent` — so prefer promoting a repeated hex to a token over adding
   another one-off.
 
+## TypeScript
+
+`strict` is on, with `noUnusedLocals`, `noUnusedParameters` and
+`noFallthroughCasesInSwitch` (`tsconfig.json`). There is no ESLint, so the
+compiler is the only automatic check there is — which makes every escape from
+it worth more scrutiny than usual.
+
+- **Never `any`, and never `@ts-ignore`.** `unknown` plus a narrowing check is
+  the replacement; `normalizeSettings` and `normalizeDeck` are what that looks
+  like on data from `localStorage`.
+- **A type assertion (`as T`) is a claim the compiler cannot check**, so it
+  needs a reason the way an invariant does. `JSON.parse(x) as T` is the common
+  wrong one: it asserts a shape over a value that crossed a serialisation
+  boundary. If the value never had to leave the program, keep it in a ref and
+  serialise only for the comparison — see `useCollisions`.
+- **Prefer narrowing to `!`.** A non-null assertion inside JSX usually means a
+  conditional could have been a component taking the narrowed type; that is
+  what `SettingsButton` is for. `!` is still right where a ref is filled by
+  construction before anything reads it.
+- **Type what crosses the IPC boundary once, in `shared/ipc.ts`**, and let
+  every caller infer. A `#[derive(serde::Serialize)]` struct and its interface
+  are two halves of one wire format that nothing checks against each other, so
+  a field added on one side must be added on the other in the same change.
+- **None of this catches a lie told by a dependency's types.** `dispose(): void`
+  is honestly typed and still throws — see the addon invariant above. Where a
+  library's contract is about _order_ rather than shape, only a comment and a
+  test protect it.
+
 ## Accessibility
 
 Level AA is the bar, and two habits carry most of it:
@@ -633,24 +753,46 @@ These are the seams for common asks:
   `resume` mode rather than a second table.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.
-- **A new font choice** is one name in `CANDIDATES` in
-  `src/shared/lib/fonts.ts`, and it appears only on machines that have it.
-  Neither webview can enumerate installed fonts — Chromium's
-  `queryLocalFonts` needs a permission prompt and WKWebView lacks it entirely —
-  so the list is a filter over known families, measured by laying out a probe
-  string in `<candidate>, <generic>` and again in `<generic>` alone. Both
-  stacks must end in the **same** generic, and that is the whole trick: an
-  absent family falls through to it and the widths match. Ending the
-  candidate's stack in a family that cannot exist instead — which this did at
-  first — makes an absent candidate fall back to the engine's own last-resort
-  face, which is _proportional_, so every missing family measures differently
-  from a monospace baseline and is reported installed while the platform's real
-  monospace is reported missing. Two generics are tried because a family whose
-  metrics equal one of them is otherwise indistinguishable from an absent one.
-  Two consequences worth keeping: a family nobody thought to list stays
-  invisible however installed it is, and every stack must still end in
-  `monospace`, because a stored choice outlives the machine it was made on and
-  a proportional fallback misaligns the grid.
+- **A new font choice** is not a code change any more, and the monospace
+  decision belongs in Rust. `src-tauri/src/fonts.rs` enumerates the installed
+  families and marks each one, because neither half can be answered in the
+  webview: Chromium's `queryLocalFonts` needs a permission prompt, WKWebView
+  lacks it entirely, and the monospace flag lives in the font file.
+
+  Measuring it instead — laying a narrow glyph run against a wide one on a
+  canvas — is the thing that does not work, and it fails in a way that looks
+  like success. A family with no Latin glyphs substitutes for _both_ probes,
+  so the two come back equal and it reads as fixed-pitch: that put 60 of this
+  machine's 248 families in the picker where 11 belong, and it answers
+  differently per engine, so a green run in one proves nothing about the other.
+  Warp solves the same problem natively and this follows its shape — enumerate,
+  drop what cannot draw Latin, take the font's own flag — down to OR-ing the
+  flag across a family, because Osaka ships both fixed and variable faces and
+  the picker has to give one answer.
+
+  The cost is seconds, since the flag means loading one face per family, so it
+  is computed once — on the click that opens the picker, and never before. An
+  earlier version warmed it at launch, which made a system-wide read of
+  attacker-plantable bytes (`~/Library/Fonts` and `~/.local/share/fonts` are
+  writable by anything running as the user) happen with no user action, in the
+  process that owns every PTY, through CoreText, DirectWrite or FreeType. That
+  is what the "automatic reads are bounded" invariant above exists to prevent,
+  and `panic = "abort"` meant a malformed font could not degrade to the
+  fallback list — it took the app down before any window existed, symbols
+  stripped. `CANDIDATES` in
+  `src/shared/lib/fonts.ts` survives only as the fallback for a host whose font
+  source is unreachable — adding a name there changes nothing on a machine
+  where enumeration works, so never reach for it to fix "my font is missing".
+  That was the old design's failure: the list held `Operator Mono`, the machine
+  had `Operator Mono Lig`, and an exact-name filter called it absent.
+
+  Two things still hold. Every stack must end in `monospace`, proportional
+  choices included, because a stored choice outlives the machine it was made on
+  and a missing family must degrade to a fixed pitch rather than to the
+  engine's proportional default. And the picker hides non-monospaced families
+  behind the `allSystemFonts` setting rather than dropping them — Warp answers
+  that with the same checkbox.
+
 - **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
   "Adding an icon" has where the path data comes from. A new file-type icon is
   one more line in `src/shared/ui/fileicon.ts`, and its test asserts every

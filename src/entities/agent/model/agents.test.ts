@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test'
 
-import { AGENTS, agentById, SHELL_AGENT, resumeArgs } from './agents'
+import {
+  AGENTS,
+  agentById,
+  SHELL_AGENT,
+  resumeArgs,
+  pickableAgent,
+} from './agents'
 
 test('every agent id resolves to itself', () => {
   for (const agent of AGENTS) expect(agentById(agent.id)).toBe(agent)
@@ -127,4 +133,23 @@ test('an agent with no resume mode offers no way to reopen one', () => {
 test('no session id means nothing to resume', () => {
   const claude = AGENTS.find((agent) => agent.id === 'claude')!
   expect(resumeArgs(claude, '')).toBeNull()
+})
+
+test('the shell is never what a picker opens on', () => {
+  // It has its own control, so a stored or restored `shell` must not leave the
+  // agent picker showing a selection the list does not contain.
+  expect(pickableAgent('shell').id).not.toBe('shell')
+  expect(AGENTS.some((agent) => agent.id === pickableAgent('shell').id)).toBe(
+    true,
+  )
+})
+
+test('a real agent id still opens on itself', () => {
+  expect(pickableAgent('codex').id).toBe('codex')
+})
+
+test('an unknown id falls back to a listed agent rather than nothing', () => {
+  expect(AGENTS.some((agent) => agent.id === pickableAgent('gone').id)).toBe(
+    true,
+  )
 })

@@ -22,6 +22,8 @@ export interface Workspace {
   path: string
   label: string
   exists: boolean
+  /** Exists and cannot be read; one is created, the other unblocked. */
+  denied: boolean
   dirty: boolean
   git: GitStatus
 }
@@ -102,9 +104,30 @@ export const attachSweep = (days: number) =>
 /** Live working directory of the session's foreground process, if readable. */
 export const ptyCwd = (id: string) => invoke<string | null>('pty_cwd', { id })
 
-export const workspaceInfo = (cwd: string) =>
-  invoke<Workspace>('workspace_info', { cwd })
+/**
+ * Facts about a directory. `probe` additionally answers `denied`, and costs a
+ * `read_dir` — which is what raises the macOS permission prompt, so only a
+ * caller acting on a click may ask for it. See the command's own doc comment.
+ */
+export const workspaceInfo = (cwd: string, probe = false) =>
+  invoke<Workspace>('workspace_info', { cwd, probe })
 export const homeDir = () => invoke<string>('home_dir')
+
+/** An installed family, and whether it can hold a terminal grid. */
+export interface FontFamily {
+  name: string
+  monospaced: boolean
+}
+
+/**
+ * Every font family installed on this machine, sorted, each marked.
+ *
+ * Both halves come from Rust: neither webview can enumerate fonts, and the
+ * monospace flag lives in the font file rather than in anything the webview
+ * can measure. Answers an empty list when the platform's font source is
+ * unreachable, which is what the built-in fallback list is for.
+ */
+export const fontFamilies = () => invoke<FontFamily[]>('font_families')
 
 export type PathKind = 'directory' | 'file' | 'missing'
 

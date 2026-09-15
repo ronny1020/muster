@@ -28,7 +28,11 @@ jobs:
             args: --target aarch64-apple-darwin
           - platform: macos-latest # Intel
             args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
+          # 24.04 or newer: `freetype-sys` vendors and statically compiles
+          # its own FreeType unless pkg-config reports libtool 24.3.18+, and
+          # 22.04 is below that. A vendored copy cannot be patched by distro
+          # updates, and `fonts.rs` parses every installed font file.
+          - platform: ubuntu-24.04
             args: ''
           - platform: windows-latest
             args: ''

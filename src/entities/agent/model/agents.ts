@@ -229,6 +229,22 @@ export function agentById(id: string): Agent {
 }
 
 /**
+ * The agent a picker may show as selected.
+ *
+ * The shell is deliberately absent from every picker: it has no program, takes
+ * no flags and has a single mode, so listing it beside the agents makes the
+ * list say untrue things about it — it gets its own control instead. But a
+ * stored `defaultAgentId`, a restored tab and a resumed session can all still
+ * carry `shell`, so `agentById` keeps resolving it while anything that has to
+ * *display* a selection comes through here and never shows what it does not
+ * offer.
+ */
+export function pickableAgent(id: string): Agent {
+  const agent = agentById(id)
+  return agent.id === SHELL_AGENT.id ? AGENTS[0] : agent
+}
+
+/**
  * What reopens one named conversation in this agent's own spelling, or `null`
  * when it has no resume mode.
  *

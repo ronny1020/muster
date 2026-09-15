@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -49,12 +50,16 @@ export function CollisionProvider({
   children,
 }: CollisionProviderProps) {
   const [index, setIndex] = useState<Map<string, Collision[]>>(new Map())
-  // Serialised rather than passed as an array: a fresh array every render
-  // would restart the interval whenever anything else in the app changes.
+  // Serialised for the dependency only: a fresh array every render would
+  // restart the interval whenever anything else in the app changes. The array
+  // itself comes through a ref, so nothing has to parse it back and assert a
+  // shape the compiler cannot check.
   const watching = JSON.stringify(tabs)
+  const latest = useRef(tabs)
+  latest.current = tabs
 
   useEffect(() => {
-    const watched = JSON.parse(watching) as FleetTab[]
+    const watched = latest.current
     // One tab cannot collide with itself, and asking git anyway would cost a
     // subprocess every few seconds for an answer that is always empty.
     if (watched.length < 2) {

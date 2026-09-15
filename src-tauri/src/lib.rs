@@ -3,6 +3,7 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 mod attach;
 mod editor;
+mod fonts;
 mod image;
 mod journal;
 mod link;
@@ -74,6 +75,7 @@ pub fn run() {
             pty::pty_kill,
             pty::pty_cwd,
             workspace::workspace_info,
+            fonts::font_families,
             workspace::git_log,
             workspace::git_branches,
             workspace::git_checkout,
@@ -123,6 +125,15 @@ pub fn run() {
         // or `Destroyed`. This is the one place cleanup runs on every quit
         // gesture rather than only on the close button.
         .run(|handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                reopen_window(handle);
+                return;
+            }
             if matches!(event, tauri::RunEvent::Exit) {
                 handle.state::<pty::Sessions>().end_all();
                 // Saved here rather than left to the plugin's own window
@@ -239,6 +250,29 @@ fn without_dot_segments(path: std::path::PathBuf) -> std::path::PathBuf {
         }
     }
     out
+}
+
+/// Brings the main window back when the Dock icon is clicked.
+///
+/// The case that reaches here is a **minimized** window: closing the last one
+/// exits the app, so there is no window-less state to rebuild from.
+///
+/// `unminimize` is the call that does the restoring, and the order matters:
+/// tao's `set_focus` is a documented no-op while a window is miniaturized and
+/// `show` is `makeKeyAndOrderFront`, which does not deminiaturize either, so
+/// either one alone leaves the Dock click doing nothing — macOS has already
+/// suppressed its own deminiaturize, the delegate having answered
+/// `has_visible_windows: false`. The two that follow are not redundant: a
+/// window can also be hidden or merely unfocused, and they are what answers
+/// the click then.
+#[cfg(target_os = "macos")]
+fn reopen_window(handle: &tauri::AppHandle) {
+    let Some(window) = handle.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
 }
 
 /// Asks before closing over running sessions, then closes for real.

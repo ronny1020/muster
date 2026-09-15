@@ -117,21 +117,22 @@ toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent** — type to filter the list, since
-there are ten of them — and how the session should open.
+there are nine of them — and how the session should open. The
+shell is not among them; its button sits between the agent list and the
+modes.
 Pick a mode and the terminal takes over the tab.
 
-| Agent       | Command          | New session | Continue          | Pick from past       |
-| ----------- | ---------------- | ----------- | ----------------- | -------------------- |
-| Claude Code | `claude`         | ✓           | most recent       | ✓                    |
-| Codex       | `codex`          | ✓           | most recent       | ✓                    |
-| OpenCode    | `opencode`       | ✓           | most recent       | —                    |
-| Gemini CLI  | `gemini`         | ✓           | —                 | —                    |
-| Goose       | `goose session`  | ✓           | most recent       | —                    |
-| OpenClaw    | `openclaw`       | ✓           | —                 | —                    |
-| Hermes      | `hermes`         | ✓           | —                 | —                    |
-| Aider       | `aider`          | ✓           | —                 | —                    |
-| Antigravity | `agy`            | ✓           | last conversation | `/resume` in its TUI |
-| Shell       | your login shell | ✓           | —                 | —                    |
+| Agent       | Command         | New session | Continue          | Pick from past       |
+| ----------- | --------------- | ----------- | ----------------- | -------------------- |
+| Claude Code | `claude`        | ✓           | most recent       | ✓                    |
+| Codex       | `codex`         | ✓           | most recent       | ✓                    |
+| OpenCode    | `opencode`      | ✓           | most recent       | —                    |
+| Gemini CLI  | `gemini`        | ✓           | —                 | —                    |
+| Goose       | `goose session` | ✓           | most recent       | —                    |
+| OpenClaw    | `openclaw`      | ✓           | —                 | —                    |
+| Hermes      | `hermes`        | ✓           | —                 | —                    |
+| Aider       | `aider`         | ✓           | —                 | —                    |
+| Antigravity | `agy`           | ✓           | last conversation | `/resume` in its TUI |
 
 Two of those command names are shared with unrelated tools — `goose` is also a
 database-migration CLI, and `hermes` is React Native's JavaScript engine. Muster
@@ -143,8 +144,9 @@ forgot: a flag a CLI does not have makes it refuse to start, so the mode is
 left off rather than guessed at. Several of them keep their own history anyway
 and pick it up when you start them.
 
-**Shell** is there for the times you want a plain terminal in the same window —
-it takes no flags, because there is no program to pass them to.
+**Open a plain shell instead** is there for the times you want a plain
+terminal in the same window — it takes no flags, because there is no program to
+pass them to, which is why it sits beside the agent list rather than in it.
 
 **A directory that does not exist yet** is not an error: Muster offers to create
 it, parents included, and starts the session there once you confirm. `~` means
@@ -413,6 +415,34 @@ start their own sessions for all of them, and record over each other. And
 ready to start in that directory. It is left ready rather than started: asking
 for a folder is not asking for an agent to be running in it.
 
+## 🐚 Just a shell
+
+The start screen lists the agents; below that list, and above the mode
+buttons, sits **Open a plain shell instead**, because the shell is not one of
+them — no flags, no modes, nothing to
+resume. Minimising the window on macOS and clicking the Dock icon brings it
+back; closing the window quits the app, as it always has.
+
+## 🚫 When a folder cannot be read
+
+Start a session in a folder the app is not allowed to list and it says so,
+rather than letting the shell fail with `brew`, `mise` and the agent all
+complaining separately about a directory that "does not exist". It warns and
+then gets out of the way: click the same button a second time and the session
+starts there regardless, because a folder you cannot list is not always a
+folder you cannot work in.
+
+On macOS this is the usual cause: `~/Documents`, `~/Desktop` and `~/Downloads`
+need your permission, and **the answer is remembered** — so if you dismiss the
+prompt with "Don't Allow", trying again cannot bring it back. Muster says that
+and offers a button straight to Privacy settings, where you switch it back on.
+Because the app is not signed with a Developer ID, macOS treats each new version
+as different software, so it asks again after an update.
+
+On Windows the folder is refused by its own permissions, or by Controlled folder
+access if it sits under Documents, Desktop or Pictures. On Linux it is file
+permissions, or a Flatpak or Snap sandbox.
+
 ## 🔔 Notifications
 
 Agents ring the terminal bell when they finish a turn and hand control back, so
@@ -434,10 +464,11 @@ print**: it is read when a session starts, so switching it off stops the next
 session rather than the ones already going.
 
 - **New tabs** — which agent and directory to start on.
-- **Terminal** — theme, font (known monospace families, filtered to the ones
-  this machine actually has),
-  size, line height, text width, scrollback, blinking cursor. The review panel's diffs and files are drawn in the same
-  type, so a column of code reads exactly like the output beside it.
+- **Terminal** — theme, font, size, line height, text width, scrollback,
+  blinking cursor. The font list is every family installed on the machine,
+  narrowed to the ones that can hold a column; **Show all system fonts**
+  widens it to the rest. The review panel's diffs and files are drawn in the
+  same type, so a column of code reads exactly like the output beside it.
 - **Background** — an image behind the terminal, with a brightness slider and a
   preview that shows sample output over it, since brightness is only ever
   judged against the text it sits behind.

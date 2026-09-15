@@ -2,9 +2,11 @@ import { expect, test } from 'bun:test'
 
 import {
   type MonoFont,
+  everyFont,
   fontChoices,
   fontName,
   installedFonts,
+  monospacedFonts,
   stackFor,
 } from './fonts'
 
@@ -80,9 +82,15 @@ test('every offered stack ends in monospace', () => {
   }
 })
 
-test('a family with a space in its name is quoted', () => {
+test('every family name is quoted, and quotes inside it escaped', () => {
+  // Always quoted, not only when the name holds a space. The names come out of
+  // font files now rather than a hardcoded list, and an unquoted `Foo"Bar` or a
+  // bare `A,B` broke the declaration or silently became two families.
   expect(stackFor('Courier New')).toBe('"Courier New", monospace')
-  expect(stackFor('Menlo')).toBe('Menlo, monospace')
+  expect(stackFor('Menlo')).toBe('"Menlo", monospace')
+  expect(stackFor('Foo"Bar')).toBe('"Foo\\"Bar", monospace')
+  expect(stackFor('A,B')).toBe('"A,B", monospace')
+  expect(stackFor('Back\\slash')).toBe('"Back\\\\slash", monospace')
 })
 
 test('a stored font that is no longer installed is kept and labelled', () => {
@@ -112,4 +120,66 @@ test('the system stack is named rather than shown as a raw value', () => {
   expect(fontName('monospace')).toBe('System default')
   expect(fontName('"Fira Code", monospace')).toBe('Fira Code')
   expect(fontName('')).toBe('System default')
+})
+
+const family = (name: string, monospaced: boolean) => ({ name, monospaced })
+
+test('only the families Rust marked monospaced are offered', () => {
+  // The flag is read, never re-derived. Deciding it here is what put 60 of
+  // this machine's 248 families in the picker: a face with no Latin glyphs
+  // substitutes for every probe and measures as fixed-pitch.
+  const found = monospacedFonts([
+    family('Menlo', true),
+    family('Helvetica', false),
+    family('PT Mono', true),
+    family('Al Bayan', false),
+  ]).map((font) => font.name)
+  expect(found).toEqual(['Menlo', 'PT Mono', 'System default'])
+})
+
+test('a family the built-in list never knew about is offered', () => {
+  // The defect this replaces: `CANDIDATES` held "Operator Mono", so a machine
+  // with "Operator Mono Lig" installed was told it had no such font.
+  const found = monospacedFonts([family('Operator Mono Lig', true)])
+  expect(found.map((font) => font.name)).toContain('Operator Mono Lig')
+})
+
+test('showing every font keeps the ones that cannot hold a grid', () => {
+  const names = everyFont([
+    family('Helvetica', false),
+    family('Menlo', true),
+    family('Zapfino', false),
+  ]).map((font) => font.name)
+  expect(names).toEqual(['Helvetica', 'Menlo', 'Zapfino', 'System default'])
+})
+
+test('every offered stack still ends in monospace, proportional ones included', () => {
+  // A stored choice outlives the machine it was made on, and a family that has
+  // gone missing must degrade to something fixed-width rather than to the
+  // engine's proportional default, which misaligns every column.
+  for (const font of everyFont([
+    family('Helvetica', false),
+    family('Zapfino', false),
+  ])) {
+    expect(font.stack.endsWith('monospace')).toBe(true)
+  }
+})
+
+test('an unreachable font source leaves the picker something to hold', () => {
+  // Rust answers an empty list rather than failing when the platform source
+  // cannot be reached; the caller falls back to the measured built-in list.
+  expect(monospacedFonts([]).map((font) => font.name)).toEqual([
+    'System default',
+  ])
+})
+
+test('a stack stored by an older build still matches the family it names', () => {
+  // Quoting changed, and a stored setting outlives the build that wrote it.
+  // `fontChoices` matches on the family name rather than the whole stack for
+  // exactly this reason, so an unquoted `Menlo, monospace` from before must
+  // still select Menlo rather than appear as "(not installed)".
+  const chosen = fontChoices('Menlo, monospace', [
+    { name: 'Menlo', stack: stackFor('Menlo') },
+  ])
+  expect(chosen.map((font) => font.name)).toEqual(['Menlo'])
 })

@@ -3,23 +3,31 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AGENTS,
   type Agent,
-  agentById,
+  pickableAgent,
   SHELL_AGENT,
 } from '../../../entities/agent/model/agents'
+import { openUrl } from '@tauri-apps/plugin-opener'
+
 import { Combobox } from '../../../shared/ui/Combobox'
 import type { LauncherStart } from '../../../entities/tab/model/deck'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
+import { type BlockedHint, blockedHint } from '../model/blocked'
 import { splitFlags } from '../model/flags'
 import {
   agentSessions,
   createDirectory,
   homeDir,
   pickDirectory,
+  report,
   workspaceInfo,
 } from '../../../shared/ipc'
 import { basename } from '../model/paths'
-import { type Backend, EXAMPLE_DIRECTORY } from '../../../shared/lib/platform'
+import {
+  type Backend,
+  EXAMPLE_DIRECTORY,
+  OS,
+} from '../../../shared/lib/platform'
 import {
   recentDirs,
   rememberDir,
@@ -34,8 +42,6 @@ export interface LaunchRequest {
   distro: string
 }
 
-const CHOICES = [...AGENTS, SHELL_AGENT]
-
 /**
  * Modes that reopen past work, keyed by the ids the registry uses. A mode with
  * no history to read cannot succeed, so it is offered only when some exists.
@@ -43,12 +49,35 @@ const CHOICES = [...AGENTS, SHELL_AGENT]
 const needsHistory = (modeId: string) =>
   modeId === 'continue' || modeId === 'resume'
 
+/** The button a host with a settings page gets, narrowed so nothing asserts. */
+function SettingsButton({
+  settings,
+}: {
+  settings: NonNullable<BlockedHint['settings']>
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void openUrl(settings.url).catch(report)}
+      className="h-7 flex-none rounded-lg border border-line bg-surface px-3 text-xs hover:bg-surface-hover"
+    >
+      {settings.label}
+    </button>
+  )
+}
+
 /** A directory the user asked for that is not there yet, and what to do next. */
 interface MissingDirectory {
   /** Tilde-collapsed, for showing back to the user. */
   path: string
   /** The launch mode that was clicked, replayed once the directory exists. */
   modeArgs: string[]
+  /**
+   * And which agent asked. "Open a plain shell instead" can reach this too, and
+   * defaulting to the picker's agent on the way back starts the wrong program —
+   * with the flags field applied, since the shell takes none.
+   */
+  as: Agent
 }
 
 /** Start screen of a fresh tab: pick agent, directory and how the session opens. */
@@ -71,7 +100,7 @@ export function Launcher({
   )
   const [flags, setFlags] = useState(start?.flags ?? '')
   const [agent, setAgent] = useState<Agent>(() =>
-    agentById(start?.agentId || settings.defaultAgentId),
+    pickableAgent(start?.agentId || settings.defaultAgentId),
   )
   const [backend, setBackend] = useState<Backend>(
     start?.backend ?? settings.defaultBackend,
@@ -79,6 +108,17 @@ export function Launcher({
   const [distro, setDistro] = useState(start?.distro ?? settings.defaultDistro)
   const [error, setError] = useState('')
   const [missing, setMissing] = useState<MissingDirectory | null>(null)
+  /** A directory that is there and unreadable, by path. */
+  const [blocked, setBlocked] = useState<string | null>(null)
+  /**
+   * Directories the user has already been warned about.
+   *
+   * Separate from `blocked`, which is only what is on screen, so Dismiss
+   * leaves the acknowledgement standing. A ref, because a second click has to
+   * see the first one's answer without waiting for a render.
+   */
+  const warned = useRef(new Set<string>())
+  const hint = blocked ? blockedHint(OS) : null
   // null = the agent's store is unreadable, so every mode stays offered.
   const [sessions, setSessions] = useState<number | null>(null)
 
@@ -114,28 +154,56 @@ export function Launcher({
     }
   }, [agent.id, cwd])
 
-  const launch = async (modeArgs: string[], override?: string) => {
+  /**
+   * `as` is how the shell starts without being in the picker: it is not one of
+   * the choices, so it never becomes the selected agent — it just launches.
+   */
+  const launch = async (
+    modeArgs: string[],
+    options: { directory?: string; as?: Agent } = {},
+  ) => {
+    const { directory: override, as = agent } = options
     const directory = (override ?? cwd).trim()
     if (!directory) {
       setError('Choose a directory first.')
       return
     }
-    const workspace = await workspaceInfo(directory).catch(() => null)
+    const workspace = await workspaceInfo(directory, true).catch(() => null)
     if (!workspace) {
       setError('Could not read that directory.')
       return
     }
+    // Warns once, then gets out of the way. The check is `read_dir`, so it
+    // answers "cannot be listed" — a directory with search permission and no
+    // read permission takes a `cd` and opens every path already known.
+    //
+    // Returns the first time so the warning survives the click that raised it:
+    // `onLaunch` replaces this surface with the terminal. The second click
+    // launches.
+    //
+    // Checked before the missing case: offering to create a directory that is
+    // already there reads as the app having lost it.
+    if (workspace.denied && !warned.current.has(workspace.path)) {
+      warned.current.add(workspace.path)
+      setBlocked(workspace.path)
+      setMissing(null)
+      setError('')
+      return
+    }
+    // Past the warning, so the notice comes down: only one of the two should
+    // ever be on screen.
+    setBlocked(null)
     if (!workspace.exists) {
       // Not an error yet: offer to create it, and remember which mode was
       // clicked so confirming launches straight into it.
-      setMissing({ path: workspace.path, modeArgs })
+      setMissing({ path: workspace.path, modeArgs, as })
       setError('')
       return
     }
     rememberDir(directory)
-    const extra = agent.acceptsFlags ? splitFlags(flags) : []
+    const extra = as.acceptsFlags ? splitFlags(flags) : []
     onLaunch({
-      agent,
+      agent: as,
       cwd: directory,
       args: [...modeArgs, ...extra],
       title: workspace.label,
@@ -156,7 +224,7 @@ export function Launcher({
       // be handed over directly — setting state would not reach it in time.
       const created = await createDirectory(cwd.trim())
       setCwd(created)
-      await launch(pending.modeArgs, created)
+      await launch(pending.modeArgs, { directory: created, as: pending.as })
     } catch (cause) {
       setError(String(cause))
     }
@@ -167,6 +235,11 @@ export function Launcher({
     if (picked) {
       setCwd(picked)
       setError('')
+      // The third path that moves `cwd`, and both notices name a directory:
+      // left up, they describe the folder the user has just navigated away
+      // from while the buttons beneath them act on the new one.
+      setMissing(null)
+      setBlocked(null)
     }
   }
 
@@ -189,7 +262,10 @@ export function Launcher({
                 value={cwd}
                 onChange={(value) => {
                   setCwd(value)
+                  // Both notices name a directory, so both are stale the
+                  // moment a different one is typed.
                   setMissing(null)
+                  setBlocked(null)
                 }}
                 onKeyDown={submitOnEnter}
                 placeholder={EXAMPLE_DIRECTORY}
@@ -216,6 +292,8 @@ export function Launcher({
                 onClick={() => {
                   setCwd(dir)
                   setError('')
+                  setMissing(null)
+                  setBlocked(null)
                 }}
                 className="h-[26px] rounded-lg border border-line bg-surface px-2.5 text-[11px] text-muted hover:bg-surface-hover hover:text-ink"
               >
@@ -229,13 +307,13 @@ export function Launcher({
           <Combobox
             label="Agent"
             placeholder="Type to filter…"
-            options={CHOICES.map((choice) => ({
+            options={AGENTS.map((choice) => ({
               id: choice.id,
               label: choice.name,
               accent: choice.accent,
             }))}
             selected={agent.id}
-            onSelect={(id) => setAgent(agentById(id))}
+            onSelect={(id) => setAgent(pickableAgent(id))}
           />
         </Field>
 
@@ -283,6 +361,18 @@ export function Launcher({
           </Field>
         )}
 
+        <div className="mt-0.5 flex justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              void launch(SHELL_AGENT.modes[0].args, { as: SHELL_AGENT })
+            }
+            className="rounded-lg px-2 py-1 text-[11px] text-muted hover:bg-surface hover:text-ink"
+          >
+            Open a plain shell instead
+          </button>
+        </div>
+
         <div className="mt-0.5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2">
           {agent.modes.map((mode, index) => {
             const unavailable = needsHistory(mode.id) && sessions === 0
@@ -309,6 +399,37 @@ export function Launcher({
               </button>
             )
           })}
+        </div>
+
+        {/* Mounted whether or not there is a hint: a region inserted with its
+            content already in it is announced by almost nothing, and this is
+            the only explanation a screen-reader user gets. */}
+        <div role="status">
+          {blocked && hint && (
+            <div className="flex flex-col gap-2 rounded-[10px] border border-danger/40 bg-surface px-3 py-2.5">
+              <span className="text-[11px] text-muted">
+                <span className="font-mono text-ink">{blocked}</span> cannot be
+                listed. {hint.reason}
+              </span>
+              <span className="text-[11px] text-muted">
+                {hint.remedy} Click the same button again to start here anyway —
+                the session may still work if the agent knows the paths it
+                needs.
+              </span>
+              <div className="flex gap-2">
+                {hint.settings ? (
+                  <SettingsButton settings={hint.settings} />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setBlocked(null)}
+                  className="h-7 flex-none rounded-lg px-2 text-xs text-muted hover:text-ink"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {missing ? (

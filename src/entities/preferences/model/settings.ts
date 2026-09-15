@@ -29,6 +29,13 @@ export interface Settings {
   letterSpacing: number
   scrollback: number
   cursorBlink: boolean
+  /**
+   * Whether the font picker offers every installed family or only the
+   * monospaced ones. Off by default, because a machine has hundreds of
+   * families and almost none of them can draw a terminal — but a face this
+   * cannot measure as fixed-pitch is not always one you do not want.
+   */
+  allSystemFonts: boolean
   /** How often a tab re-reads its git state, in seconds. */
   gitPollSeconds: number
   /** Commits the history drawer fetches. */
@@ -67,6 +74,7 @@ export const DEFAULT_SETTINGS: Settings = {
   letterSpacing: 0,
   scrollback: 20000,
   cursorBlink: true,
+  allSystemFonts: false,
   gitPollSeconds: 4,
   historyLimit: 60,
   editorCommand: '',
@@ -101,6 +109,10 @@ export function normalizeSettings(input: unknown): Settings {
   ) as Record<string, unknown>
 
   return {
+    // Not validated against the agent roster, which lives in a sibling slice
+    // this one may not import — `test/layers.test.ts` enforces that. The
+    // rosters' own `pickableAgent` guards every place the value is displayed
+    // instead, so a stored id that is no longer offered is harmless here.
     defaultAgentId: text(raw.defaultAgentId, DEFAULT_SETTINGS.defaultAgentId),
     defaultDirectory: text(
       raw.defaultDirectory,
@@ -137,6 +149,7 @@ export function normalizeSettings(input: unknown): Settings {
       LIMITS.scrollback,
     ),
     cursorBlink: flag(raw.cursorBlink, DEFAULT_SETTINGS.cursorBlink),
+    allSystemFonts: flag(raw.allSystemFonts, DEFAULT_SETTINGS.allSystemFonts),
     gitPollSeconds: number(
       raw.gitPollSeconds,
       DEFAULT_SETTINGS.gitPollSeconds,

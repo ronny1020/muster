@@ -179,14 +179,14 @@ fn a_non_repo_reports_no_git_state() {
 
 #[test]
 fn workspace_labels_a_directory_by_its_basename() {
-    let workspace = read_workspace(env!("CARGO_MANIFEST_DIR").into());
+    let workspace = read_workspace(env!("CARGO_MANIFEST_DIR").into(), false);
     assert_eq!(workspace.label, "src-tauri");
     assert!(workspace.exists);
 }
 
 #[test]
 fn a_missing_directory_is_reported_rather_than_erroring() {
-    let workspace = read_workspace("/definitely/not/here".into());
+    let workspace = read_workspace("/definitely/not/here".into(), false);
     assert!(!workspace.exists);
     assert!(!workspace.git.repo);
 }
@@ -381,4 +381,136 @@ fn this_repo_reports_its_own_history() {
         assert!(!commits[0].short.is_empty());
         assert!(!commits[0].when.is_empty());
     }
+}
+
+#[test]
+fn a_directory_that_is_there_is_not_reported_as_denied() {
+    let here = read_workspace(env!("CARGO_MANIFEST_DIR").into(), false);
+    assert!(here.exists);
+    assert!(!here.denied, "a readable directory was reported blocked");
+}
+
+#[test]
+fn a_missing_directory_is_missing_rather_than_denied() {
+    // The two need opposite things from the user: one is created, the other is
+    // unblocked. Collapsing them offers to create a directory full of work.
+    let gone = read_workspace("/no/such/directory/anywhere".into(), false);
+    assert!(!gone.exists);
+    assert!(!gone.denied);
+}
+
+#[test]
+#[cfg(unix)]
+fn a_workspace_on_an_unreadable_directory_reports_it_as_denied() {
+    if !mode_bits_bite() {
+        return;
+    }
+    // Through `read_workspace`, not the helper: `metadata` only stats, so an
+    // unreadable directory still answers `is_dir() == true`. Exercised through
+    // `read_workspace` so it covers the field the launcher reads.
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("muster-denied-ws-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let workspace = read_workspace(dir.to_string_lossy().into_owned(), true);
+
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        workspace.denied,
+        "an unreadable directory was not reported as denied"
+    );
+    // And it is not offered as one to create: it is right there.
+    assert!(workspace.exists, "an unreadable directory read as missing");
+}
+
+#[test]
+#[cfg(unix)]
+fn a_workspace_read_without_probing_never_enumerates() {
+    if !mode_bits_bite() {
+        return;
+    }
+    // The status footer polls this command on a timer, in every mounted pane,
+    // against the directory the *agent* has since `cd`-ed into. `read_dir` is
+    // enumeration, and on macOS enumeration is what raises the TCC prompt — so
+    // an unprobed read must answer `denied: false` rather than put a
+    // permission dialog on screen that the user did nothing to cause.
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("muster-unprobed-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let workspace = read_workspace(dir.to_string_lossy().into_owned(), false);
+
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        !workspace.denied,
+        "an unprobed read enumerated the directory anyway"
+    );
+}
+
+/// Whether this user is actually subject to the mode bits.
+///
+/// Root is not: `read_dir` on a mode-000 directory succeeds for uid 0, so
+/// every permission test below would assert the opposite of what it means and
+/// fail. Probed rather than asked of `geteuid`, because the question is
+/// whether the bits bite *here* — a container, a mounted filesystem with no
+/// permission support, and root all answer the same way, and none of them is
+/// a reason to call the code broken.
+#[cfg(unix)]
+fn mode_bits_bite() -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    // Unique per call, not per process: cargo runs these tests on parallel
+    // threads of a single process, so one shared path lets one probe's restore
+    // land between another's `chmod` and its `read_dir` — that probe then sees
+    // `Ok`, answers "bits do not bite", and its caller skips every assertion
+    // it was written to make, silently, with the suite green.
+    static PROBE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let nth = PROBE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("muster-modeprobe-{}-{nth}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    if std::fs::create_dir_all(&dir).is_err() {
+        return false;
+    }
+    let denied = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).is_ok()
+        && std::fs::read_dir(&dir).is_err();
+    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+    let _ = std::fs::remove_dir_all(&dir);
+    denied
+}
+
+#[test]
+fn an_unreadable_directory_is_told_apart_from_a_missing_one() {
+    // macOS answers EPERM for a TCC-protected folder and Unix does the same
+    // for one without read permission. `is_dir` stays **true** for both —
+    // `metadata` only stats — which is why gating the check on `!is_dir()`
+    // skipped every case it existed for.
+    let dir = std::env::temp_dir().join(format!("muster-denied-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("inside")).expect("scratch");
+
+    // Inside the `cfg`, not above it: `mode_bits_bite` is itself `cfg(unix)`,
+    // so a guard at the top of a test that is otherwise cross-platform stops
+    // this file compiling on Windows at all.
+    #[cfg(unix)]
+    if mode_bits_bite() {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+        let unreadable = is_unreadable(&dir);
+        // Restored before the assertion, not after: a panic here would skip
+        // the restore, leaving a mode-000 directory that `remove_dir_all`
+        // cannot clear — so every later run of this test fails in setup, and
+        // the first real failure is buried under a cascade of fake ones.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        assert!(unreadable, "an unreadable directory read as fine");
+    }
+
+    assert!(!is_unreadable(&dir), "a readable directory read as blocked");
+    let _ = std::fs::remove_dir_all(&dir);
 }

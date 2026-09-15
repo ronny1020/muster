@@ -29,6 +29,12 @@ tauri-plugin-single-instance = "2"
 # Pinned exactly: it is the only dependency that injects script into
 # this app's own webview, so a floating minor is a channel for page code.
 tauri-plugin-prevent-default = "=5.0.2"
+# Enumerates installed font families, which neither webview can do: Chromium's
+# `queryLocalFonts` needs a permission prompt and WKWebView lacks it entirely.
+# `source-fontconfig-dlopen` loads libfontconfig at runtime rather than linking
+# it, so the Linux build needs no package the webview toolkit does not already
+# bring.
+font-kit = { version = "0.14", features = ["source-fontconfig-dlopen"] }
 
 [profile.release]
 codegen-units = 1

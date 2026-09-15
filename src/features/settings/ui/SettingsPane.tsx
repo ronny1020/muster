@@ -1,11 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { AGENTS } from '../../../entities/agent/model/agents'
+import { AGENTS, pickableAgent } from '../../../entities/agent/model/agents'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useEditors } from '../../../shared/lib/useEditors'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
-import { pickDirectory, pickImage } from '../../../shared/ipc'
+import {
+  type FontFamily,
+  fontFamilies,
+  pickDirectory,
+  pickImage,
+} from '../../../shared/ipc'
 import {
   clearRecentDirs,
   recentDirs,
@@ -14,7 +19,14 @@ import {
   LIMITS,
   type Settings,
 } from '../../../entities/preferences/model/settings'
-import { fontChoices, installedFonts } from '../../../shared/lib/fonts'
+import {
+  everyFont,
+  fontChoices,
+  fontName,
+  installedFonts,
+  monospacedFonts,
+  stackFor,
+} from '../../../shared/lib/fonts'
 import { themeChoices, themeFor } from '../../../shared/lib/themes'
 
 /** Settings live in a tab of their own, the way Chrome's do. */
@@ -25,9 +37,50 @@ export function SettingsPane() {
   // pressed, and reading storage during render leaves it stale until something
   // unrelated re-renders the pane.
   const [remembered, setRemembered] = useState(() => recentDirs().length)
-  // Measured once: detection lays out a probe string per candidate family, and
-  // the answer cannot change while the pane is open.
-  const fonts = useMemo(() => installedFonts(), [])
+  // Asked once per open. Enumeration is a Rust round trip, so the pane starts
+  // on the measured fallback and swaps when the real list lands; `null` is
+  // "not answered yet", which is not the same as "answered with nothing".
+  const [families, setFamilies] = useState<FontFamily[] | null>(null)
+  useEffect(() => {
+    let live = true
+    void fontFamilies()
+      .then((found) => {
+        if (live) setFamilies(found)
+      })
+      .catch(() => {
+        if (live) setFamilies([])
+      })
+    return () => {
+      live = false
+    }
+  }, [])
+  // Memoised to keep one array identity per answer: the options are rebuilt
+  // from it on every render otherwise.
+  const enumerated = families !== null && families.length > 0
+  // Counted from the flag, never from the list being shown: with the toggle on
+  // that list is every family, so `fonts.length` claimed all 248 of them could
+  // hold a terminal grid — the exact thing the flag exists to deny.
+  const fixedPitch = families?.filter((family) => family.monospaced).length ?? 0
+  const fonts = useMemo(() => {
+    if (!enumerated) return installedFonts()
+    if (settings.allSystemFonts) return everyFont(families)
+    const offered = monospacedFonts(families)
+    // The family in use is always offered, whatever the filter says. Turn the
+    // toggle on, choose a proportional face, turn it back off, and it drops out
+    // of this list — `fontChoices` then re-adds it labelled "(not installed)"
+    // on a machine that plainly has it.
+    const chosen = fontName(settings.fontFamily)
+    const hidden =
+      families.find((family) => family.name === chosen) &&
+      !offered.some((font) => font.name === chosen)
+    return hidden
+      ? [
+          ...offered.slice(0, -1),
+          { name: chosen, stack: stackFor(chosen) },
+          ...offered.slice(-1),
+        ]
+      : offered
+  }, [enumerated, families, settings.allSystemFonts, settings.fontFamily])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -39,7 +92,10 @@ export function SettingsPane() {
         <Group title="New tabs">
           <Row label="Default agent" hint="Preselected when a tab opens">
             <select
-              value={settings.defaultAgentId}
+              // Through `pickableAgent` for the reason the launcher is: a
+              // stored `shell` would otherwise leave this select on a value no
+              // option carries, which renders blank.
+              value={pickableAgent(settings.defaultAgentId).id}
               onChange={(event) =>
                 update({ defaultAgentId: event.target.value })
               }
@@ -50,7 +106,6 @@ export function SettingsPane() {
                   {agent.name}
                 </option>
               ))}
-              <option value="shell">Shell</option>
             </select>
           </Row>
 
@@ -143,7 +198,13 @@ export function SettingsPane() {
           </Row>
           <Row
             label="Font family"
-            hint="Each choice falls back to whatever monospace font this machine has"
+            hint={
+              families === null
+                ? 'Reading the installed families…'
+                : enumerated
+                  ? `${fixedPitch} of ${families.length} installed families can hold a terminal grid`
+                  : 'The installed families could not be read, so this is the built-in list — most of what you have is missing from it'
+            }
           >
             <select
               // `Row`'s label is a span, not a `<label>`, so nothing here is
@@ -166,6 +227,16 @@ export function SettingsPane() {
                 </option>
               ))}
             </select>
+          </Row>
+          <Row
+            label="Show all system fonts"
+            hint="Off, the list holds the fixed-pitch families only — which is almost never the whole of what is installed"
+          >
+            <Toggle
+              checked={settings.allSystemFonts}
+              onChange={(allSystemFonts) => update({ allSystemFonts })}
+              label="Show all system fonts"
+            />
           </Row>
           <NumberRow label="Font size" field="fontSize" suffix="px" />
           <NumberRow label="Line height" field="lineHeight" />

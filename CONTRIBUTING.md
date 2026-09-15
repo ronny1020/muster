@@ -105,8 +105,9 @@ building.
 | Shortcut bindings per platform                     | `src/entities/preferences/model/shortcuts.ts` |
 | Notification policy                                | `src/shared/lib/notify.ts`                    |
 | Editor detection and launching                     | `src-tauri/src/editor.rs`                     |
+| Installed font family enumeration                  | `src-tauri/src/fonts.rs`                      |
 | Terminal colour schemes                            | `src/shared/lib/themes.ts`                    |
-| Detecting the machine's monospace fonts            | `src/shared/lib/fonts.ts`                     |
+| Font fallback list and CSS stacks                  | `src/shared/lib/fonts.ts`                     |
 | Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`    |
 | Remembering tabs across a restart                  | `src/entities/tab/model/persist.ts`           |
 | Branch filtering and switch warnings               | `src/features/workspace/model/branches.ts`    |
@@ -117,6 +118,7 @@ building.
 | Agent session history                              | `src-tauri/src/sessions.rs`                   |
 | Recording a session, and what a record remembers   | `src-tauri/src/journal.rs`                    |
 | Second-launch, window state, swallowed shortcuts   | `src-tauri/src/lib.rs`                        |
+| What to say when a folder cannot be read           | `src/features/launch/model/blocked.ts`        |
 | Files two tabs are changing at once                | `src/features/fleet/model/collisions.ts`      |
 | Whether a paste becomes text or a file             | `src/features/terminal/model/paste.ts`        |
 | Writing pasted text out for an agent to read       | `src-tauri/src/attach.rs`                     |
@@ -222,7 +224,7 @@ Rules the tests enforce, and the reasons for them:
   the session itself, with no program to pass flags to. If you meet a real agent
   CLI that takes no arguments, that test is the thing to change. Note the drop
   happens in the frontend: `Launcher.tsx` computes
-  `agent.acceptsFlags ? splitFlags(flags) : []`, so the backend never sees them.
+  `as.acceptsFlags ? splitFlags(flags) : []`, so the backend never sees them.
 - **Id, command and accent are all unique.** `agentById` falls back to the first
   agent, so a duplicate id would shadow rather than fail; a shared accent makes
   two tabs indistinguishable.
@@ -286,6 +288,14 @@ Rust, holding `tauri.windows.conf.json` to what AGENTS.md's "Windows has no
 frame" invariant requires of it. It now also covers `lib.rs`'s own helpers:
 which webview shortcuts are swallowed, and how a second launch's argv resolves. It hangs off `lib.rs`, which owns neither file
 but is the only module above both.
+
+The two under `test/` are the exception, and for the same reason as each other:
+neither has a module to sit beside. `layers.test.ts` reads the whole of `src`
+to enforce the import direction, and `xterm.test.ts` reads `node_modules` to
+hold the xterm addons that reach into `_core` to the core version this app
+ships — the addons reach
+through `terminal._core` into private fields, so a version bump that renames
+one fails nowhere else.
 
 ## Accessibility
 

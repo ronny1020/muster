@@ -128,17 +128,19 @@ export function TerminalView({
     term.loadAddon(searchAddon)
     // A click opens a preview card rather than the browser: the card is what
     // makes the network fetch deliberate, and it carries the Open button.
-    term.loadAddon(new WebLinksAddon((_event, uri) => link.current!.onUrl(uri)))
-    // Sixel and iTerm2 inline images, which is how terminal tools ship pictures.
-    term.loadAddon(
-      new ImageAddon({
-        sixelSupport: true,
-        iipSupport: true,
-        // The default retains 128 MB of decoded images per terminal, and every
-        // tab's pane stays mounted.
-        storageLimit: 32,
-      }),
+    const linksAddon = new WebLinksAddon((_event, uri) =>
+      link.current!.onUrl(uri),
     )
+    term.loadAddon(linksAddon)
+    // Sixel and iTerm2 inline images, which is how terminal tools ship pictures.
+    const imageAddon = new ImageAddon({
+      sixelSupport: true,
+      iipSupport: true,
+      // The default retains 128 MB of decoded images per terminal, and every
+      // tab's pane stays mounted.
+      storageLimit: 32,
+    })
+    term.loadAddon(imageAddon)
     term.registerLinkProvider({ provideLinks: pathLinks(term, link) })
     // Windows and Linux have no menu accelerator for copy, and Ctrl+C has to
     // stay SIGINT — so the Ctrl+Shift+C/V convention is ours to implement.
@@ -211,17 +213,30 @@ export function TerminalView({
     // the DOM renderer shows. The context can be lost — a GPU reset, a laptop
     // waking, a driver update — and the addon has to be dropped when it is, or
     // the terminal stops painting entirely rather than falling back.
+    //
+    // Its version is pinned rather than ranged: the addon restores the DOM
+    // renderer through `terminal._core`, so a build made for a newer core
+    // throws on every dispose and nothing before that notices.
+    // `test/xterm.test.ts` is what holds the pairing.
     let webgl: WebglAddon | null = null
     try {
-      webgl = new WebglAddon()
-      webgl.onContextLoss(() => {
-        webgl?.dispose()
+      const addon = new WebglAddon()
+      addon.onContextLoss(() => {
+        addon.dispose()
         webgl = null
       })
-      term.loadAddon(webgl)
+      // Held from here, not after `loadAddon` returns. `loadAddon` pushes the
+      // addon onto the terminal's list *before* calling `activate`, so an
+      // `activate` that throws — WebGL unavailable behind software rendering,
+      // a remote desktop, a GPU blocklist — leaves xterm holding an addon this
+      // cleanup would skip, and `term.dispose()` would then dispose it after
+      // `_core` is gone. That is the crash this whole ordering exists to
+      // prevent, reachable on exactly the hosts least able to report it.
+      webgl = addon
+      term.loadAddon(addon)
     } catch {
-      // No WebGL in this webview: the DOM renderer is already what is running.
-      webgl = null
+      // No WebGL here: the DOM renderer is already what is running. The handle
+      // stays, because xterm may already have registered the addon.
     }
     term.onData((data) => bestEffort(writePty(sessionId, data)))
     // Read through a ref so a new handler identity never re-runs the spawn.
@@ -273,8 +288,23 @@ export function TerminalView({
       observer.disconnect()
       element.removeEventListener('paste', onDomPaste, true)
       bestEffort(killPty(sessionId))
-      // Before the terminal, so the renderer releases its context first.
-      webgl?.dispose()
+      // Every addon before the terminal, not just the renderer. `dispose` on
+      // the Terminal tears `_core` down and only then lets its addon manager
+      // dispose what is still registered — and an addon that reaches through
+      // `_terminal._core` (the image addon reads `_renderService`,
+      // `_inputHandler` and `screenElement`; fit reads the render service)
+      // then dereferences what has just been freed and throws. Disposing an
+      // addon here runs xterm's own wrapper, which unregisters it, so the
+      // terminal does not dispose it a second time.
+      for (const addon of [
+        webgl,
+        imageAddon,
+        linksAddon,
+        searchAddon,
+        fitAddon,
+      ]) {
+        addon?.dispose()
+      }
       term.dispose()
       terminal.current = null
       if (paste) paste.current = null
