@@ -82,6 +82,44 @@ user, so no admin prompt.
 | `.deb`      | `sudo apt install ./Muster_*_amd64.deb`             |
 | `.rpm`      | `sudo dnf install ./Muster-*.x86_64.rpm`            |
 
+### 🔄 Updating
+
+Muster does not update itself — it has no updater and phones nothing home, which
+is the other half of what the Privacy section below promises.
+
+**macOS**
+
+```bash
+brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app
+```
+
+`brew update` is what refreshes the tap; without it Homebrew compares against
+the version it last saw and reports nothing to do. The `xattr -cr` is needed
+again for the same reason it is needed on install: the upgrade puts down a fresh
+quarantined copy.
+
+**Windows**
+
+```powershell
+scoop update
+scoop update muster
+```
+
+**Linux** — take the new file from the
+[Releases page](https://github.com/ronny1020/muster/releases). A `.deb` or
+`.rpm` installs over the old one with the same command as the first time; an
+AppImage is replaced by overwriting it.
+
+**macOS will ask for folder permissions again after an update, and that is
+expected.** The app is ad-hoc signed, so macOS identifies it by the binary's
+hash and treats every release as software it has never seen. Grants do not carry
+over. See [When a folder cannot be read](#-when-a-folder-cannot-be-read) if you
+dismissed the prompt — the answer is remembered, so the app cannot ask twice.
+
+If an upgrade reports that the latest version is already installed when you
+expect a newer one, [If something looks wrong](#-if-something-looks-wrong) has
+what that means.
+
 ### ⚠️ Why the warnings
 
 This project has not bought a code-signing certificate — an Apple Developer
