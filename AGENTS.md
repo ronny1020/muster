@@ -638,10 +638,19 @@ These are the seams for common asks:
   Neither webview can enumerate installed fonts — Chromium's
   `queryLocalFonts` needs a permission prompt and WKWebView lacks it entirely —
   so the list is a filter over known families, measured by laying out a probe
-  string against a family that cannot exist. Two consequences worth keeping:
-  a family nobody thought to list stays invisible however installed it is, and
-  every stack must still end in `monospace`, because a stored choice outlives
-  the machine it was made on and a proportional fallback misaligns the grid.
+  string in `<candidate>, <generic>` and again in `<generic>` alone. Both
+  stacks must end in the **same** generic, and that is the whole trick: an
+  absent family falls through to it and the widths match. Ending the
+  candidate's stack in a family that cannot exist instead — which this did at
+  first — makes an absent candidate fall back to the engine's own last-resort
+  face, which is _proportional_, so every missing family measures differently
+  from a monospace baseline and is reported installed while the platform's real
+  monospace is reported missing. Two generics are tried because a family whose
+  metrics equal one of them is otherwise indistinguishable from an absent one.
+  Two consequences worth keeping: a family nobody thought to list stays
+  invisible however installed it is, and every stack must still end in
+  `monospace`, because a stored choice outlives the machine it was made on and
+  a proportional fallback misaligns the grid.
 - **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
   "Adding an icon" has where the path data comes from. A new file-type icon is
   one more line in `src/shared/ui/fileicon.ts`, and its test asserts every
