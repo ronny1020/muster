@@ -59,8 +59,16 @@ jobs:
         run: |
           cask=Casks/muster.rb
           sed -i -E "s/^  version \".*\"/  version \"$PLAIN_VERSION\"/" "$cask"
-          sed -i -E "s/(arm: +)\"[^\"]*\"/\1\"$SHA_AARCH64\"/" "$cask"
-          sed -i -E "s/(intel: +)\"[^\"]*\"/\1\"$SHA_X64_DMG\"/" "$cask"
+          # Anchored to the `sha256` block. A bare `arm:`/`intel:` also matches
+          # the `arch arm: "aarch64", intel: "x64"` line above it, which maps the
+          # URL suffix — rewriting that to a checksum makes every download a 404,
+          # and the cask still parses, so nothing downstream would catch it.
+          sed -i -E "s/(sha256 arm: +)\"[^\"]*\"/\1\"$SHA_AARCH64\"/" "$cask"
+          sed -i -E "s/^( +intel: +)\"[^\"]*\"/\1\"$SHA_X64_DMG\"/" "$cask"
+          grep -q 'arch arm: "aarch64", intel: "x64"' "$cask" || {
+            echo "::error::the arch line was rewritten"
+            exit 1
+          }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "muster $PLAIN_VERSION" && git push
