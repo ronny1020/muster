@@ -54,6 +54,12 @@ same script as CI, so neither can quietly check less than the other. Run them by
 hand before opening a pull request too — `.github/workflows/ci.yml` runs the same set, and
 clippy is `-D warnings` there.
 
+A pull request also gets a **release rehearsal**: `release.yml` builds all four
+installers without creating a release, and attaches them to the run so you can
+download and try one. It is skipped for prose-only changes. A bundle that fails
+to build is otherwise found only after a tag is pushed, and a tag then has to be
+deleted and re-cut — which is how the Linux leg of v0.2.1 was discovered broken.
+
 `bun run check:all` is all seven, and `bun run check:rust` the four Rust ones.
 Spelled out, because knowing which one failed is the point:
 

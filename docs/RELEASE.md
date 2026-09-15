@@ -31,6 +31,18 @@ The tag is what triggers `.github/workflows/release.yml`. It builds four
 bundles — Apple silicon, Intel Mac, Windows, Linux — and attaches them to a
 **draft** release.
 
+The same workflow runs on every pull request as a rehearsal: it builds the same
+four bundles, creates no release, and attaches them to the run instead. So a
+bundle that cannot build is a failed pull request rather than a tag that has to
+be deleted and re-pushed.
+
+If a release run fails halfway, re-run it from the Actions tab rather than
+re-cutting the tag — tick **Cut a draft release** and give it the tag:
+
+```bash
+gh workflow run release.yml -f release=true -f tag=v0.2.1
+```
+
 ## 3. Review the draft, then publish
 
 Look at the draft on the Releases page before publishing:
