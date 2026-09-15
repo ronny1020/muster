@@ -45,7 +45,12 @@ Runs on macOS, Windows and Linux. On Windows a tab can run inside WSL.
 The download is the whole app on macOS and Linux. On Windows the installer
 fetches Microsoft's WebView2 runtime if the machine does not already have it.
 
-**macOS**
+Muster does not update itself — it has no updater and phones nothing home, which
+is the other half of what the Privacy section below promises.
+
+### 🍎 macOS
+
+#### Install
 
 ```bash
 brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
@@ -60,34 +65,7 @@ Or take the `.dmg` from the
 Applications, then run the same `xattr -cr /Applications/Muster.app`, or
 right-click → _Open_ the first time.
 
-To uninstall, `brew uninstall --cask ronny1020/tap/muster` — dragging the app to
-the Trash leaves Homebrew's record of it behind.
-
-**Windows**
-
-```powershell
-scoop bucket add ronny1020 https://github.com/ronny1020/scoop-bucket
-scoop install muster
-```
-
-Or run the `_x64-setup.exe` from the Releases page. SmartScreen will call it an
-unrecognised app: choose **More info → Run anyway**. It installs for the current
-user, so no admin prompt.
-
-**Linux** — from the Releases page:
-
-| File        | Install                                             |
-| ----------- | --------------------------------------------------- |
-| `.AppImage` | `chmod +x Muster_*.AppImage && ./Muster_*.AppImage` |
-| `.deb`      | `sudo apt install ./Muster_*_amd64.deb`             |
-| `.rpm`      | `sudo dnf install ./Muster-*.x86_64.rpm`            |
-
-### 🔄 Updating
-
-Muster does not update itself — it has no updater and phones nothing home, which
-is the other half of what the Privacy section below promises.
-
-**macOS**
+#### Update
 
 ```bash
 brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app
@@ -95,30 +73,70 @@ brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app
 
 `brew update` is what refreshes the tap; without it Homebrew compares against
 the version it last saw and reports nothing to do. The `xattr -cr` is needed
-again for the same reason it is needed on install: the upgrade puts down a fresh
+again for the same reason as on install: the upgrade puts down a fresh
 quarantined copy.
 
-**Windows**
+**macOS will ask for folder permissions again afterwards, and that is
+expected.** The app is ad-hoc signed, so macOS identifies it by the binary's
+hash and treats every release as software it has never seen. Grants do not carry
+over. See [When a folder cannot be read](#-when-a-folder-cannot-be-read) if you
+dismissed the prompt — the answer is remembered, so the app cannot ask twice.
+
+If the upgrade reports that the latest version is already installed when you
+expect a newer one, [If something looks wrong](#-if-something-looks-wrong) has
+what that means.
+
+#### Remove
+
+```bash
+brew uninstall --cask ronny1020/tap/muster
+```
+
+Dragging the app to the Trash leaves Homebrew's record of it behind, which then
+reports the app as installed when it is not.
+
+### 🪟 Windows
+
+#### Install
+
+```powershell
+scoop bucket add ronny1020 https://github.com/ronny1020/scoop-bucket
+scoop install muster
+```
+
+Or run the `_x64-setup.exe` from the
+[Releases page](https://github.com/ronny1020/muster/releases). SmartScreen will
+call it an unrecognised app: choose **More info → Run anyway**. It installs for
+the current user, so no admin prompt.
+
+#### Update
 
 ```powershell
 scoop update
 scoop update muster
 ```
 
-**Linux** — take the new file from the
-[Releases page](https://github.com/ronny1020/muster/releases). A `.deb` or
-`.rpm` installs over the old one with the same command as the first time; an
-AppImage is replaced by overwriting it.
+`scoop update` on its own refreshes the bucket; the second line is what moves
+the app.
 
-**macOS will ask for folder permissions again after an update, and that is
-expected.** The app is ad-hoc signed, so macOS identifies it by the binary's
-hash and treats every release as software it has never seen. Grants do not carry
-over. See [When a folder cannot be read](#-when-a-folder-cannot-be-read) if you
-dismissed the prompt — the answer is remembered, so the app cannot ask twice.
+#### Remove
 
-If an upgrade reports that the latest version is already installed when you
-expect a newer one, [If something looks wrong](#-if-something-looks-wrong) has
-what that means.
+```powershell
+scoop uninstall muster
+```
+
+An `.exe` install is removed from **Settings → Apps** instead.
+
+### 🐧 Linux
+
+Everything comes from the
+[Releases page](https://github.com/ronny1020/muster/releases).
+
+| Format      | Install                                             | Update                   | Remove                   |
+| ----------- | --------------------------------------------------- | ------------------------ | ------------------------ |
+| `.AppImage` | `chmod +x Muster_*.AppImage && ./Muster_*.AppImage` | overwrite the file       | delete the file          |
+| `.deb`      | `sudo apt install ./Muster_*_amd64.deb`             | same command, newer file | `sudo apt remove muster` |
+| `.rpm`      | `sudo dnf install ./Muster-*.x86_64.rpm`            | same command, newer file | `sudo dnf remove muster` |
 
 ### ⚠️ Why the warnings
 
