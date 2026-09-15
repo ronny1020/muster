@@ -42,7 +42,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install the webview toolkit (Linux only)
-        if: matrix.platform == 'ubuntu-22.04'
+        # Matched on the prefix, so bumping the runner cannot silently skip
+        # the toolkit and leave the build without `glib-2.0`.
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
