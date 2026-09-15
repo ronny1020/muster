@@ -71,7 +71,7 @@ jobs:
             "would build and silently create nothing."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The tag when releasing one, so the build matches what the tag says
           # rather than whatever branch the run was dispatched from.
@@ -108,7 +108,7 @@ jobs:
 
       # `beforeBuildCommand` typechecks and bundles the frontend, so this is the
       # only build step.
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,7 +130,7 @@ jobs:
 
       - name: Attach the bundles to the run (rehearsal only)
         if: github.event_name != 'push' && !inputs.release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Indexed rather than named after `matrix.args`, which holds spaces.
           name: bundle-${{ matrix.platform }}-${{ strategy.job-index }}
