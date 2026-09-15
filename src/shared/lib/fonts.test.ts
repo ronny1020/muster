@@ -183,3 +183,25 @@ test('a stack stored by an older build still matches the family it names', () =>
   ])
   expect(chosen.map((font) => font.name)).toEqual(['Menlo'])
 })
+
+test('fontName reverses stackFor for any family name', () => {
+  // The two halves are a round trip, and a name holding a comma or a quote is
+  // where they came apart: `"A,B", monospace` read back as `A`, so the family
+  // was offered a second time labelled "(not installed)" with a stack
+  // identical to the real one — a duplicate key in the picker.
+  for (const name of [
+    'Menlo',
+    'Operator Mono Lig',
+    'A,B',
+    'Foo"Bar',
+    'Back\\slash',
+    "It's Mono",
+  ]) {
+    expect(fontName(stackFor(name))).toBe(name)
+  }
+})
+
+test('fontName still reads a stack an older build wrote unquoted', () => {
+  expect(fontName('Menlo, monospace')).toBe('Menlo')
+  expect(fontName('monospace')).toBe('System default')
+})

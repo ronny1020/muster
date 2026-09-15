@@ -152,10 +152,13 @@ const offered = (family: FontFamily): MonoFont => ({
  */
 export function fontName(stack: string): string {
   if (stack === SYSTEM.stack) return SYSTEM.name
-  const first = stack
-    .split(',')[0]
-    ?.trim()
-    .replace(/^["']|["']$/g, '')
+  const quoted = /^\s*(["'])((?:\\.|(?!\1)[^\\])*)\1/.exec(stack)
+  // The quoted form first, so a family holding a comma survives: splitting on
+  // `,` would cut `"A,B", monospace` down to `A`. Unquoted names cannot hold
+  // one, so the split is right for them.
+  const first = quoted
+    ? quoted[2]?.replace(/\\(.)/g, '$1')
+    : stack.split(',')[0]?.trim()
   return first || SYSTEM.name
 }
 

@@ -145,6 +145,15 @@ Named rather than hidden, because the code carries the same notes:
   certificate, so macOS builds are ad-hoc signed and Windows builds are
   unsigned. Every release is built in public by GitHub Actions from the tag it
   claims to be; that provenance is what stands in for a signature.
+- **The font picker parses every installed font.** Opening it runs
+  `font_families`, which loads one face per installed family through CoreText,
+  DirectWrite or FreeType — in this process, the one that owns every PTY.
+  `~/Library/Fonts` and `~/.local/share/fonts` are writable by anything running
+  as you, and on Linux `~/.config/fontconfig/fonts.conf` can point the scan
+  somewhere else again, so the bytes being parsed are not confined to the
+  directory you opened. It is gated on the click that opens the picker rather
+  than run at launch, and `panic = "abort"` in the release profile means a
+  malformed font aborts instead of falling back to the built-in list.
 - **`create_directory` is unscoped.** It creates any directory you confirm.
   Dominated by the PTY for any attacker who already has webview execution.
 - **The review panel's readers are unscoped too.** `read_text_file`,
