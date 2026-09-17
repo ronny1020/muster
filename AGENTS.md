@@ -346,6 +346,123 @@ dialog on screen at a moment the user did nothing to cause, where a reflexive
 exists to explain, so causing it would have been the feature defeating itself.
 Same shape and the same reason as `git_changes(counts)`.
 
+**A user's own messages are found by cell attribute, not by text.** A CLI
+draws the prompt you typed as a tinted block, and that tint is the only thing
+in the stream that marks it: the prompt characters differ per agent and change
+between releases, so matching them dates immediately. `findMessageRows` reads
+`isBgDefault()` off the buffer instead, so it needs to know nothing about any
+particular CLI.
+
+Only Claude Code has been measured, though: of 93 recorded sessions on this
+machine 76 carry a background SGR and all 9 shell sessions carry none, and no
+other agent has ever been run here. "Works for any CLI that tints its prompt"
+is the design, not a result — do not write it as one.
+
+It reads the **buffer**, never the DOM — the WebGL renderer paints the grid
+onto a canvas, so there are no nodes to query, which is the same reason
+`pathLinks` walks `term.buffer.active`. It recomputes on `onWriteParsed`
+coalesced into a frame, gated on `active`: every pane stays mounted, so a
+hidden tab would otherwise walk its own scrollback on every write for a rail
+nobody is looking at.
+
+**Two surfaces mark your messages, and they answer different questions.**
+`useRulerMarks` puts a decoration in xterm's overview ruler, which overlays the
+scrollbar and is drawn against the same scroll extent — so those marks carry
+each message's **true position** in the session. `MessageRail` draws its own
+bars **evenly spaced**, because proportional marks put every message of a long
+session into the same few pixels and read as one smudge: the rail is a list of
+places, not a map of them.
+
+The rail exists because the ruler cannot do its job. `OverviewRulerRenderer`
+registers decoration, buffer and dimension listeners and **no pointer
+handler**, so a mark there can never take a click; and xterm sets that canvas
+to `display: none` whenever the alternate buffer is active.
+
+That second clause is also the ceiling on both surfaces, and it is worth being
+exact about: a full-screen TUI holds the alternate buffer, which is `rows` tall
+and keeps no scrollback, so there is nothing to mark and no ruler to mark it
+in. Neither surface has anything to show in an agent tab unless that agent is
+kept out of the alternate buffer — which is not something this app does today.
+Measured with `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` in the environment the
+PTY inherits, the same session went from one screen to 24,000px of scroll
+extent and the rail filled. That is an undocumented Claude Code variable and
+the condition the feature was demonstrated under — not the default one.
+
+`MessageSteps` walks the identical list `useMessages` returns, so the number of
+dots and the number of presses always agree — that is the property to preserve
+if either surface changes. The rail sits clear of the scrollbar rather than
+over it, and `pointer-events-none` on its column with `auto` on each dot keeps
+the gaps inert either way.
+
+The list is capped at `MAX_MARKS`, derived from the shortest pane the window's
+420px floor allows: past that the oldest dot would be clipped while the step
+buttons still walked it, so "one press per dot" would quietly stop being true.
+
+What the list cannot hold is history the tint never marked. `findMessageRows`
+keys on a tinted block, so a replayed transcript that draws past turns untinted
+contributes nothing, and a plain shell — whose prompt carries no tint at all —
+contributes nothing either. And what it _can_ be made to hold is anything
+tinted: `isTinted` reads a cell attribute, so a coloured diff gutter, a
+line-number column or an agent's own banner produces an entry indistinguishable
+from a message you typed — which is why the label is presented as what was
+found rather than as something you wrote. Measured across 91 recorded sessions on this
+machine, no shell emitted `OSC 133` semantic prompt markers, so there is no
+standard signal to fall back on.
+
+`overviewRulerWidth` is still set on the terminal and is load-bearing there.
+Left unset it defaults to 0, and every decoration asking for a ruler mark is
+silently dropped — including the search addon's `matchOverviewRuler`, which is
+what puts a find result on the scrollbar.
+
+**xterm only writes the scroll area's height when its own record disagrees
+with it.** `Viewport` caches the height it last wrote in
+`_lastRecordedBufferHeight` and skips the write when that still matches — so an
+inline height reset behind its back is never repaired, and the scrollbar keeps
+the size it had when the session was one screen tall. Measured on a real
+session, the cache read 8137 rows while the element's inline style read 657px,
+and the thumb was full height over a 20,000-line scrollback. `resyncScrollbar`
+in `TerminalView` re-asserts the height xterm already computed, from the
+screen's own layout rather than a cell metric — the WebGL renderer draws to a
+canvas and leaves no per-row element to measure. It is a normal-buffer fix and
+only ever raises the height, so a shrink is left to xterm's own next write.
+
+It is not free, though: it runs per write batch rather than per frame, and the
+two `querySelector`s and the `offsetHeight` read force a layout each time. That
+is why it returns immediately unless its pane is on screen.
+
+**A turn ending is announced two ways, and Claude Code never uses the bell.**
+`onBell` was the only signal wired to notifications, and measured across 24
+recorded sessions the bell fired **zero** times — every `0x07` in the stream
+was an `OSC` string terminator, not a bell. Claude Code broadcasts
+`OSC 777;notify;warp://cli-agent;<json>` instead, carrying `session_start`,
+`prompt_submit`, `tool_complete` and `stop`; `stop` is the turn boundary, and
+its payload carries the agent's own closing words — which become the
+notification body — alongside fields `parseAgentEvent` deliberately drops,
+its transcript path among them.
+`parseAgentEvent` reads it and `Pane`'s `signalAttention` is where both routes
+meet, so an agent that rings _and_ broadcasts notifies once — the cooldown in
+`decideBellResponse` is what makes that true.
+
+Nothing here is configured: the sequence is in the pty stream Muster already
+records, so no hook, plugin or transcript read is involved. The cost is that
+the payload is **agent-authored JSON arriving over a terminal escape
+sequence**, which is why `parseAgentEvent` answers `null` for anything
+unexpected rather than throwing inside xterm's parser, and why it caps the
+text it carries — an unbounded `response` becomes the body of a desktop
+notification. Treat the field checks as the feature, not as detail.
+
+**A tab's status is measured, not announced.** `isWorking` reads one thing:
+whether the session has printed in the last `QUIET_MS`. Every CLI writes to
+the pty while it thinks and goes quiet when it wants you, so this needs nothing
+from the agent — which matters, because on this machine only Claude Code has
+ever been observed announcing anything about itself, and eight of the nine
+agents in the roster have never been run at all.
+
+`TerminalView` reports the two edges rather than every chunk: a busy session
+would otherwise dispatch a deck action per write batch. `unknown` is the state
+before a tab has printed anything, and it is not the same as idle — a tab that
+has said nothing must not claim to be idle.
+
 **Nothing an agent names may reach a session as keystrokes.** `drop_text`
 refuses any path carrying a control byte, because quoting is not the only
 boundary in play: the text is delivered through xterm's bracketed paste, which
@@ -428,6 +545,16 @@ directive in a diagram becomes a real `<a xlink:href>` inside the SVG, and
 so a diagram's links reach the same preview card as the document's. Anything
 that replaces `innerHTML` with mermaid's output has to keep calling it.
 
+**`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV`
+to `false`, and without it Bun leaves that expression in the bundle — where
+`import.meta.env` does not exist, so the guard in `main.tsx` reads a property
+off `undefined` and throws before `createRoot` renders anything. Every release
+would open a blank window, and `tsc` stays green because `@types/bun` declares
+the property. It is also what keeps the MCP plugin's client code out of
+`dist/`. Bun's dev server defines the same expression as `true`, which is why
+`bun run dev` never shows it. This is the one place that mechanism is written
+out; `build.ts` and `main.tsx` point here rather than restating it.
+
 **Mermaid and the syntax grammars must stay dynamic imports, and `build.ts`
 must keep `splitting: true`.** Inlined, they make an 8 MB bundle the webview
 parses before it can draw anything; split, the entry chunk is 1.3 MB and a
@@ -495,6 +622,11 @@ ignores every `::-webkit-scrollbar` rule, while WKWebView's support for it is
 newer than the macOS versions this app runs on. The cost, accepted knowingly,
 is that a styled scrollbar is no longer an overlay on macOS — it takes its 10px
 from the layout, as it always did on Windows.
+
+The thumb also carries a `min-height`, and that is not decoration: a thumb is
+drawn in proportion to how much of the content is on screen, so a screenful
+against a 20,000-line scrollback is a few pixels tall — present, correct, and
+invisible. It reads as "the terminal has no scrollbar".
 
 Those two engines are the ones this was reasoned about and looked at. Linux's
 WebKitGTK is a third, and nobody has checked it: if it ignores the rules, that
@@ -626,6 +758,17 @@ the signal to move it into a `model` segment first.
   describe what changed — comments describe behaviour, not history.
 - **Hoist pure functions to module scope.** If it only depends on its
   arguments, it does not belong inside a component or hook.
+- **`async`/`await` over `.then()`**, and give the async function a name at
+  module scope rather than writing an inline `void (async () => {…})()` — an
+  IIFE buries the body in its call site. `main.tsx`'s `listenForMcp` is the
+  shape.
+- **Reach for `useEffect` last.** It is right for synchronising with something
+  outside React — a PTY, a DOM node, a drop listener — which is most of what
+  `TerminalView` does. It is wrong for a value that can be derived while
+  rendering. When you do write one its dependency array must be complete: there
+  is no ESLint here, so a missing dependency fails silently, and an effect
+  written with no array at all re-runs after every render. The rule is to reach
+  for a solution that needs no effect, never to leave an effect's array off.
 - **One job per function**, 0–2 parameters, an options object past that.
   Intention-revealing names; no `Manager`, `Data`, `Info`, `Helper`.
 - **Do not name a self-evident literal.** A constant earns its name by being

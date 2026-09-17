@@ -86,3 +86,30 @@ function join(base: string, rest: string): string {
   const separator = base.includes('\\') && !base.includes('/') ? '\\' : '/'
   return `${base.replace(/[/\\]+$/, '')}${separator}${rest}`
 }
+
+/**
+ * Whether `path` names something inside `cwd`.
+ *
+ * A string comparison on both absolute paths, because whether the agent wrote
+ * the path relative or absolute says nothing about where it points, and an
+ * absolute path is the usual way an agent names a file it just edited.
+ *
+ * The separator check is what stops `/work/repo-old` reading as inside
+ * `/work/repo`. Comparison is case-sensitive: both strings come from the same
+ * filesystem in the same session, so a difference in case is a different path
+ * on the one platform where that is true.
+ *
+ * **It is a prefix test, not a containment test.** Neither this nor
+ * `resolvePath` collapses `..`, so `../other/file.ts` resolves to
+ * `/work/repo/../other/file.ts` and satisfies the prefix while pointing
+ * outside the repo. Treat the answer as "the agent named a path under this
+ * directory", never as proof the file is in it.
+ */
+export function isUnder(path: string, cwd: string): boolean {
+  if (!cwd) return false
+  const base = normalizeSeparators(cwd).replace(/\/+$/, '')
+  const target = normalizeSeparators(path)
+  return base.length > 0 && target.startsWith(`${base}/`)
+}
+
+const normalizeSeparators = (path: string) => path.replace(/\\/g, '/')

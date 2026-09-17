@@ -36,6 +36,20 @@ tauri-plugin-prevent-default = "=5.0.2"
 # bring.
 font-kit = { version = "0.14", features = ["source-fontconfig-dlopen"] }
 
+# A debugging aid, never shipped. It opens a local socket that executes
+# arbitrary JavaScript in this app's webview and simulates input, which is a
+# capability no release build should carry — and the crate is unlicensed and
+# `edition = "2024"`, so compiling it would also raise this crate's stated
+# `rust-version` of 1.77. Optional and default-off keeps all three out of every
+# build but the one that asks: `bun run dev:mcp`.
+[features]
+mcp = ["dep:tauri-plugin-mcp"]
+
+[dependencies.tauri-plugin-mcp]
+git = "https://github.com/P3GLEG/tauri-plugin-mcp"
+rev = "c7d271a06469bdf4744bfdeadca7458a1f3d02e5"
+optional = true
+
 [profile.release]
 codegen-units = 1
 lto = true

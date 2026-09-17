@@ -1,3 +1,5 @@
+<img src="src-tauri/icons/icon.png" alt="" width="112" align="right">
+
 # Muster
 
 **A terminal built for AI agent CLIs.**
@@ -25,6 +27,9 @@ years. The point is that Muster knows what is _in_ the tab:
 - 🐚 **Sessions run through a login shell**, so a CLI installed by your own profile
   — mise, nvm, `~/.local/bin` — is found. A GUI app otherwise inherits a bare
   `PATH` and none of them exist.
+- 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
+  session is still printing, solid once it goes quiet and wants you. It reads
+  the output itself, so it works for every agent and for a plain shell.
 - 🔔 **A finished agent raises a dot on its tab and a desktop notification**,
   because the reason to run several is that you are not watching this one.
 - 🌿 **The footer follows the directory and its git state** as the agent changes
@@ -277,13 +282,15 @@ Agents print paths and URLs constantly, and all of them are live:
 | A file the agent changed — `src/features/review/model/diff.ts` | Opens its diff in the review panel, scrolled to the line if the output named one                                 |
 | A directory — `~/work/api`                                     | Reveals it in Finder or your file manager                                                                        |
 | An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
+| An unchanged file inside the session's directory               | Opens it in the file column beside the terminal, so reading it does not take you out of the tab                  |
 | Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
 | A URL                                                          | Shows a card with the page's title, description and preview image, and a button to open it                       |
 
 The rows are in the order Muster asks the questions: a path that names a changed
 file opens as a diff before anything else is considered, so an image the agent
 has just added opens in the review column as a picture rather than in the
-overlay.
+overlay. An image is asked about before the file column is considered, so one
+inside the session's directory still opens in the overlay rather than as text.
 
 Paths resolve against the tab's current directory, so `src/app/App.tsx` works as
 well as an absolute path, and `~` means home. A path is only underlined when it
@@ -398,6 +405,35 @@ checkout can fail on it — though only when the two branches differ in the file
 you have touched, so it does not stop you trying. When git refuses, it names the
 files in the way and the drawer shows that as it came.
 
+## 📍 Jumping back to what you asked
+
+Your messages are marked twice, because the two marks answer different
+questions.
+
+On the scrollbar itself, a small mark sits at each message's **real** position
+in the session — the same idea as the coloured marks VS Code puts on its
+scrollbar. Down the right edge, a column of dots is spaced **evenly** instead,
+one per message, oldest at the top: a long session would otherwise stack every
+proportional mark into the same few pixels. The dot you are currently inside is
+filled rather than outlined.
+
+Click a dot to jump to that message. The `↑` and `↓` buttons in the bottom-right
+corner step through the same list, and past the last message in either direction
+they carry on to the end or the top of the scrollback.
+
+The dots are found by how your prompt was drawn rather than by what it says — a
+tinted block of cells — so they work for any CLI that renders a prompt that way,
+without Muster knowing anything about it. Two consequences worth knowing:
+
+- **A plain shell contributes nothing.** A default `bash` or `zsh` prompt carries
+  no tint, so there is nothing to find. Anything else that tints its first few
+  columns — a diff gutter, a coloured log — can be marked instead, so treat a
+  dot as "something was highlighted here", not as proof you typed it.
+- **Only the most recent dozen are shown**, and only what is still in the
+  scrollback. A full-screen agent TUI draws into the alternate screen buffer,
+  which is one screen tall and keeps no scrollback at all, so both surfaces stay
+  empty for as long as an agent is drawing its own interface.
+
 ## 🔎 Searching the scrollback
 
 `⌘F`, or `Ctrl+Shift+F`, opens a find bar over the terminal. Type to jump to
@@ -501,13 +537,18 @@ permissions, or a Flatpak or Snap sandbox.
 
 ## 🔔 Notifications
 
-Agents ring the terminal bell when they finish a turn and hand control back, so
-that is the moment you hear about:
+When an agent finishes a turn and hands control back, that is the moment you
+hear about:
 
 - the tab's dot lights up and pulses, and
-- a desktop notification names the agent and the tab.
+- a desktop notification names the agent and the tab, and quotes its closing
+  words where the agent published them.
 
-Nothing fires while you are already looking at that tab, and a burst of bells
+Agents announce that moment two different ways — some ring the terminal bell,
+Claude Code broadcasts a structured event instead — and both are read, so this
+works without configuring anything.
+
+Nothing fires while you are already looking at that tab, and a burst of signals
 becomes a single notification. Sessions that end are announced the same way,
 with the exit code when they failed. All of it is adjustable, including off.
 
@@ -624,9 +665,14 @@ drawer and the file column read is your own disk. A file's _contents_ are read
 when you open it, and the review drawer reads new files — the ones git has not
 seen — to count the lines they would add, for the first few hundred of them.
 That happens only on the Changes view, which is the one showing the numbers:
-clicking a path in the terminal, or opening the drawer on the file tree, asks
-git which files differ and reads none of them. The exception is an image path
-you click in the terminal, which is read to show you the picture you asked for.
+opening the drawer on the file tree asks git which files differ and reads none
+of them. Clicking a path in the terminal asks git the same question, and then
+reads that one file when it is one Muster shows you itself: an image, which
+becomes the picture you asked for, or a file it resolved to somewhere under
+the session's own directory, which opens in the column beside the terminal.
+That last test is a comparison of the resolved path against the directory, and
+it is currently a prefix match — a path an agent wrote with `../` in it can
+still satisfy it, so treat it as "where the agent said" rather than a boundary.
 
 One thing does leave your machine, and only when you ask it to: clicking a URL —
 in the terminal or in a rendered document — fetches that page once for the

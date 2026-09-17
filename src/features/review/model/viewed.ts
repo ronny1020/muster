@@ -8,4 +8,9 @@ export type Viewed =
       /** A line of the new file to scroll to, from a click in the terminal. */
       line: number | null
     }
-  | { kind: 'file'; absolute: string }
+  | {
+      kind: 'file'
+      absolute: string
+      /** The line the terminal named, for the hand-off to an editor. */
+      line: number | null
+    }

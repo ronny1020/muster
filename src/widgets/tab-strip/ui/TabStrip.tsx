@@ -111,11 +111,7 @@ function TabButton({ tab, active, onSelect, onClose }: TabButtonProps) {
       }`}
       style={active ? { boxShadow: `inset 0 2px 0 ${accent}` } : undefined}
     >
-      <span
-        className={`h-1.5 w-1.5 flex-none rounded-full ${tab.attention ? 'animate-pulse' : ''}`}
-        style={{ background: tab.attention || tab.dirty ? accent : '#48484f' }}
-        title={tab.attention ? 'waiting for you' : undefined}
-      />
+      <StatusDot tab={tab} accent={accent} />
       <span className="flex-1 overflow-hidden font-medium text-ellipsis whitespace-nowrap">
         {tab.title}
       </span>
@@ -144,5 +140,38 @@ function TabButton({ tab, active, onSelect, onClose }: TabButtonProps) {
         ×
       </button>
     </div>
+  )
+}
+
+/**
+ * What the tab's agent is doing, in one dot.
+ *
+ * Working pulses, waiting is solid in the agent's accent, and anything else is
+ * grey — an agent that announces nothing stays grey rather than being called
+ * idle. `title` alone would leave the state unreadable to a screen reader, so
+ * the same words go in an `sr-only` span.
+ */
+function StatusDot({ tab, accent }: { tab: Tab; accent: string }) {
+  const said =
+    tab.status === 'working'
+      ? 'working'
+      : tab.status === 'waiting' || tab.attention
+        ? 'waiting for you'
+        : null
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 flex-none rounded-full ${
+          tab.status === 'working' || tab.attention ? 'animate-pulse' : ''
+        }`}
+        style={{
+          background: said || tab.dirty ? accent : '#48484f',
+        }}
+        title={said ?? undefined}
+      />
+      {said && <span className="sr-only">{said}</span>}
+    </>
   )
 }

@@ -519,3 +519,26 @@ test("the drawer's own tabs switch without ever closing it", () => {
 test('a new tab starts on the changes view', () => {
   expect(initialDeck('tab-1').tabs[0].reviewView).toBe('changes')
 })
+
+test('a tab remembers what its agent said it was doing', () => {
+  const deck = deckReducer(initialDeck('tab-1'), {
+    type: 'status',
+    id: 'tab-1',
+    status: 'working',
+  })
+  expect(deck.tabs[0].status).toBe('working')
+})
+
+test('a tab whose agent has said nothing claims no status', () => {
+  expect(initialDeck('tab-1').tabs[0].status).toBe('unknown')
+})
+
+test('relaunching forgets what the previous session was doing', () => {
+  const working = deckReducer(initialDeck('tab-1'), {
+    type: 'status',
+    id: 'tab-1',
+    status: 'working',
+  })
+  const relaunched = deckReducer(working, { type: 'relaunch', id: 'tab-1' })
+  expect(relaunched.tabs[0].status).toBe('unknown')
+})

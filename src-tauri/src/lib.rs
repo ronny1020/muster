@@ -19,7 +19,8 @@ mod config_tests;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         // First, as the plugin's own docs require: a second launch has to be
         // turned away before anything else in this chain has run. It matters
         // more here than in most apps — two instances would each restore the
@@ -41,7 +42,24 @@ pub fn run() {
             if let Some(dir) = first_directory(&argv, &cwd) {
                 let _ = app.emit("muster://open-directory", dir);
             }
-        }))
+        }));
+
+    // Lets an MCP client read this webview's DOM and run JavaScript in it —
+    // the only way to inspect a Tauri webview, which has no remote debugging
+    // port. Behind a feature and `debug_assertions` both, because the socket
+    // it opens is arbitrary code execution for anything running as the user.
+    // Registered after single-instance, never before it: that plugin has to
+    // turn a second launch away before anything else in the chain has run.
+    #[cfg(all(feature = "mcp", debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_mcp::init_with_config(
+            tauri_plugin_mcp::PluginConfig::new("muster".to_string())
+                .start_socket_server(true)
+                .socket_path("/tmp/muster-mcp.sock".into()),
+        ));
+    }
+
+    builder
         // Size and position across restarts. Without it every launch reopens
         // at the config's 1180x760, wherever the window was left.
         .plugin(

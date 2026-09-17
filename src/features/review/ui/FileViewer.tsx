@@ -181,9 +181,7 @@ export function FileViewer({
         {opener && (
           <Action
             label={`Open in ${opener.editor}`}
-            onClick={() =>
-              opener.open(viewed.kind === 'diff' ? (viewed.line ?? 1) : 1)
-            }
+            onClick={() => opener.open(viewed.line ?? 1)}
           >
             <Icon name="open_in_new" className="h-3.5 w-3.5" />
           </Action>

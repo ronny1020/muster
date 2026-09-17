@@ -40,7 +40,8 @@
     "check:all": "bun run check && bun run format:check && bun test && bun run check:rust",
     "test": "bun test",
     "tauri": "tauri",
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev:mcp": "tauri dev --features mcp"
   },
   "dependencies": {
     "@shikijs/langs": "^4.4.3",
@@ -75,6 +76,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.5.0",
     "prettier": "^3.9.6",
+    "tauri-plugin-mcp": "0.3.1",
     "typescript": "^5.6.0"
   }
 }

@@ -33,7 +33,9 @@ import type { Viewed } from '../../../features/review/model/viewed'
 import { FileViewer } from '../../../features/review/ui/FileViewer'
 import { ReviewPanel } from '../../../features/review/ui/ReviewPanel'
 import { decideBellResponse, notify } from '../../../shared/lib/notify'
+import type { AgentEvent } from '../../../features/terminal/model/agentevents'
 import { isImagePath } from '../../../shared/lib/imagepaths'
+import { isUnder } from '../../../features/terminal/model/termlinks'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
 import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
@@ -225,8 +227,10 @@ export function Pane({
    *
    * A file the agent has just changed opens in the review panel, because the
    * diff is what the user is looking for at that moment — the surrounding
-   * output is the agent saying it edited that file. Everything else keeps the
-   * behaviour it had: a folder is revealed, a file opens in the editor.
+   * output is the agent saying it edited that file. An unchanged file inside
+   * the session's own directory opens in the file column beside the terminal.
+   * Everything else keeps the behaviour it had: a folder is revealed, an
+   * image opens in the overlay, and anything further afield goes to an editor.
    *
    * git is asked per click rather than polled: the answer is only needed when
    * a path is clicked, and a poll here would run in every mounted pane.
@@ -250,6 +254,24 @@ export function Pane({
             (kind) => {
               if (kind === 'directory') {
                 void revealItemInDir(path).catch(report)
+                return
+              }
+              // Unchanged but inside the session's directory: read it here
+              // rather than handing it to an editor. A path the agent printed
+              // while working in this tab is something to glance at, and the
+              // reader is already beside the terminal.
+              // `kind` rather than `!== 'directory'`: a path the agent named
+              // for a file it has not written yet is `missing`, and an editor
+              // opens an empty buffer there where the column can only fail to
+              // read it.
+              if (
+                kind === 'file' &&
+                !isImagePath(path) &&
+                isUnder(path, cwdRef.current)
+              ) {
+                setViewed({ kind: 'file', absolute: path, line: line ?? null })
+                dispatch({ type: 'setReviewView', id: tab.id, view: 'files' })
+                dispatch({ type: 'setReview', id: tab.id, open: true })
                 return
               }
               openFile(path, line)
@@ -296,37 +318,64 @@ export function Pane({
 
   const notifiedAt = useRef<number | null>(null)
   /**
-   * Agents ring the terminal bell when they finish a turn and hand control
-   * back, which is the one moment worth interrupting the user for.
+   * A session has finished its turn and handed control back, which is the one
+   * moment worth interrupting the user for.
+   *
+   * `body` is the agent's own closing words where it published them. The two
+   * ways a session says this arrive differently — see the `OSC 777` invariant
+   * in AGENTS.md — so both funnel here, and `decideBellResponse`'s cooldown is
+   * what keeps an agent that does both from notifying twice.
    */
-  const onBell = useCallback(() => {
-    const { attention, notify: shouldNotify } = decideBellResponse({
-      enabled: settings.notifyOnDone,
-      onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
-      tabActive: active,
-      windowFocused: document.hasFocus(),
-      lastNotifiedAt: notifiedAt.current,
-      now: Date.now(),
-    })
+  const signalAttention = useCallback(
+    (body?: string) => {
+      const { attention, notify: shouldNotify } = decideBellResponse({
+        enabled: settings.notifyOnDone,
+        onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
+        tabActive: active,
+        windowFocused: document.hasFocus(),
+        lastNotifiedAt: notifiedAt.current,
+        now: Date.now(),
+      })
 
-    if (attention) dispatch({ type: 'attention', id: tab.id })
-    if (!shouldNotify) return
-    notifiedAt.current = Date.now()
-    void notify(
-      `${session?.agentName ?? 'Session'} · ${tab.title}`,
-      'Waiting for you.',
+      if (attention) dispatch({ type: 'attention', id: tab.id })
+      if (!shouldNotify) return
+      notifiedAt.current = Date.now()
+      void notify(
+        `${session?.agentName ?? 'Session'} · ${tab.title}`,
+        body ?? 'Waiting for you.',
+        settings.notifySound,
+      )
+    },
+    [
+      active,
+      dispatch,
+      session?.agentName,
+      settings.notifyOnDone,
+      settings.notifyOnlyWhenUnfocused,
       settings.notifySound,
-    )
-  }, [
-    active,
-    dispatch,
-    session?.agentName,
-    settings.notifyOnDone,
-    settings.notifyOnlyWhenUnfocused,
-    settings.notifySound,
-    tab.id,
-    tab.title,
-  ])
+      tab.id,
+      tab.title,
+    ],
+  )
+
+  const onBell = useCallback(() => signalAttention(), [signalAttention])
+
+  const onAgentEvent = useCallback(
+    (event: AgentEvent) => {
+      if (event.name === 'stop') signalAttention(event.response)
+    },
+    [signalAttention],
+  )
+
+  const onWorking = useCallback(
+    (working: boolean) =>
+      dispatch({
+        type: 'status',
+        id: tab.id,
+        status: working ? 'working' : 'waiting',
+      }),
+    [dispatch, tab.id],
+  )
 
   useEffect(() => {
     if (!workspace) return
@@ -378,6 +427,8 @@ export function Pane({
                 session={session}
                 active={active}
                 onBell={onBell}
+                onAgentEvent={onAgentEvent}
+                onWorking={onWorking}
                 cwd={cwd}
                 home={home}
                 onPath={onPath}
@@ -419,7 +470,7 @@ export function Pane({
                   })
                 }
                 onOpenFile={(path) =>
-                  setViewed({ kind: 'file', absolute: path })
+                  setViewed({ kind: 'file', absolute: path, line: null })
                 }
                 onSend={sendPath}
                 onClose={toggleReview}

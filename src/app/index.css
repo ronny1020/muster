@@ -61,6 +61,13 @@
     background-clip: padding-box;
   }
 
+  /* A thumb is sized to what fraction of the content is on screen, and the
+     terminal's scrollback is 20,000 lines against a screenful — which draws a
+     thumb a few pixels tall, too small to see or to grab. */
+  ::-webkit-scrollbar-thumb:vertical {
+    min-height: 32px;
+  }
+
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-muted;
   }

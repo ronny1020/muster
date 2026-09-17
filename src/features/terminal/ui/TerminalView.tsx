@@ -25,6 +25,17 @@ import { IS_MAC } from '../../../shared/lib/platform'
 import { flattenLogicalLine, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
+import { QUIET_MS } from '../model/working'
+import {
+  currentMessage,
+  type Message,
+  nextMessage,
+  previousMessage,
+} from '../model/messages'
+import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
+import { useMessages } from './useMessages'
+import { useViewportRow } from './useViewportRow'
+import { useRulerMarks } from './useRulerMarks'
 
 export interface TerminalViewProps {
   sessionId: string
@@ -32,6 +43,11 @@ export interface TerminalViewProps {
   active: boolean
   /** Fired when the session rings the terminal bell, i.e. it wants attention. */
   onBell(): void
+  /**
+   * Fired for each turn boundary the agent announces over `OSC 777`. Claude
+   * Code never rings the bell, so this is the only signal it hands back.
+   */
+  onAgentEvent(event: AgentEvent): void
   /** The session's live directory, for resolving a relative path in the output. */
   cwd: string
   home: string
@@ -39,6 +55,8 @@ export interface TerminalViewProps {
   onPath(path: string, line?: number): void
   /** A URL in the output was clicked. */
   onUrl(url: string): void
+  /** Whether the session is still printing, i.e. still working. */
+  onWorking(working: boolean): void
   /** Whether this tab's scrollback search bar is showing. */
   findOpen: boolean
   onCloseFind(): void
@@ -71,22 +89,40 @@ export function TerminalView({
   session,
   active,
   onBell,
+  onAgentEvent,
   cwd,
   home,
   onPath,
   onUrl,
+  onWorking,
   findOpen,
   onCloseFind,
   paste,
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal>(null)
+  /** The same terminal as state, so what renders beside it can mount with it. */
+  const [mounted, setMounted] = useState<Terminal | null>(null)
+  const messages = useMessages(mounted, active)
+  useRulerMarks(mounted, messages)
+  const viewportRow = useViewportRow(mounted, active)
+  /** The last row on screen: what "which message am I in" is measured against. */
+  const viewportBottom = viewportRow + (mounted?.rows ?? 0) - 1
   const fit = useRef<FitAddon>(null)
   const search = useRef<SearchAddon>(null)
   const { settings } = useSettings()
   const background = useBackground(settings.backgroundImage)
   const bell = useRef(onBell)
   bell.current = onBell
+  const agentEvent = useRef(onAgentEvent)
+  agentEvent.current = onAgentEvent
+  const working = useRef(onWorking)
+  working.current = onWorking
+  /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
+      pane cannot do it for itself. */
+  const resync = useRef<(() => void) | null>(null)
+  const showing = useRef(active)
+  showing.current = active
   // Read through refs: these change with every poll, and the terminal is built
   // once. A dependency on them would tear the session down.
   const link = useRef({ cwd, home, onPath, onUrl })
@@ -113,6 +149,10 @@ export function TerminalView({
       letterSpacing: latest.current.letterSpacing,
       scrollback: latest.current.scrollback,
       macOptionIsMeta: true,
+      // The find bar's match marks live in xterm's overview ruler, and
+      // without a width that ruler is not drawn at all — every decoration
+      // asking for a mark in it is silently dropped.
+      overviewRulerWidth: 10,
       theme: paletteFor(
         latest.current.themeId,
         Boolean(latest.current.backgroundImage),
@@ -238,10 +278,66 @@ export function TerminalView({
       // No WebGL here: the DOM renderer is already what is running. The handle
       // stays, because xterm may already have registered the addon.
     }
+    // xterm records the scroll area's height alongside writing it, and skips
+    // the write when its record already matches — so an inline height reset
+    // behind its back is never repaired and the scrollbar keeps the size it
+    // had when the session was one screen tall. Re-asserting the height it
+    // already computed costs nothing when nothing is wrong.
+    //
+    // A hidden pane is `display: none`, where every height reads 0 — so this
+    // can only measure while the pane is on screen, and writes that arrive
+    // behind a hidden tab would otherwise leave the scrollbar stale with
+    // nothing to repair it. The pane runs it again on the way back in, and
+    // skipping it while hidden also keeps a layout flush out of every write
+    // in every tab.
+    const resyncScrollbar = () => {
+      if (!showing.current) return
+      const viewport = term.buffer.active
+      const area = element.querySelector<HTMLElement>('.xterm-scroll-area')
+      if (!area || viewport.length <= term.rows) return
+      // Row height from the screen's own layout rather than a cell metric:
+      // the WebGL renderer draws to a canvas and leaves no per-row element to
+      // measure, while the screen is always `rows` tall.
+      const screen = element.querySelector<HTMLElement>('.xterm-screen')
+      const rowHeight = (screen?.offsetHeight ?? 0) / term.rows
+      const expected = Math.round(rowHeight * viewport.length)
+      if (expected > 0 && area.offsetHeight < expected) {
+        area.style.height = `${expected}px`
+      }
+    }
+    term.onWriteParsed(resyncScrollbar)
+    resync.current = resyncScrollbar
+
+    // Output is the one "is it working" signal every agent and every shell
+    // has: a CLI prints while it thinks and goes quiet when it wants you.
+    // Reported on the edges only, so a busy session is not a render per chunk.
+    let quiet: ReturnType<typeof setTimeout> | undefined
+    let printing = false
+    const markWorking = () => {
+      if (!printing) {
+        printing = true
+        working.current(true)
+      }
+      clearTimeout(quiet)
+      quiet = setTimeout(() => {
+        printing = false
+        working.current(false)
+      }, QUIET_MS)
+    }
+
     term.onData((data) => bestEffort(writePty(sessionId, data)))
     // Read through a ref so a new handler identity never re-runs the spawn.
     term.onBell(() => bell.current())
+    // The other half of "the session wants you": an agent CLI announces its
+    // turn boundaries here instead of ringing the bell. Claimed rather than
+    // passed on, since nothing else in the app reads `OSC 777`.
+    term.parser.registerOscHandler(777, (data) => {
+      const event = parseAgentEvent(data)
+      if (event) agentEvent.current(event)
+      return true
+    })
     terminal.current = term
+    setMounted(term)
     if (paste) paste.current = (text: string) => term.paste(text)
 
     // The PTY is spawned only once the pane has real dimensions, so the
@@ -274,7 +370,10 @@ export function TerminalView({
           // offer that agent's own resume for the conversation.
           agentId,
         },
-        (bytes) => term.write(bytes),
+        (bytes) => {
+          markWorking()
+          term.write(bytes)
+        },
       ).catch((error) =>
         term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
       )
@@ -286,6 +385,7 @@ export function TerminalView({
 
     return () => {
       observer.disconnect()
+      clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
       bestEffort(killPty(sessionId))
       // Every addon before the terminal, not just the renderer. `dispose` on
@@ -307,12 +407,49 @@ export function TerminalView({
       }
       term.dispose()
       terminal.current = null
+      resync.current = null
+      setMounted(null)
       if (paste) paste.current = null
     }
     // Session identity is fixed for the life of the tab, so the spawn runs
     // once: everything else this effect reads comes through a ref. `paste` is
     // a ref object too, so it is stable by construction.
   }, [paste, sessionId])
+
+  /**
+   * Scrolls to the message before or after the one at the top of the screen.
+   *
+   * The marks in the overview ruler cannot take a click — xterm attaches no
+   * pointer handler to that canvas — so stepping through them is what makes
+   * them reachable at all.
+   */
+  const stepMessage = useCallback(
+    (direction: -1 | 1) => {
+      const term = terminal.current
+      if (!term) return
+      const top = term.buffer.active.viewportY
+      const target =
+        direction === -1
+          ? previousMessage(messages, top)
+          : nextMessage(messages, top + term.rows - 1)
+      // Past the last message in either direction, go to the end of the
+      // scrollback: the gesture means "further this way", and the output after
+      // the final message would otherwise be unreachable by the buttons.
+      if (target) term.scrollToLine(target.row)
+      else if (direction === 1) term.scrollToBottom()
+      else term.scrollToTop()
+      term.focus()
+    },
+    [messages],
+  )
+
+  /** Scrolls straight to one message, from a click on its dot. */
+  const jumpToMessage = useCallback((row: number) => {
+    const term = terminal.current
+    if (!term) return
+    term.scrollToLine(row)
+    term.focus()
+  }, [])
 
   const [dropping, setDropping] = useState(false)
 
@@ -379,8 +516,13 @@ export function TerminalView({
   // swallows typing meant for whatever the new tab put on screen, so the
   // terminal hands focus back on the way out.
   useEffect(() => {
-    if (active) terminal.current?.focus()
-    else terminal.current?.blur()
+    if (!active) {
+      terminal.current?.blur()
+      return
+    }
+    terminal.current?.focus()
+    // Whatever arrived while this pane was hidden could not be measured then.
+    resync.current?.()
   }, [active])
 
   const closeFind = useCallback(() => {
@@ -435,6 +577,16 @@ export function TerminalView({
         ref={host}
         className="absolute inset-2 [&_.xterm]:h-full [&_.xterm-viewport]:!bg-transparent"
       />
+      {messages.length > 0 && (
+        <MessageRail
+          messages={messages}
+          current={currentMessage(messages, viewportBottom)?.row ?? null}
+          onJump={jumpToMessage}
+        />
+      )}
+      {messages.length > 1 && (
+        <MessageSteps messages={messages} onStep={stepMessage} />
+      )}
       {findOpen && search.current && (
         <FindBar search={search.current} onClose={closeFind} />
       )}
@@ -448,6 +600,113 @@ export function TerminalView({
           </span>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * One dot per message you sent, down the right edge, oldest at the top, with
+ * the one the viewport is inside drawn filled.
+ *
+ * Evenly spaced rather than placed in proportion to the scroll extent, and
+ * clear of the scrollbar rather than over it — AGENTS.md's message-marks
+ * invariant has the reasons for both, and for why this exists beside xterm's
+ * own ruler rather than instead of it.
+ *
+ * `MessageSteps` walks this identical list, so the number of dots and the
+ * number of presses are always the same.
+ */
+function MessageRail({
+  messages,
+  current,
+  onJump,
+}: {
+  messages: Message[]
+  /** The row of the message the viewport is inside, drawn filled. */
+  current: number | null
+  onJump(row: number): void
+}) {
+  const oldestFirst = [...messages].reverse()
+  return (
+    <div
+      // `z-10` is load-bearing: xterm's render layers are positioned with a
+      // positive z-index inside the host, so a later sibling at `auto` paints
+      // *under* them and the link-layer canvas swallows every click. DOM order
+      // does not decide this.
+      //
+      // Centred as a group with a fixed gap rather than stretched down the
+      // edge: the rail is a short list of places, and spreading a handful of
+      // dots over the full height reads as a scale rather than a menu.
+      className="pointer-events-none absolute top-1/2 right-[18px] z-10 flex w-4 -translate-y-1/2 flex-col items-center gap-[11px]"
+      role="group"
+      aria-label="Your messages in the scrollback"
+    >
+      {oldestFirst.map(({ row, label }) => (
+        <button
+          key={row}
+          type="button"
+          title={label || `Line ${row}`}
+          aria-label={`Scroll to your message: ${label || `line ${row}`}`}
+          onClick={() => onJump(row)}
+          // The button is the hit box and the ring is the mark: 7px of dot is
+          // not a target, so the pointer gets the rail's full width and 12px
+          // of height around it.
+          aria-current={row === current ? 'true' : undefined}
+          className="group pointer-events-auto flex h-3 w-4 flex-none items-center justify-center"
+        >
+          <span
+            className={`rounded-full border border-brand/70 group-hover:border-brand group-hover:bg-brand ${
+              row === current
+                ? 'h-[9px] w-[9px] border-brand bg-brand'
+                : 'h-[7px] w-[7px]'
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Steps through your own messages in the scrollback.
+ *
+ * Bottom right rather than top right: the find bar owns that corner, and both
+ * can be open at once. It hides itself below two messages, where "previous"
+ * and "next" have nothing to say.
+ */
+function MessageSteps({
+  messages,
+  onStep,
+}: {
+  messages: Message[]
+  onStep(direction: -1 | 1): void
+}) {
+  return (
+    <div // Left of the rail's own 16px lane rather than sharing it: both hug the
+      // right edge, and stacked they took the clicks meant for the newest dots.
+      className="absolute right-10 bottom-3 z-20 flex flex-col overflow-hidden rounded-lg border border-line bg-chrome/95 shadow-lg backdrop-blur"
+    >
+      <button
+        type="button"
+        title="Previous message"
+        aria-label="Scroll to the previous message you sent"
+        onClick={() => onStep(-1)}
+        className="h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink"
+      >
+        ↑
+      </button>
+      <span className="sr-only" role="status">
+        {messages.length} messages in the scrollback
+      </span>
+      <button
+        type="button"
+        title="Next message"
+        aria-label="Scroll to the next message you sent"
+        onClick={() => onStep(1)}
+        className="h-6 w-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
+      >
+        ↓
+      </button>
     </div>
   )
 }
@@ -511,7 +770,7 @@ function FindBar({
   }
 
   return (
-    <div className="absolute top-3 right-4 flex items-center gap-1 rounded-lg border border-line bg-chrome/95 px-1.5 py-1 shadow-lg backdrop-blur">
+    <div className="absolute top-3 right-4 z-20 flex items-center gap-1 rounded-lg border border-line bg-chrome/95 px-1.5 py-1 shadow-lg backdrop-blur">
       <input
         ref={input}
         value={query}
@@ -595,7 +854,18 @@ function pathLinks(
         {
           range,
           text: match.path,
-          activate: () => {
+          activate: (event) => {
+            // Claimed here, or the same click also reaches the pane beneath,
+            // which treats it as a click on the terminal.
+            event.preventDefault()
+            event.stopPropagation()
+            // xterm arms a selection drag on mousedown and tears it down from
+            // a listener on the *document* — an ancestor, so the line above
+            // stops that listener running and the drag stays armed: the grid
+            // then draws a selection that follows the pointer with no button
+            // held, and leaks the 50ms drag-scroll interval. `clearSelection`
+            // is what xterm's own mouseup path calls to undo it.
+            term.clearSelection()
             const { cwd, home, onPath } = link.current!
             onPath(resolvePath(match.path, cwd, home), match.line)
           },

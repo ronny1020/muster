@@ -21,7 +21,7 @@ should not have:
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the app's only network egress.                                                                                                                 |
 | **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                         |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, and can carry inline-image escape sequences.                                                                                      |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence.           |
 | **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                            |
 | **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`. |
 
@@ -29,12 +29,143 @@ None of those five is you, and none of them should be able to reach the
 network on your behalf, read a file you did not choose, or put an argument in
 front of a program you did not type.
 
-The last one is worth spelling out, because it is the only inbound channel this
-app has. What a sender can reach is `first_directory` and then a **pre-filled
+The last one is worth spelling out, because it is the only inbound channel a
+released build has. A development build asked for with `bun run dev:mcp`
+opens a second one — see the debugging-socket section below. What a sender can reach is `first_directory` and then a **pre-filled
 launcher tab** — no spawn, no file written, no path but the one it named, and
 the agent and flags come from your own settings. What it does gain is that the
 window is raised and that tab made active, so a stray Return in the focused
 directory field would start a session in a directory the sender chose.
+
+## The debugging socket, and why a release build has none
+
+`bun run dev:mcp` builds with the optional `mcp` Cargo feature, which registers
+`tauri-plugin-mcp`. That plugin listens on a unix socket and will, for a caller
+holding its token, read the webview's DOM, run arbitrary JavaScript in it,
+inject input and read cookies — strictly more than the single-instance
+listener above grants. It exists because a Tauri webview has no remote
+debugging port, and there is no other way to inspect one.
+
+Four things keep it out of anything shipped, and all four are checkable:
+
+- The registration is `#[cfg(all(feature = "mcp", debug_assertions))]`, so it
+  needs the feature _and_ a debug build.
+- The feature is `optional` with no `default` list, so it is absent unless
+  asked for by name.
+- The plugin refuses to start its socket server in a non-`debug_assertions`
+  build on its own account.
+- Neither CI nor the release workflow passes `--features mcp`.
+
+The webview half is gated separately, and that gate is the one that failed
+review once: `main.tsx` guards it on `import.meta.env.DEV`, which Bun's dev
+server defines and `Bun.build` does not. `build.ts` now defines it as `false`
+for the production bundle, which is what removes both the branch and the
+plugin's client code from `dist/`. If that define is ever dropped, the guard
+does not merely stop working — it throws before the app renders.
+
+Two known weaknesses in the development build, accepted because it is a
+development build and not something a user runs:
+
+- The socket path is the fixed `/tmp/muster-mcp.sock`, not the per-user
+  temporary directory. `/tmp` is world-writable, and while the plugin refuses
+  a socket path that is not a socket, the token file it writes beside it is
+  opened with `create`+`truncate` and no `O_NOFOLLOW` — so another user on the
+  machine can pre-create that name as a symlink and have the app truncate
+  whatever it points at.
+- `tauri-plugin-mcp` is unlicensed and pulled from a git revision; its Rust
+  half is pinned to an immutable commit and its npm half to an exact version,
+  for the reason `Cargo.toml` gives about anything that injects script into
+  this app's webview.
+
+## What an agent may put in a desktop notification
+
+An agent CLI announces the end of a turn with
+`OSC 777;notify;warp://cli-agent;<json>`, and Muster reads it — that sequence
+is how Claude Code hands control back, since it never rings the terminal bell.
+The event's `response` field becomes the body of a desktop notification, so
+text the agent chose leaves the terminal and appears in the OS.
+
+What bounds it:
+
+- `parseAgentEvent` treats the payload as untrusted. A malformed body, a JSON
+  value that is not an object, or an event name it does not know all answer
+  `null`; any other field of the wrong type is dropped and the event is kept
+  without it. Nothing throws inside xterm's parser, where a throw would stop
+  the terminal drawing. The payload is also refused unread past 8 KB, so the
+  cap below is not the only bound on it.
+- The text it carries is capped, because an unbounded string in a notification
+  body is a wall of text on your screen.
+- Only `stop` reaches the notification path. `session_start`,
+  `prompt_submit` and `tool_complete` are parsed and ignored.
+- The payload is never interpreted as anything but text: no path is resolved
+  from it, no file read, nothing typed into a session. The "nothing an agent
+  names may reach a session as keystrokes" rule in AGENTS.md applies here too.
+
+The channel itself is not a new capability. The bytes already arrived in the
+pty stream Muster reads and records, so nothing was opened to get them — no
+hook, no plugin, and no read of the agent's own transcript files.
+
+## Two places an agent's own text is drawn outside the grid
+
+Both are display-only, and both are worth knowing because the grid is where
+agent output is normally confined.
+
+**A desktop notification body**, from `OSC 777`'s `stop` event — bounded as the
+section above describes.
+
+**The message rail's tooltip and accessible name.** `findMessageRows` marks a
+row whose first columns carry a non-default background, and `labelled` reads
+that row's text back out of the buffer for the dot's `title` and `aria-label`.
+Two consequences follow, and neither is a capability gain — the agent could
+already print anything — but both affect what the surface _means_:
+
+- **A rail entry is "the agent tinted this row", not "you typed this".** Any
+  tinted left edge qualifies: a banner, a diff gutter, a coloured `git log`.
+  The control says "scroll to your message" about text the agent chose, so do
+  not read the rail as an audit trail of your own instructions.
+- The label is bounded and inert. React sets both attributes through
+  `setAttribute`, so nothing there is parsed as markup, and xterm stores only
+  printable code points in a cell — no control bytes or escape sequences can
+  reach it. It is read with a bounded column range and capped in length, and it
+  reaches no other consumer: no path, no pty write, no IPC, no file.
+
+## What a terminal click will read
+
+Clicking a path in the terminal opens it in the file column when it resolves to
+somewhere under the session's own directory, and that read is the app's, not
+the agent's. The containment test is `isUnder`, and it is a **prefix
+comparison**: neither it nor `resolvePath` collapses `..`, and neither resolves
+an intermediate directory symlink. So a path an agent wrote as
+`../../secrets/key` or one under a `docs -> ~/Desktop` symlink satisfies it
+while pointing outside the directory, and in the symlink case the path Muster
+displays looks entirely repo-relative.
+
+What bounds it: the read needs a click, `read_capped` refuses a symlinked final
+component with `symlink_metadata` and `O_NOFOLLOW`, refuses anything that is
+not a regular file, refuses a file containing a NUL byte, and stops at 2 MB.
+Treat the directory test as "where the agent said it was", not as a boundary.
+
+## What the message rail says, and what it does not
+
+The dots down the terminal's right edge, and the marks on its scrollbar, are
+placed by `findMessageRows`, which looks for a **tinted block of cells** — the
+way a CLI draws the prompt you typed. That is a guess about provenance, not a
+record of it, and the agent chooses every byte written to the pty. So:
+
+- A rail entry means "something tinted the first few columns here". It does not
+  mean you typed it. An agent can produce one deliberately, and ordinary output
+  produces them by accident — a diff gutter, a `bat` line-number column, a
+  coloured `git log`. This app's own startup banner is marked.
+- Each entry's tooltip and accessible name carry text read out of the buffer,
+  bounded to 80 characters and refused when it would render blank. React sets
+  both through `setAttribute`, so the text is inert markup; what it can do is
+  misattribute.
+- Clicking one only scrolls. The row comes from the scan, so it is in range by
+  construction: no path is resolved, no file read, nothing typed into the
+  session.
+
+The honest source for "what did I ask" is the `OSC 777` `prompt_submit` event,
+which names each message as the user sends it. Nothing consumes it yet.
 
 ## What the session journal keeps, and for how long
 

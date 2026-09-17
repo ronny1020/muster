@@ -58,6 +58,8 @@ export interface Tab {
   findOpen: boolean
   /** The session signalled it is done while the user was looking elsewhere. */
   attention: boolean
+  /** What the agent is doing, as it last announced it. */
+  status: AgentStatus
   content: TabContent
 }
 
@@ -93,8 +95,18 @@ export type DeckAction =
   | { type: 'setReviewView'; id: string; view: ReviewView }
   | { type: 'setFind'; id: string; open: boolean }
   | { type: 'attention'; id: string }
+  | { type: 'status'; id: string; status: AgentStatus }
   | { type: 'relaunch'; id: string }
   | { type: 'exited'; id: string; code: number }
+
+/**
+ * What the agent in a tab is doing, from the events it broadcasts.
+ *
+ * `unknown` is the honest default and the common one: only an agent that
+ * announces itself moves off it, so a plain shell and any CLI that says
+ * nothing stay there rather than claiming to be idle.
+ */
+export type AgentStatus = 'unknown' | 'working' | 'waiting'
 
 export const newTab = (
   id: string,
@@ -111,6 +123,7 @@ export const newTab = (
   reviewView: 'changes',
   findOpen: false,
   attention: false,
+  status: 'unknown',
   content,
 })
 
@@ -232,6 +245,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         dirty: false,
         exitCode: null,
         attention: false,
+        status: 'unknown',
         historyOpen: false,
         reviewOpen: false,
         journalOpen: false,
@@ -239,6 +253,9 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
 
     case 'attention':
       return patch(deck, action.id, () => ({ attention: true }))
+
+    case 'status':
+      return patch(deck, action.id, () => ({ status: action.status }))
 
     case 'toggleHistory':
       return patch(deck, action.id, (tab) => ({

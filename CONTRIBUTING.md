@@ -45,6 +45,19 @@ which drops every running session — expect that when working in `src-tauri/`.
 component, but every `invoke` fails there: nothing outside the Tauri window has
 a backend.
 
+```bash
+bun run dev:mcp  # tauri dev --features mcp
+```
+
+`dev:mcp` adds `tauri-plugin-mcp`, which listens on `/tmp/muster-mcp.sock` and
+lets an MCP client read the window's DOM and run JavaScript in it. That is the
+only way to inspect a Tauri webview, which has no remote debugging port — it is
+how the terminal's scroll extent and the overview ruler's contents were
+measured against a live agent session. The feature is optional and default-off,
+and SECURITY.md's debugging-socket section says what keeps it out of a
+release and what is knowingly weak about it. Plain `bun run dev` does not build
+it.
+
 ## Checks
 
 A `husky` pre-commit hook runs these for you: `lint-staged` formats the staged
@@ -73,7 +86,8 @@ cd src-tauri && cargo check --all-targets  # rustc alone: a compile error reads
 bun test                          # settings, deck, persist, flags, git chips,
                                   # branches, agents, recents, shortcuts, paths,
                                   # notify, editors, themes, clipboard,
-                                  # termlinks, termcells, diff parsing, changed
+                                  # termlinks, termcells, agent OSC events,
+                                  # message rows, diff parsing, changed
                                   # files, highlighting, the file tree, file
                                   # icons, markdown rendering, font metrics,
                                   # panel widths, the code style, image paths,
@@ -112,6 +126,12 @@ building.
 | Notification policy                                | `src/shared/lib/notify.ts`                    |
 | Editor detection and launching                     | `src-tauri/src/editor.rs`                     |
 | Installed font family enumeration                  | `src-tauri/src/fonts.rs`                      |
+| Finding your messages in the scrollback            | `src/features/terminal/model/messages.ts`     |
+| Turn-end events an agent broadcasts                | `src/features/terminal/model/agentevents.ts`  |
+| Whether a session is still working                 | `src/features/terminal/model/working.ts`      |
+| Finding your messages as the session writes        | `src/features/terminal/ui/useMessages.ts`     |
+| Marking messages on the scrollbar                  | `src/features/terminal/ui/useRulerMarks.ts`   |
+| Where the viewport is scrolled to                  | `src/features/terminal/ui/useViewportRow.ts`  |
 | Terminal colour schemes                            | `src/shared/lib/themes.ts`                    |
 | Font fallback list and CSS stacks                  | `src/shared/lib/fonts.ts`                     |
 | Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`    |

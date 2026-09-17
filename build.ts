@@ -5,6 +5,10 @@ const result = await Bun.build({
   entrypoints: ['./index.html'],
   outdir: './dist',
   target: 'browser',
+  // Load-bearing: without it the guard in `main.tsx` throws before the app
+  // renders, and the MCP plugin's client code ships. See AGENTS.md's
+  // `build.ts` invariant.
+  define: { 'import.meta.env.DEV': 'false' },
   // Without it every dynamic import is inlined, and the review panel's thirty
   // syntax grammars plus mermaid make an 8 MB bundle the webview has to parse
   // before drawing a window. Split, they are fetched when a file needs them.

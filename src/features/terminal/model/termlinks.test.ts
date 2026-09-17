@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { findPaths, resolvePath } from './termlinks'
+import { findPaths, isUnder, resolvePath } from './termlinks'
 
 const paths = (text: string) => findPaths(text).map((match) => match.path)
 
@@ -102,4 +102,35 @@ test('a Windows session directory joins with a backslash', () => {
   expect(resolvePath('src\\a.ts', 'C:\\work', 'C:\\Users\\ada')).toBe(
     'C:\\work\\src\\a.ts',
   )
+})
+
+test('a path inside the session directory is recognised', () => {
+  expect(isUnder('/work/repo/src/a.ts', '/work/repo')).toBe(true)
+  expect(isUnder('/work/repo/src/a.ts', '/work/repo/')).toBe(true)
+})
+
+test('a sibling directory sharing a prefix is not inside it', () => {
+  // The boundary is the whole point: a plain `startsWith` puts every file of
+  // `repo-old` inside `repo`.
+  expect(isUnder('/work/repo-old/src/a.ts', '/work/repo')).toBe(false)
+})
+
+test('the session directory itself is not inside itself', () => {
+  expect(isUnder('/work/repo', '/work/repo')).toBe(false)
+})
+
+test('a path pointing at a sibling tree is not inside', () => {
+  // Only pre-collapsed paths: `isUnder` is a prefix test, so one still
+  // carrying `../` satisfies it — see its doc comment.
+  expect(isUnder('/work/other/a.ts', '/work/repo')).toBe(false)
+  expect(isUnder('/tmp/shot.png', '/work/repo')).toBe(false)
+})
+
+test('Windows separators compare the same as POSIX ones', () => {
+  expect(isUnder('C:\\work\\repo\\src\\a.ts', 'C:\\work\\repo')).toBe(true)
+  expect(isUnder('C:\\work\\repo-old\\a.ts', 'C:\\work\\repo')).toBe(false)
+})
+
+test('no session directory means nothing is inside it', () => {
+  expect(isUnder('/work/repo/a.ts', '')).toBe(false)
 })
