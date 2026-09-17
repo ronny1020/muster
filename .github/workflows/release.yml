@@ -1,11 +1,15 @@
 # Builds the installers users download, in two modes.
 #
 # **Tag** (`push: tags: v*`) is the real release: every platform's artifact
-# lands on a draft release for review before publishing.
+# lands on a release that is **published**, which is what lets
+# `update-packages.yml` move the Homebrew cask and the Scoop manifest without
+# anyone clicking anything.
 #
-# **Manual** (`workflow_dispatch`) is either: it rehearses by default, and
-# releases when `release` is ticked and a `tag` given — for re-cutting a
+# **Manual** (`workflow_dispatch`) is either: it rehearses by default, and cuts
+# a **draft** when `release` is ticked and a `tag` given — for re-cutting a
 # release whose run failed halfway, without deleting and re-pushing the tag.
+# That one drafts on purpose: a halfway run is when the assets are worth
+# checking before anyone can download them.
 #
 # **Anything else** is a rehearsal. The same four bundles are built and
 # attached to the run as artifacts, but no release is created — `tagName` is
@@ -124,7 +128,17 @@ jobs:
             the first time; Windows SmartScreen wants "More info → Run anyway".
             See the README for the Homebrew and Scoop routes, which handle it
             for you.
-          releaseDraft: true
+          # A tag push publishes straight away, and that is what carries the
+          # release the rest of the way: `update-packages.yml` triggers on
+          # `release: published`, so a draft leaves the Homebrew cask and the
+          # Scoop manifest on the previous version until someone clicks
+          # Publish — which is the step that got forgotten, and the reason
+          # `brew upgrade` reported nothing to do after a successful build.
+          #
+          # A manual run still drafts. That path exists for re-cutting a
+          # release whose run failed halfway, which is exactly when the
+          # assets are worth looking at before anyone can download them.
+          releaseDraft: ${{ github.event_name != 'push' }}
           prerelease: false
           args: ${{ matrix.args }}
 

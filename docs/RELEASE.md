@@ -28,8 +28,13 @@ git push origin v0.2.0
 ```
 
 The tag is what triggers `.github/workflows/release.yml`. It builds four
-bundles — Apple silicon, Intel Mac, Windows, Linux — and attaches them to a
-**draft** release.
+bundles — Apple silicon, Intel Mac, Windows, Linux — and **publishes** them.
+
+Publishing rather than drafting is what carries the release the rest of the
+way: `update-packages.yml` triggers on `release: published`, so a draft leaves
+the Homebrew cask and the Scoop manifest on the previous version until someone
+clicks Publish. That click is the step that gets forgotten, and the symptom is
+a successful build that nobody can install.
 
 The same workflow runs on every pull request as a rehearsal: it builds the same
 four bundles, creates no release, and attaches them to the run instead. So a
@@ -43,17 +48,20 @@ re-cutting the tag — tick **Cut a draft release** and give it the tag:
 gh workflow run release.yml -f release=true -f tag=v0.2.1
 ```
 
-## 3. Review the draft, then publish
+## 3. Check what went out
 
-Look at the draft on the Releases page before publishing:
+The release is already public, so this is a check rather than a gate — and
+still worth doing, because nothing in CI runs the app:
 
 - All four platforms' assets present. A failed matrix leg leaves a gap rather
   than failing the release.
 - The filenames carry the version you meant.
 - The release notes read the way you want; the workflow supplies a default.
 
-Publishing is the point of no return for anyone watching the repo, so download
-one asset and open it first.
+Download one asset and open it. A bundle that builds and then crashes on
+launch passes every check this repository has, and the manual `workflow_dispatch`
+path drafts rather than publishes for exactly that case — use it to re-cut a
+release you want to look at before anyone else can.
 
 ## 4. Update the tap and the bucket
 
@@ -79,8 +87,16 @@ right thing to copy when first creating those repositories.
 **Automatically** — `.github/workflows/update-packages.yml` does exactly the
 above on `release: published`, which makes step 4 nothing at all. It needs one
 secret, `PACKAGES_PAT`: a fine-grained token with Contents read and write on
-`ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. Without it the
-checkout steps fail and the manifests stay where they are.
+`ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. The automatic
+`GITHUB_TOKEN` cannot stand in — it is scoped to this repository, and a tap has
+to live in its own — so this is the one part of a release no workflow can do
+for itself.
+
+Without the secret the run stops at its first step, stays **green**, and writes
+the checksums and these manual edits into the run summary. Green because the
+release itself succeeded: only the manifests are behind. A red X there used to
+say `Input required and not supplied: token`, which names neither the secret
+nor the repository.
 
 For a release whose event has already passed — one published before the secret
 existed, or a run that failed — trigger it by hand:

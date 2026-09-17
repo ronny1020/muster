@@ -1041,6 +1041,27 @@ component wiring is verified by running the app, not by a green suite.
 - `test/setup.ts` supplies an in-memory `localStorage`, which Bun's test runtime
   lacks.
 
+## Releasing
+
+**"Release" means installable, not tagged.** When the instruction is to release,
+carry it through until `brew upgrade --cask muster` (or the Scoop equivalent)
+actually offers the new version, and say so with the evidence. A green build is
+not a release; a published release whose manifests still point at the previous
+version is not one either, and it is the state that looks finished from the
+Releases page while every user's `brew upgrade` reports nothing to do.
+
+[docs/RELEASE.md](docs/RELEASE.md) is the runbook. The steps that need a human
+are the version number and the decision to ship; everything after the tag is
+the pipeline's job, and where it cannot do something the reason belongs in this
+file rather than in someone's memory. Today that is one thing: `PACKAGES_PAT`,
+without which the manifests cannot move, because a tap lives in its own
+repository and the automatic `GITHUB_TOKEN` is scoped to this one.
+
+Two things are still a person's call and stay that way. **Every push is asked
+about first**, including the tag. And an asset is downloaded and opened before
+anyone else can, because nothing in CI runs the app — a bundle that builds and
+crashes on launch passes every check this repository has.
+
 ## Git
 
 - **Do not commit unless asked.** Finish the change, leave it in the working

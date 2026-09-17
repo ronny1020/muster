@@ -7,9 +7,11 @@
 #   gh workflow run update-packages.yml -f version=v0.2.1
 #
 # It needs one secret: PACKAGES_PAT, a fine-grained token with Contents: read
-# and write on ronny1020/homebrew-tap and ronny1020/scoop-bucket only. Without
-# it the checkout steps fail, and the two manifests have to be edited by hand —
-# docs/RELEASE.md says how.
+# and write on ronny1020/homebrew-tap and ronny1020/scoop-bucket only. The
+# automatic GITHUB_TOKEN cannot stand in — it is scoped to this repository, and
+# a tap has to live in its own. Without the secret the run stops at the gate
+# below, stays green, and writes the checksums and the manual steps into the
+# run summary rather than failing on an error that names neither.
 name: update-packages
 
 on:
@@ -47,7 +49,46 @@ jobs:
             echo "SHA_X64_EXE=$(sha256sum ./*-setup.exe | cut -d' ' -f1)"
           } >> "$GITHUB_ENV"
 
+      # `actions/checkout` against another repository fails with
+      # "Input required and not supplied: token" when the secret is absent,
+      # which names neither the secret nor the repository and reads like a
+      # broken workflow. Stopping here says what is missing and what the
+      # release still needs, and leaves the run green: the release itself
+      # succeeded, and only the manifests are behind.
+      - name: Require the cross-repository token
+        id: token
+        run: |
+          if [ -z "$PACKAGES_PAT" ]; then
+            {
+              echo "### Manifests not updated"
+              echo
+              echo "\`PACKAGES_PAT\` is not set, so the Homebrew cask and the"
+              echo "Scoop manifest still point at the previous version and"
+              echo "\`brew upgrade --cask muster\` will report nothing to do."
+              echo
+              echo "Create a fine-grained token with **Contents: read and write**"
+              echo "on \`ronny1020/homebrew-tap\` and \`ronny1020/scoop-bucket\`"
+              echo "only, add it as the \`PACKAGES_PAT\` repository secret, then:"
+              echo
+              echo "    gh workflow run update-packages.yml -f version=$VERSION"
+              echo
+              echo "Until then, docs/RELEASE.md's step 4 has the manual edits."
+              echo "The checksums this run computed:"
+              echo
+              echo "    aarch64.dmg  $SHA_AARCH64"
+              echo "    x64.dmg      $SHA_X64_DMG"
+              echo "    x64-setup    $SHA_X64_EXE"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::PACKAGES_PAT is not set — the manifests still point at the previous version"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PACKAGES_PAT: ${{ secrets.PACKAGES_PAT }}
+
       - name: Check out the Homebrew tap
+        if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v7
         with:
           repository: ronny1020/homebrew-tap
@@ -55,6 +96,7 @@ jobs:
           path: homebrew-tap
 
       - name: Rewrite the cask
+        if: steps.token.outputs.present == 'true'
         working-directory: homebrew-tap
         run: |
           cask=Casks/muster.rb
@@ -74,6 +116,7 @@ jobs:
           git commit -am "muster $PLAIN_VERSION" && git push
 
       - name: Check out the Scoop bucket
+        if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v7
         with:
           repository: ronny1020/scoop-bucket
@@ -81,6 +124,7 @@ jobs:
           path: scoop-bucket
 
       - name: Rewrite the manifest
+        if: steps.token.outputs.present == 'true'
         working-directory: scoop-bucket
         run: |
           manifest=bucket/muster.json
