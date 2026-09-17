@@ -1,15 +1,19 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import {
   type HighlightedLines,
   highlight,
   languageFor,
 } from '../model/highlight'
+import { relativeTo } from '../model/changes'
+import { changedLines } from '../model/diff'
 import { codeStyle } from '../model/codestyle'
+import { useFileDiff } from '../model/useFileDiff'
 import { useTextFile } from '../model/useTextFile'
 import type { LineOpener } from '../model/openline'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { useFontMetrics } from '../../../shared/lib/fontmetrics'
+import { ChangeRuler } from './ChangeRuler'
 import { TokenLine } from './TokenLine'
 import { type ImagePreview, readImage } from '../../../shared/ipc'
 import { formatBytes } from '../../../shared/lib/bytes'
@@ -30,6 +34,13 @@ export interface CodePreviewProps {
   revision: string
   /** Set when an editor was found, which is what makes the gutter clickable. */
   opener: LineOpener | null
+  /**
+   * The repository and the revision to compare against, for the change marks.
+   * Left out — reading a file from outside a working tree — the file is shown
+   * with no marks rather than with wrong ones.
+   */
+  cwd?: string
+  base?: string
 }
 
 /**
@@ -50,6 +61,8 @@ export function CodePreview({
   wrap,
   revision,
   opener,
+  cwd,
+  base,
 }: CodePreviewProps) {
   if (!path) return <Notice>Pick a file to read it here.</Notice>
   return isImagePath(path) ? (
@@ -61,6 +74,8 @@ export function CodePreview({
       wrap={wrap}
       revision={revision}
       opener={opener}
+      cwd={cwd}
+      base={base}
     />
   )
 }
@@ -70,13 +85,36 @@ interface TextBodyProps {
   wrap: boolean
   revision: string
   opener: LineOpener | null
+  cwd?: string
+  base?: string
 }
 
-function TextBody({ path, wrap, revision, opener }: TextBodyProps) {
+function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
   const { file, error } = useTextFile(path, revision)
   const [tokens, setTokens] = useState<HighlightedLines | null>(null)
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+  // Reading a file says nothing about what changed in it, so the same patch
+  // the diff view reads is what puts the marks in the gutter.
+  //
+  // The pathspec has to be repo-relative: an absolute one matches no tracked
+  // file, the whole file comes back as added, and every line was then marked
+  // changed. A path outside the tree relativises to null, which gives the same
+  // no marks as a missing `cwd`. No context either — the line numbers are all
+  // this needs, and a wide one is rows of unchanged file for git to write and
+  // for this to parse.
+  const { diff } = useFileDiff(
+    cwd ?? '',
+    cwd ? relativeTo(path, cwd) : null,
+    base ?? '',
+    0,
+    revision,
+  )
+  const changed = useMemo(
+    () => (diff ? changedLines(diff.patch) : new Set<number>()),
+    [diff],
+  )
 
   useEffect(() => {
     if (!file) return
@@ -98,36 +136,50 @@ function TextBody({ path, wrap, revision, opener }: TextBodyProps) {
   const rows = lines.slice(0, MAX_ROWS)
 
   return (
-    <div
-      style={codeStyle(settings, metrics)}
-      /* Tailwind's preflight gives `code` the theme's mono stack, which beats
-         the family inherited from here — so the font chosen for the terminal
-         would be ignored by exactly the elements that show code. */
-      className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
-    >
-      {rows.map((text, index) => (
-        <div key={index} className="flex">
-          <Gutter line={index + 1} opener={opener} />
-          <code
-            className={`min-w-0 flex-1 pr-1.5 ${
-              wrap ? 'wrap-anywhere whitespace-pre-wrap' : 'whitespace-pre'
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <ChangeRuler host={scroller} revision={`${revision}:${wrap}`} />
+      <div
+        ref={setScroller}
+        style={codeStyle(settings, metrics)}
+        /* Tailwind's preflight gives `code` the theme's mono stack, which beats
+           the family inherited from here — so the font chosen for the terminal
+           would be ignored by exactly the elements that show code. */
+        className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
+      >
+        {rows.map((text, index) => (
+          <div
+            key={index}
+            // The bar an editor draws beside a changed line, and what
+            // `ChangeRuler` measures — one attribute serves both.
+            data-change={changed.has(index + 1) ? 'add' : undefined}
+            className={`flex ${
+              changed.has(index + 1)
+                ? 'border-l-2 border-l-[#3f6f4a]'
+                : 'border-l-2 border-l-transparent'
             }`}
           >
-            <TokenLine tokens={tokens?.[index]} text={text} />
-          </code>
-        </div>
-      ))}
-      {lines.length > rows.length && (
-        <Notice tone="text-[#d8b165]">
-          {`Showing the first ${MAX_ROWS.toLocaleString()} of ${lines.length.toLocaleString()} lines.`}
-        </Notice>
-      )}
-      {file.truncated && (
-        <Notice tone="text-[#d8b165]">
-          Only the first part of this file is shown; it is larger than the
-          preview will read.
-        </Notice>
-      )}
+            <Gutter line={index + 1} opener={opener} />
+            <code
+              className={`min-w-0 flex-1 pr-1.5 ${
+                wrap ? 'wrap-anywhere whitespace-pre-wrap' : 'whitespace-pre'
+              }`}
+            >
+              <TokenLine tokens={tokens?.[index]} text={text} />
+            </code>
+          </div>
+        ))}
+        {lines.length > rows.length && (
+          <Notice tone="text-[#d8b165]">
+            {`Showing the first ${MAX_ROWS.toLocaleString()} of ${lines.length.toLocaleString()} lines.`}
+          </Notice>
+        )}
+        {file.truncated && (
+          <Notice tone="text-[#d8b165]">
+            Only the first part of this file is shown; it is larger than the
+            preview will read.
+          </Notice>
+        )}
+      </div>
     </div>
   )
 }

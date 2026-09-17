@@ -104,88 +104,102 @@ export function FileViewer({
     >
       <DragEdge size={size} label="Resize the file panel" />
 
-      <header className="flex h-8 flex-none items-center gap-1.5 border-b border-line bg-chrome px-2">
-        <Icon name={icon.name} className={`h-3.5 w-3.5 ${icon.tone}`} />
-        <span className="flex-none text-xs text-ink">{basename(path)}</span>
+      {/*
+        Close must survive a narrow panel, so it sits outside the group that
+        clips. Every `Action` is `flex-none`, so without this the row overflowed
+        and the last control — the close button — was the first one pushed out
+        of sight, leaving Escape the only way back.
+      */}
+      <header className="flex h-8 flex-none items-center gap-1.5 overflow-hidden border-b border-line bg-chrome px-2">
+        <Icon
+          name={icon.name}
+          className={`h-3.5 w-3.5 flex-none ${icon.tone}`}
+        />
+        <span className="min-w-0 shrink truncate text-xs text-ink">
+          {basename(path)}
+        </span>
         <span className="min-w-0 flex-1 truncate text-[10px] text-faint">
           {folderOf(path)}
         </span>
-
-        {markdown && (
-          <Action
-            label={
-              rendered
-                ? `Show the ${viewed.kind === 'diff' ? 'diff' : 'source'} instead`
-                : 'Render this markdown'
-            }
-            // The button says where a click goes, not where you already are:
-            // reading a rendered document, the useful word is what you would
-            // switch back to.
-            text={
-              rendered ? (viewed.kind === 'diff' ? 'Diff' : 'Raw') : 'Preview'
-            }
-            onClick={() => setPreview((was) => !was)}
-          >
-            <Icon
-              name={
+        <div className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+          {markdown && (
+            <Action
+              label={
                 rendered
-                  ? viewed.kind === 'diff'
-                    ? 'difference'
-                    : 'code'
-                  : 'description'
+                  ? `Show the ${viewed.kind === 'diff' ? 'diff' : 'source'} instead`
+                  : 'Render this markdown'
               }
-              className="h-3.5 w-3.5"
-            />
-          </Action>
-        )}
+              // The button says where a click goes, not where you already are:
+              // reading a rendered document, the useful word is what you would
+              // switch back to.
+              text={
+                rendered ? (viewed.kind === 'diff' ? 'Diff' : 'Raw') : 'Preview'
+              }
+              onClick={() => setPreview((was) => !was)}
+            >
+              <Icon
+                name={
+                  rendered
+                    ? viewed.kind === 'diff'
+                      ? 'difference'
+                      : 'code'
+                    : 'description'
+                }
+                className="h-3.5 w-3.5"
+              />
+            </Action>
+          )}
 
-        {asDiff && !rendered && (
-          <>
-            <span className="flex-none text-[10px] text-faint">context</span>
-            {CONTEXT_STEPS.map((step) => (
-              <button
-                key={step.value}
-                type="button"
-                title={step.title}
-                aria-label={step.title}
-                aria-pressed={context === step.value}
-                onClick={() => setContext(step.value)}
-                className={`h-5 flex-none rounded px-1 text-[11px] ${
-                  context === step.value
-                    ? 'bg-surface text-ink'
-                    : 'text-muted hover:bg-surface-hover hover:text-ink'
-                }`}
-              >
-                {step.label}
-              </button>
-            ))}
-          </>
-        )}
+          {asDiff && !rendered && (
+            <>
+              <span className="flex-none text-[10px] text-faint">context</span>
+              {CONTEXT_STEPS.map((step) => (
+                <button
+                  key={step.value}
+                  type="button"
+                  title={step.title}
+                  aria-label={step.title}
+                  aria-pressed={context === step.value}
+                  onClick={() => setContext(step.value)}
+                  className={`h-5 flex-none rounded px-1 text-[11px] ${
+                    context === step.value
+                      ? 'bg-surface text-ink'
+                      : 'text-muted hover:bg-surface-hover hover:text-ink'
+                  }`}
+                >
+                  {step.label}
+                </button>
+              ))}
+            </>
+          )}
 
-        {!rendered && (
+          {!rendered && (
+            <Action
+              label={wrap ? 'Stop wrapping long lines' : 'Wrap long lines'}
+              text="Wrap"
+              active={wrap}
+              onClick={() => setWrap((was) => !was)}
+            >
+              <Icon name="wrap_text" className="h-3.5 w-3.5" />
+            </Action>
+          )}
           <Action
-            label={wrap ? 'Stop wrapping long lines' : 'Wrap long lines'}
-            text="Wrap"
-            active={wrap}
-            onClick={() => setWrap((was) => !was)}
+            label="Copy path"
+            onClick={() =>
+              void navigator.clipboard.writeText(path).catch(report)
+            }
           >
-            <Icon name="wrap_text" className="h-3.5 w-3.5" />
+            <Icon name="content_copy" className="h-3.5 w-3.5" />
           </Action>
-        )}
-        <Action
-          label="Copy path"
-          onClick={() => void navigator.clipboard.writeText(path).catch(report)}
-        >
-          <Icon name="content_copy" className="h-3.5 w-3.5" />
-        </Action>
-        {opener && (
-          <Action
-            label={`Open in ${opener.editor}`}
-            onClick={() => opener.open(viewed.line ?? 1)}
-          >
-            <Icon name="open_in_new" className="h-3.5 w-3.5" />
-          </Action>
-        )}
+          {opener && (
+            <Action
+              label={`Open in ${opener.editor}`}
+              onClick={() => opener.open(viewed.line ?? 1)}
+            >
+              <Icon name="open_in_new" className="h-3.5 w-3.5" />
+            </Action>
+          )}
+        </div>
         <Action label="Close · Escape" onClick={onClose}>
           <Icon name="close" className="h-3.5 w-3.5" />
         </Action>
@@ -210,6 +224,8 @@ export function FileViewer({
           wrap={wrap}
           revision={revision}
           opener={opener}
+          cwd={cwd}
+          base={base}
         />
       )}
     </section>

@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { loadAppState } from '../shared/lib/appstate'
 
 declare global {
   interface Window {
@@ -32,10 +33,25 @@ const listenForMcp = async () => {
 
 if (import.meta.env.DEV) void listenForMcp()
 
-// No StrictMode: terminals own PTY processes, and its double-mounted effects
-// would spawn each session twice in development.
-createRoot(document.querySelector('#root')!).render(
-  <SettingsProvider>
-    <App />
-  </SettingsProvider>,
-)
+/**
+ * Fills the state cache, then draws.
+ *
+ * The order is the whole point: every caller of `appState` reads it
+ * synchronously, so a component that mounted first would see an empty store —
+ * restoring a blank deck over a real one, showing default settings, and
+ * skipping the one-shot `localStorage` migration that brings an older
+ * version's tabs across.
+ *
+ * No StrictMode either: terminals own PTY processes, and its double-mounted
+ * effects would spawn each session twice in development.
+ */
+const start = async () => {
+  await loadAppState()
+  createRoot(document.querySelector('#root')!).render(
+    <SettingsProvider>
+      <App />
+    </SettingsProvider>,
+  )
+}
+
+void start()

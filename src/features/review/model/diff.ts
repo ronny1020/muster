@@ -208,3 +208,28 @@ export function sideIndex(
 
 const onSide = (line: DiffLine, side: 'old' | 'new') =>
   line.kind === 'context' || line.kind === (side === 'old' ? 'del' : 'add')
+
+/**
+ * The new-side line numbers a patch adds or changes, for marking a file that
+ * is being read rather than diffed.
+ *
+ * A removal has no line on the new side, so it is attributed to the line above
+ * the gap it left. The mark says "something changed here" and the diff is what
+ * says what, which is the same thing an editor's gutter does with the caret it
+ * draws at a deletion.
+ */
+export function changedLines(patch: string): Set<number> {
+  const changed = new Set<number>()
+  for (const hunk of parsePatch(patch).hunks) {
+    // A hunk that only removes lines carries no new-side number anywhere, so
+    // the mark goes where the hunk starts on the new side. Clamped, because
+    // git writes `@@ -1 +0,0 @@` for a deletion at the top of a file and line
+    // numbers start at one — unclamped, that deletion marked nothing at all.
+    let after = Math.max(1, hunk.newStart)
+    for (const line of hunk.lines) {
+      if (line.newLine !== null) after = line.newLine
+      if (line.kind === 'add' || line.kind === 'del') changed.add(after)
+    }
+  }
+  return changed
+}

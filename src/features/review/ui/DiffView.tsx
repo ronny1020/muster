@@ -19,6 +19,7 @@ import type { LineOpener } from '../model/openline'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { useFontMetrics } from '../../../shared/lib/fontmetrics'
 import { useFileDiff } from '../model/useFileDiff'
+import { ChangeRuler } from './ChangeRuler'
 import { TokenLine } from './TokenLine'
 
 export interface DiffViewProps {
@@ -86,6 +87,8 @@ export function DiffView({
   const sides = useMemo(() => usedSides(parsed?.hunks ?? []), [parsed])
   const budget = useMemo(() => hunksWithin(parsed?.hunks ?? []), [parsed])
 
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+
   // Only when there is nothing to show yet: a re-read of the file already on
   // screen keeps its rows, and its scroll position with them.
   if (loading && !parsed) return <Notice>Reading the diff…</Notice>
@@ -100,34 +103,45 @@ export function DiffView({
   }
 
   return (
-    <div
-      style={codeStyle(settings, metrics)}
-      /* Tailwind's preflight gives `code` the theme's mono stack, which beats
-         the family inherited from here — so the font chosen for the terminal
-         would be ignored by exactly the elements that show code. */
-      className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
-    >
-      {budget.hunks.map((hunk, index) => (
-        <HunkRows
-          key={`${hunk.header}:${index}`}
-          hunk={hunk}
-          highlighted={highlighted}
-          line={line}
-          wrap={wrap}
-          opener={opener}
-          sides={sides}
-        />
-      ))}
-      {budget.rows < budget.total && (
-        <Notice tone="text-[#d8b165]">
-          {`Showing ${budget.rows.toLocaleString()} of ${budget.total.toLocaleString()} rows — narrow the context to see the rest.`}
-        </Notice>
-      )}
-      {diff?.truncated && (
-        <Notice tone="text-[#d8b165]">
-          Diff cut short — the rest is longer than this panel will read.
-        </Notice>
-      )}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Every input that changes which rows are laid out has to be in the key:
+          the ruler measures them, and nothing about the DOM announces a
+          re-render. `context` was missing, so widening the context left the
+          bands where the narrower diff had put them. */}
+      <ChangeRuler
+        host={scroller}
+        revision={`${revision}:${context}:${wrap}:${sides.old}:${sides.new}`}
+      />
+      <div
+        ref={setScroller}
+        style={codeStyle(settings, metrics)}
+        /* Tailwind's preflight gives `code` the theme's mono stack, which beats
+           the family inherited from here — so the font chosen for the terminal
+           would be ignored by exactly the elements that show code. */
+        className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
+      >
+        {budget.hunks.map((hunk, index) => (
+          <HunkRows
+            key={`${hunk.header}:${index}`}
+            hunk={hunk}
+            highlighted={highlighted}
+            line={line}
+            wrap={wrap}
+            opener={opener}
+            sides={sides}
+          />
+        ))}
+        {budget.rows < budget.total && (
+          <Notice tone="text-[#d8b165]">
+            {`Showing ${budget.rows.toLocaleString()} of ${budget.total.toLocaleString()} rows — narrow the context to see the rest.`}
+          </Notice>
+        )}
+        {diff?.truncated && (
+          <Notice tone="text-[#d8b165]">
+            Diff cut short — the rest is longer than this panel will read.
+          </Notice>
+        )}
+      </div>
     </div>
   )
 }
@@ -243,6 +257,11 @@ function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
   return (
     <div
       ref={element}
+      // What `ChangeRuler` measures: laid out and wrapped, the rows are the
+      // only record of where a change sits.
+      data-change={
+        row.kind === 'add' || row.kind === 'del' ? row.kind : undefined
+      }
       className={`flex ${ROW_TONE[row.kind]} ${
         wanted ? 'outline outline-brand' : ''
       }`}

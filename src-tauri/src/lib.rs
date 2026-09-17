@@ -11,6 +11,7 @@ mod platform;
 mod pty;
 mod review;
 mod sessions;
+mod store;
 mod workspace;
 
 #[cfg(test)]
@@ -86,12 +87,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(pty::Sessions::default())
+        .manage(store::Store::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
+            pty::pty_reattach,
             pty::pty_cwd,
+            store::state_read,
+            store::state_write,
             workspace::workspace_info,
             fonts::font_families,
             workspace::git_log,

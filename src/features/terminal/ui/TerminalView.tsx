@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
+import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { type ILink, Terminal } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -26,6 +27,8 @@ import { flattenLogicalLine, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
 import { QUIET_MS } from '../model/working'
+import { SHELL_AGENT } from '../../../entities/agent/model/agents'
+import { fileAbove, type NamedFile } from '../model/codeblocks'
 import {
   currentMessage,
   type Message,
@@ -33,9 +36,10 @@ import {
   previousMessage,
 } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
+import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
 import { useViewportRow } from './useViewportRow'
-import { useRulerMarks } from './useRulerMarks'
+import { FILE_MARK, MESSAGE_MARK, useRulerMarks } from './useRulerMarks'
 
 export interface TerminalViewProps {
   sessionId: string
@@ -55,6 +59,12 @@ export interface TerminalViewProps {
   onPath(path: string, line?: number): void
   /** A URL in the output was clicked. */
   onUrl(url: string): void
+  /**
+   * Reopen this session's conversation, which is the only way back from the
+   * clear a width change forces. Absent when there is nothing to reopen — a
+   * launcher tab, or a session whose agent has no `continue`.
+   */
+  onReplay?: () => void
   /** Whether the session is still printing, i.e. still working. */
   onWorking(working: boolean): void
   /** Whether this tab's scrollback search bar is showing. */
@@ -94,6 +104,7 @@ export function TerminalView({
   home,
   onPath,
   onUrl,
+  onReplay,
   onWorking,
   findOpen,
   onCloseFind,
@@ -101,13 +112,25 @@ export function TerminalView({
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal>(null)
+  /** The grid's last column count, so either re-fit path can spot a change. */
+  const lastCols = useRef(0)
   /** The same terminal as state, so what renders beside it can mount with it. */
   const [mounted, setMounted] = useState<Terminal | null>(null)
   const messages = useMessages(mounted, active)
-  useRulerMarks(mounted, messages)
+  useRulerMarks(mounted, messages, MESSAGE_MARK)
+  const fileMarks = useFileMarks(mounted, active)
+  useRulerMarks(mounted, fileMarks, FILE_MARK)
   const viewportRow = useViewportRow(mounted, active)
   /** The last row on screen: what "which message am I in" is measured against. */
   const viewportBottom = viewportRow + (mounted?.rows ?? 0) - 1
+  /** The file the output on screen is about, if anything above names one. */
+  const openFileHere = mounted
+    ? fileAbove(mounted.buffer.active, viewportBottom)
+    : null
+  /** Where the viewport sits in the scrollback, as the scrollbar reads it. */
+  const scrolledFraction = mounted
+    ? Math.min(1, viewportRow / Math.max(1, mounted.buffer.active.baseY))
+    : 0
   const fit = useRef<FitAddon>(null)
   const search = useRef<SearchAddon>(null)
   const { settings } = useSettings()
@@ -133,6 +156,20 @@ export function TerminalView({
   // The session is fixed for the life of the tab, but reading it through a ref
   // keeps it out of the spawn effect's dependencies all the same.
   const launch = useRef(session)
+  /**
+   * Drops the history a new column count would ruin, and remembers the count.
+   *
+   * Called after **every** re-fit, because two paths change the grid's width:
+   * a pane or window resize, and a change to the font, its size, line height
+   * or letter spacing. The first fit only records — there is no history to
+   * lose before the session has printed anything.
+   */
+  const settleCols = useCallback((term: Terminal) => {
+    if (term.cols === lastCols.current) return
+    if (lastCols.current !== 0 && reflowRuins(term, launch.current.agentId))
+      term.clear()
+    lastCols.current = term.cols
+  }, [])
 
   useEffect(() => {
     const element = host.current!
@@ -249,6 +286,18 @@ export function TerminalView({
       return false
     })
     term.open(element)
+    // `->`, `=>`, `!==` drawn as the single glyph the font has for them, for
+    // the fonts that carry one, through xterm's character-joiner API — which
+    // the WebGL renderer honours.
+    //
+    // Loaded *after* `open`, and that is not a preference: `activate` calls
+    // `registerCharacterJoiner`, which throws "Terminal must be opened first"
+    // against a terminal that has no renderer yet. Nothing types it — the
+    // addon's `activate` is `(terminal: Terminal) => void` like every other —
+    // so only this comment and the order stand between here and a pane that
+    // throws on mount.
+    const ligaturesAddon = new LigaturesAddon()
+    withoutLocalFonts(() => term.loadAddon(ligaturesAddon))
     // GPU rendering, since an agent redrawing its TUI at speed is the one place
     // the DOM renderer shows. The context can be lost — a GPU reset, a laptop
     // waking, a driver update — and the addon has to be dropped when it is, or
@@ -346,6 +395,7 @@ export function TerminalView({
     const sync = () => {
       if (element.clientHeight === 0) return
       fitAddon.fit()
+      settleCols(term)
       if (started) {
         bestEffort(resizePty(sessionId, term.cols, term.rows))
         return
@@ -398,6 +448,7 @@ export function TerminalView({
       // terminal does not dispose it a second time.
       for (const addon of [
         webgl,
+        ligaturesAddon,
         imageAddon,
         linksAddon,
         searchAddon,
@@ -414,7 +465,7 @@ export function TerminalView({
     // Session identity is fixed for the life of the tab, so the spawn runs
     // once: everything else this effect reads comes through a ref. `paste` is
     // a ref object too, so it is stable by construction.
-  }, [paste, sessionId])
+  }, [paste, sessionId, settleCols])
 
   /**
    * Scrolls to the message before or after the one at the top of the screen.
@@ -544,10 +595,12 @@ export function TerminalView({
     term.options.theme = paletteFor(settings.themeId, Boolean(background))
     if (host.current?.clientHeight) {
       fit.current?.fit()
+      settleCols(term)
       bestEffort(resizePty(sessionId, term.cols, term.rows))
     }
   }, [
     sessionId,
+    settleCols,
     settings.fontFamily,
     settings.fontSize,
     settings.letterSpacing,
@@ -577,6 +630,13 @@ export function TerminalView({
         ref={host}
         className="absolute inset-2 [&_.xterm]:h-full [&_.xterm-viewport]:!bg-transparent"
       />
+      {openFileHere && (
+        <ScrollPath
+          file={openFileHere}
+          fraction={scrolledFraction}
+          onOpen={() => onPath(resolvePath(openFileHere.path, cwd, home))}
+        />
+      )}
       {messages.length > 0 && (
         <MessageRail
           messages={messages}
@@ -584,9 +644,11 @@ export function TerminalView({
           onJump={jumpToMessage}
         />
       )}
-      {messages.length > 1 && (
-        <MessageSteps messages={messages} onStep={stepMessage} />
-      )}
+      <MessageSteps
+        messages={messages}
+        onStep={stepMessage}
+        onReplay={onReplay}
+      />
       {findOpen && search.current && (
         <FindBar search={search.current} onClose={closeFind} />
       )}
@@ -610,8 +672,7 @@ export function TerminalView({
  *
  * Evenly spaced rather than placed in proportion to the scroll extent, and
  * clear of the scrollbar rather than over it — AGENTS.md's message-marks
- * invariant has the reasons for both, and for why this exists beside xterm's
- * own ruler rather than instead of it.
+ * invariant has the reasons for both.
  *
  * `MessageSteps` walks this identical list, so the number of dots and the
  * number of presses are always the same.
@@ -629,14 +690,8 @@ function MessageRail({
   const oldestFirst = [...messages].reverse()
   return (
     <div
-      // `z-10` is load-bearing: xterm's render layers are positioned with a
-      // positive z-index inside the host, so a later sibling at `auto` paints
-      // *under* them and the link-layer canvas swallows every click. DOM order
-      // does not decide this.
-      //
-      // Centred as a group with a fixed gap rather than stretched down the
-      // edge: the rail is a short list of places, and spreading a handful of
-      // dots over the full height reads as a scale rather than a menu.
+      // `z-10` is load-bearing — see AGENTS.md's message-marks invariant for
+      // why a later sibling still loses to xterm's canvases.
       className="pointer-events-none absolute top-1/2 right-[18px] z-10 flex w-4 -translate-y-1/2 flex-col items-center gap-[11px]"
       role="group"
       aria-label="Your messages in the scrollback"
@@ -648,9 +703,6 @@ function MessageRail({
           title={label || `Line ${row}`}
           aria-label={`Scroll to your message: ${label || `line ${row}`}`}
           onClick={() => onJump(row)}
-          // The button is the hit box and the ring is the mark: 7px of dot is
-          // not a target, so the pointer gets the rail's full width and 12px
-          // of height around it.
           aria-current={row === current ? 'true' : undefined}
           className="group pointer-events-auto flex h-3 w-4 flex-none items-center justify-center"
         >
@@ -668,6 +720,98 @@ function MessageRail({
 }
 
 /**
+ * How much of the pane's bottom edge the step buttons occupy, so the label
+ * rides up the scrollbar without ever coming to rest on top of them.
+ *
+ * Their stack is three 24px buttons sitting 12px off the bottom, so it owns
+ * the last 84px. The label is centred on its position, so at the bottom of the
+ * scrollback — where a live session sits — its lower edge reaches
+ * `reserve - 12 - half its height`, and that has to clear 84. At roughly 18px
+ * tall it wants 105px, so `7rem` with a few pixels to spare.
+ *
+ * It is worth being exact: the label is `z-10` against the buttons' `z-20`, so
+ * an overlap does not look like an overlap. It renders behind them and simply
+ * appears to be missing.
+ */
+const STEPS_RESERVE = '7rem'
+
+/**
+ * The file the output on screen is about, riding the scrollbar's thumb.
+ *
+ * A long session scrolls through many files, and the scrollbar says only how
+ * far along you are. This says *where*: the nearest `Updated …` line above
+ * whatever is on screen, read as you scroll rather than marked up front.
+ *
+ * It tracks `fraction` — how far down the scrollback the viewport sits — so it
+ * reads as a label on the bar rather than a caption pinned to the pane, and it
+ * sits left of the dot rail's own lane so the two never stack.
+ *
+ * Clicking it opens the file, through the same `onPath` a path clicked in the
+ * output goes through — which is why it carries the printed path beside the
+ * shortened label. It stays clear of the scrollbar rather than over it, so a
+ * click here can never be a drag meant for the bar.
+ */
+function ScrollPath({
+  file,
+  fraction,
+  onOpen,
+}: {
+  file: NamedFile
+  fraction: number
+  onOpen(): void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`Open ${file.path}`}
+      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-brand hover:text-ink"
+      style={{
+        top: `calc(0.75rem + ${fraction} * (100% - ${STEPS_RESERVE}))`,
+      }}
+      aria-label={`Showing output about ${file.path} — open it`}
+    >
+      {file.label}
+    </button>
+  )
+}
+
+/**
+ * Runs `activate` with the Local Font Access API hidden.
+ *
+ * The ligatures addon reads a font's real ligature set through
+ * `queryLocalFonts` when the browser has it, and falls back to a fixed list of
+ * programming ligatures when it does not. WebView2 has it and WKWebView does
+ * not, so on Windows alone activating the addon would raise a font permission
+ * dialog at startup — something the user did nothing to cause, and a reflexive
+ * "Don't Allow" is remembered. Fonts are answered natively for exactly that
+ * reason; see AGENTS.md's font-enumeration note. Taking the fallback on every
+ * platform also makes one host's ligatures the same as another's.
+ */
+function withoutLocalFonts(activate: () => void) {
+  const query = Reflect.get(window, 'queryLocalFonts')
+  if (query === undefined) return activate()
+  Reflect.deleteProperty(window, 'queryLocalFonts')
+  try {
+    activate()
+  } finally {
+    Reflect.set(window, 'queryLocalFonts', query)
+  }
+}
+
+/**
+ * Whether re-wrapping this session's scrollback would destroy it — see
+ * AGENTS.md's reflow invariant for why nothing can repair it.
+ *
+ * Both exclusions matter because `clear()` keeps **only the cursor's line**,
+ * not the visible screen: a plain shell's wraps are genuine, so it reflows
+ * correctly and is the one session that will not repaint on `SIGWINCH`, and an
+ * agent in the alternate buffer has no scrollback to lose, only its frame.
+ */
+const reflowRuins = (term: Terminal, agentId: string) =>
+  agentId !== SHELL_AGENT.id && term.buffer.active.type === 'normal'
+
+/**
  * Steps through your own messages in the scrollback.
  *
  * Bottom right rather than top right: the find bar owns that corner, and both
@@ -677,36 +821,58 @@ function MessageRail({
 function MessageSteps({
   messages,
   onStep,
+  onReplay,
 }: {
   messages: Message[]
   onStep(direction: -1 | 1): void
+  /** Set when there is a session to reopen; absent on a launcher tab. */
+  onReplay?: () => void
 }) {
+  const steppable = messages.length > 1
+  if (!steppable && !onReplay) return null
   return (
     <div // Left of the rail's own 16px lane rather than sharing it: both hug the
       // right edge, and stacked they took the clicks meant for the newest dots.
       className="absolute right-10 bottom-3 z-20 flex flex-col overflow-hidden rounded-lg border border-line bg-chrome/95 shadow-lg backdrop-blur"
     >
-      <button
-        type="button"
-        title="Previous message"
-        aria-label="Scroll to the previous message you sent"
-        onClick={() => onStep(-1)}
-        className="h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink"
-      >
-        ↑
-      </button>
-      <span className="sr-only" role="status">
-        {messages.length} messages in the scrollback
-      </span>
-      <button
-        type="button"
-        title="Next message"
-        aria-label="Scroll to the next message you sent"
-        onClick={() => onStep(1)}
-        className="h-6 w-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
-      >
-        ↓
-      </button>
+      {steppable && (
+        <>
+          <button
+            type="button"
+            title="Previous message"
+            aria-label="Scroll to the previous message you sent"
+            onClick={() => onStep(-1)}
+            className="h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink"
+          >
+            ↑
+          </button>
+          <span className="sr-only" role="status">
+            {messages.length} messages in the scrollback
+          </span>
+          <button
+            type="button"
+            title="Next message"
+            aria-label="Scroll to the next message you sent"
+            onClick={() => onStep(1)}
+            className="h-6 w-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
+          >
+            ↓
+          </button>
+        </>
+      )}
+      {onReplay && (
+        <button
+          type="button"
+          title="Redraw the conversation at this width — reopens the session with continue"
+          aria-label="Redraw the conversation at this width by reopening the session"
+          onClick={onReplay}
+          className={`h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink ${
+            steppable ? 'border-t border-line' : ''
+          }`}
+        >
+          ⟳
+        </button>
+      )}
     </div>
   )
 }

@@ -39,7 +39,7 @@ import { isUnder } from '../../../features/terminal/model/termlinks'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
 import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
-import type { Agent } from '../../../entities/agent/model/agents'
+import { type Agent, agentById } from '../../../entities/agent/model/agents'
 import { JournalPanel } from '../../../features/journal/ui/JournalPanel'
 import { collisionSummary } from '../../../features/fleet/model/collisions'
 import { useCollisions } from '../../../features/fleet/model/useCollisions'
@@ -164,6 +164,21 @@ export function Pane({
     setResuming(null)
     onLaunch(resuming)
   }, [resuming, session, onLaunch])
+
+  /**
+   * Reopen this tab's own conversation, so it is redrawn at the current width —
+   * the only repair for the history a resize forces `TerminalView` to drop.
+   * Through `resumeHere`, for the reason that function's own comment gives.
+   */
+  const again = session
+    ? agentById(session.agentId).modes.find((mode) => mode.id === 'continue')
+    : undefined
+  // Passed only when there is something to reopen, so a shell tab — which has
+  // no `continue` to print its history again — is not offered a control whose
+  // click would do nothing.
+  const replayHere = again
+    ? () => resumeHere(agentById(session!.agentId), again.args)
+    : undefined
 
   const reviewOpen = tab.reviewOpen
   const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
@@ -433,6 +448,7 @@ export function Pane({
                 home={home}
                 onPath={onPath}
                 onUrl={onUrl}
+                onReplay={replayHere}
                 findOpen={tab.findOpen}
                 onCloseFind={closeFind}
                 paste={paste}

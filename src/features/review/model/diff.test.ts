@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { hunksWithin, parsePatch, sideIndex, sideText, usedSides } from './diff'
+import {
+  changedLines,
+  hunksWithin,
+  parsePatch,
+  sideIndex,
+  sideText,
+  usedSides,
+} from './diff'
 
 const PATCH = `diff --git a/src/deck.ts b/src/deck.ts
 index 1111111..2222222 100644
@@ -187,5 +194,39 @@ describe('hunksWithin', () => {
 
     expect(hunks).toHaveLength(1)
     expect(rows).toBe(4)
+  })
+})
+
+describe('changedLines', () => {
+  test('an added line is marked at its own number', () => {
+    const patch = ['@@ -1,2 +1,3 @@', ' one', '+two', ' three'].join('\n')
+    expect([...changedLines(patch)]).toEqual([2])
+  })
+
+  test('a removal is marked at the line that now sits where it was', () => {
+    // Nothing on the new side numbers a removed line, and a gutter still has
+    // to show that something went from here.
+    const patch = ['@@ -1,3 +1,2 @@', ' one', '-two', ' three'].join('\n')
+    expect([...changedLines(patch)]).toEqual([1])
+  })
+
+  test('a hunk that only removes lines marks where it removed them', () => {
+    // No line in such a hunk carries a new-side number, and falling back to
+    // the file's first line put the mark at the top however far down the
+    // deletion was.
+    const patch = ['@@ -400,2 +399,0 @@', '-gone', '-also gone'].join('\n')
+    expect([...changedLines(patch)]).toEqual([399])
+  })
+
+  test('a deletion at the top of a file is marked on its first line', () => {
+    // git writes `@@ -1 +0,0 @@` there, and a mark on line 0 is a mark on no
+    // line — the gutter bar and the ruler band both went missing.
+    expect([...changedLines(['@@ -1 +0,0 @@', '-gone'].join('\n'))]).toEqual([
+      1,
+    ])
+  })
+
+  test('a patch that changes nothing marks nothing', () => {
+    expect([...changedLines('')]).toEqual([])
   })
 })

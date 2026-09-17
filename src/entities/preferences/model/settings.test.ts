@@ -6,8 +6,9 @@ import {
   normalizeSettings,
   saveSettings,
 } from './settings'
+import { seedAppState } from '../../../shared/lib/appstate'
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => seedAppState({}))
 
 test('an empty object yields the defaults', () => {
   expect(normalizeSettings({})).toEqual(DEFAULT_SETTINGS)
@@ -78,12 +79,12 @@ test('settings survive a save and load round trip', () => {
 })
 
 test('corrupt storage loads the defaults', () => {
-  localStorage.setItem('muster.settings', '{not json')
+  seedAppState({ ['muster.settings']: '{not json' })
   expect(loadSettings()).toEqual(DEFAULT_SETTINGS)
 })
 
 test('a stored value outside its range is repaired on load', () => {
-  localStorage.setItem('muster.settings', JSON.stringify({ fontSize: 999 }))
+  seedAppState({ ['muster.settings']: JSON.stringify({ fontSize: 999 }) })
   expect(loadSettings().fontSize).toBe(28)
 })
 

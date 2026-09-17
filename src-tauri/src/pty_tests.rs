@@ -7,7 +7,14 @@ use std::{
 use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
-use super::{end, Session, Sessions};
+use tauri::ipc::{Channel, InvokeResponseBody};
+
+use super::{end, Session, Sessions, INHERITED_SESSION_MARKERS, SCROLLBACK_ENV};
+
+/// An output channel that goes nowhere, for a session under test.
+fn discard() -> Channel<InvokeResponseBody> {
+    Channel::new(|_| Ok(()))
+}
 
 /// Polls until the leader reports `expected`, or gives up.
 fn wait_for_cwd(master: &dyn portable_pty::MasterPty, expected: &str) -> Option<String> {
@@ -75,6 +82,7 @@ fn quitting_ends_every_session_and_empties_the_registry() {
                 group,
                 killer: Mutex::new(killer),
                 killed: Arc::new(AtomicBool::new(false)),
+                output: Arc::new(Mutex::new(discard())),
             }),
         );
 
@@ -156,6 +164,7 @@ fn ending_a_session_reaches_the_children_the_agent_started() {
         group,
         killer: Mutex::new(killer),
         killed: Arc::new(AtomicBool::new(false)),
+        output: Arc::new(Mutex::new(discard())),
     });
 
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -279,4 +288,67 @@ fn reads_back_a_directory_the_shell_changed_itself() {
         Some(resolved.as_str()),
         "a `cd` typed into the terminal should move the reported directory",
     );
+}
+
+/// A tab moving between windows must not end the agent that is running in it.
+/// `pty_spawn` cannot do this — it ends whatever held the id — so the swap is
+/// the only route, and it has to leave the child alone.
+#[test]
+fn re_pointing_a_session_leaves_its_child_running() {
+    let pair = native_pty_system()
+        .openpty(PtySize::default())
+        .expect("openpty");
+    let mut command = CommandBuilder::new("sleep");
+    command.arg("30");
+    let child = pair.slave.spawn_command(command).expect("spawn");
+    drop(pair.slave);
+    let group = child.process_id().map(|pid| pid as i32);
+    let killer = child.clone_killer();
+    let (stdin, _queued) = mpsc::channel::<Vec<u8>>();
+
+    let sessions = Sessions::default();
+    sessions.0.lock().insert(
+        "tab-move".to_string(),
+        Arc::new(Session {
+            master: Mutex::new(pair.master),
+            stdin,
+            group,
+            killer: Mutex::new(killer),
+            killed: Arc::new(AtomicBool::new(false)),
+            output: Arc::new(Mutex::new(discard())),
+        }),
+    );
+
+    let session = sessions.get("tab-move").expect("session");
+    *session.output.lock() = discard();
+
+    assert!(
+        alive(group.expect("group")),
+        "swapping the output must not touch the child"
+    );
+    assert!(
+        sessions.0.lock().contains_key("tab-move"),
+        "the session stays registered under the same id"
+    );
+    end(&session);
+}
+
+/// Re-pointing an id nothing is running under is an error, not a new session.
+#[test]
+fn re_pointing_an_unknown_session_fails() {
+    let sessions = Sessions::default();
+    assert!(sessions.get("no-such-tab").is_err());
+}
+
+/// The markers are stripped after the environment is set, so a variable named
+/// in both lists would be removed by the loop that follows it — setting it and
+/// stripping it reads as working and leaves the agent in the alternate buffer.
+#[test]
+fn nothing_the_session_needs_is_also_stripped_from_it() {
+    for (key, _) in SCROLLBACK_ENV {
+        assert!(
+            !INHERITED_SESSION_MARKERS.contains(key),
+            "{key} is both set and removed"
+        );
+    }
 }

@@ -113,77 +113,79 @@ building.
 
 ## Where things are
 
-| Piece                                              | Where                                         |
-| -------------------------------------------------- | --------------------------------------------- |
-| PTY sessions, one per tab                          | `src-tauri/src/pty.rs`                        |
-| Shells, WSL and process inspection per host        | `src-tauri/src/platform.rs`                   |
-| Path, git status, log, branches and checkout       | `src-tauri/src/workspace.rs`                  |
-| Commands exposed to the frontend                   | `src-tauri/src/lib.rs`                        |
-| Typed wrappers over those commands                 | `src/shared/ipc.ts`                           |
-| Tab state, as a pure reducer                       | `src/entities/tab/model/deck.ts`              |
-| Settings model and validation                      | `src/entities/preferences/model/settings.ts`  |
-| Shortcut bindings per platform                     | `src/entities/preferences/model/shortcuts.ts` |
-| Notification policy                                | `src/shared/lib/notify.ts`                    |
-| Editor detection and launching                     | `src-tauri/src/editor.rs`                     |
-| Installed font family enumeration                  | `src-tauri/src/fonts.rs`                      |
-| Finding your messages in the scrollback            | `src/features/terminal/model/messages.ts`     |
-| Turn-end events an agent broadcasts                | `src/features/terminal/model/agentevents.ts`  |
-| Whether a session is still working                 | `src/features/terminal/model/working.ts`      |
-| Finding your messages as the session writes        | `src/features/terminal/ui/useMessages.ts`     |
-| Marking messages on the scrollbar                  | `src/features/terminal/ui/useRulerMarks.ts`   |
-| Where the viewport is scrolled to                  | `src/features/terminal/ui/useViewportRow.ts`  |
-| Terminal colour schemes                            | `src/shared/lib/themes.ts`                    |
-| Font fallback list and CSS stacks                  | `src/shared/lib/fonts.ts`                     |
-| Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`    |
-| Remembering tabs across a restart                  | `src/entities/tab/model/persist.ts`           |
-| Branch filtering and switch warnings               | `src/features/workspace/model/branches.ts`    |
-| Git chips, and the revision everything re-reads on | `src/features/workspace/model/status.ts`      |
-| Paths and URLs in terminal output                  | `src/features/terminal/model/termlinks.ts`    |
-| Local image reads                                  | `src-tauri/src/image.rs`                      |
-| URL metadata fetching                              | `src-tauri/src/link.rs`                       |
-| Agent session history                              | `src-tauri/src/sessions.rs`                   |
-| Recording a session, and what a record remembers   | `src-tauri/src/journal.rs`                    |
-| Second-launch, window state, swallowed shortcuts   | `src-tauri/src/lib.rs`                        |
-| What to say when a folder cannot be read           | `src/features/launch/model/blocked.ts`        |
-| Files two tabs are changing at once                | `src/features/fleet/model/collisions.ts`      |
-| Whether a paste becomes text or a file             | `src/features/terminal/model/paste.ts`        |
-| Writing pasted text out for an agent to read       | `src-tauri/src/attach.rs`                     |
-| Earlier-sessions drawer                            | `src/features/journal/ui/JournalPanel.tsx`    |
-| Agent registry                                     | `src/entities/agent/model/agents.ts`          |
-| Terminal ↔ PTY binding                             | `src/features/terminal/ui/TerminalView.tsx`   |
-| New-tab start screen                               | `src/features/launch/ui/Launcher.tsx`         |
-| One tab's contents                                 | `src/widgets/pane/ui/Pane.tsx`                |
-| Changed files, diffs, file reads, listings         | `src-tauri/src/review.rs`                     |
-| Unified-diff parsing                               | `src/features/review/model/diff.ts`           |
-| Changed-file ordering and path matching            | `src/features/review/model/changes.ts`        |
-| Syntax highlighting, and which grammar             | `src/features/review/model/highlight.ts`      |
-| Type the review panel borrows from the terminal    | `src/features/review/model/codestyle.ts`      |
-| What the file tree shows                           | `src/features/review/model/tree.ts`           |
-| The review drawer: lists and navigation            | `src/features/review/ui/ReviewPanel.tsx`      |
-| The changed-file list                              | `src/features/review/ui/ChangedFiles.tsx`     |
-| The file tree, a folder at a time                  | `src/features/review/ui/FileTree.tsx`         |
-| One line of coloured code                          | `src/features/review/ui/TokenLine.tsx`        |
-| Reading changes, diffs and directories             | `src/features/review/model/use*.ts`           |
-| The column a diff or a file is read in             | `src/features/review/ui/FileViewer.tsx`       |
-| Markdown rendering, and what it refuses            | `src/features/review/model/markdown.ts`       |
-| Mermaid drawing and image loading                  | `src/features/review/ui/MarkdownView.tsx`     |
-| Matching xterm's cell size in CSS                  | `src/shared/lib/fontmetrics.ts`               |
-| The diff, rendered row by row                      | `src/features/review/ui/DiffView.tsx`         |
-| A whole file, as text or as a picture              | `src/features/review/ui/CodePreview.tsx`      |
-| Reading a file as text, once, for both             | `src/features/review/model/useTextFile.ts`    |
-| What the column is showing                         | `src/features/review/model/viewed.ts`         |
-| Opening a file at a line in the editor             | `src/features/review/model/openline.ts`       |
-| A panel edge you can drag                          | `src/shared/ui/DragEdge.tsx`                  |
-| The menu a right-click opens                       | `src/shared/ui/ContextMenu.tsx`               |
-| The agent picker, filterable                       | `src/shared/ui/Combobox.tsx`                  |
-| Byte sizes as a person reads them                  | `src/shared/lib/bytes.ts`                     |
-| Material icons, and which file gets which          | `src/shared/ui/`                              |
-| Text a dropped file types                          | `src-tauri/src/platform.rs`                   |
-| Drawer widths, dragged and remembered              | `src/shared/lib/usePanelWidth.ts`             |
-| Which paths are images                             | `src/shared/lib/imagepaths.ts`                |
-| Windows' caption buttons                           | `src/shared/ui/WindowControls.tsx`            |
-| The frame Windows does not draw                    | `src-tauri/tauri.windows.conf.json`           |
-| The scrollbar the webview would draw itself        | `src/app/index.css`                           |
+| Piece                                              | Where                                                  |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| PTY sessions, one per tab                          | `src-tauri/src/pty.rs`                                 |
+| Shells, WSL and process inspection per host        | `src-tauri/src/platform.rs`                            |
+| Path, git status, log, branches and checkout       | `src-tauri/src/workspace.rs`                           |
+| Commands exposed to the frontend                   | `src-tauri/src/lib.rs`                                 |
+| Typed wrappers over those commands                 | `src/shared/ipc.ts`                                    |
+| Tab state, as a pure reducer                       | `src/entities/tab/model/deck.ts`                       |
+| Settings model and validation                      | `src/entities/preferences/model/settings.ts`           |
+| Shortcut bindings per platform                     | `src/entities/preferences/model/shortcuts.ts`          |
+| Notification policy                                | `src/shared/lib/notify.ts`                             |
+| Editor detection and launching                     | `src-tauri/src/editor.rs`                              |
+| Installed font family enumeration                  | `src-tauri/src/fonts.rs`                               |
+| Finding your messages in the scrollback            | `src/features/terminal/model/messages.ts`              |
+| Turn-end events an agent broadcasts                | `src/features/terminal/model/agentevents.ts`           |
+| Whether a session is still working                 | `src/features/terminal/model/working.ts`               |
+| Which file the output is about                     | `src/features/terminal/model/codeblocks.ts`            |
+| Where tabs and settings are kept                   | `src/shared/lib/appstate.ts`, `src-tauri/src/store.rs` |
+| Finding your messages as the session writes        | `src/features/terminal/ui/useMessages.ts`              |
+| Marking messages on the scrollbar                  | `src/features/terminal/ui/useRulerMarks.ts`            |
+| Where the viewport is scrolled to                  | `src/features/terminal/ui/useViewportRow.ts`           |
+| Terminal colour schemes                            | `src/shared/lib/themes.ts`                             |
+| Font fallback list and CSS stacks                  | `src/shared/lib/fonts.ts`                              |
+| Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`             |
+| Remembering tabs across a restart                  | `src/entities/tab/model/persist.ts`                    |
+| Branch filtering and switch warnings               | `src/features/workspace/model/branches.ts`             |
+| Git chips, and the revision everything re-reads on | `src/features/workspace/model/status.ts`               |
+| Paths and URLs in terminal output                  | `src/features/terminal/model/termlinks.ts`             |
+| Local image reads                                  | `src-tauri/src/image.rs`                               |
+| URL metadata fetching                              | `src-tauri/src/link.rs`                                |
+| Agent session history                              | `src-tauri/src/sessions.rs`                            |
+| Recording a session, and what a record remembers   | `src-tauri/src/journal.rs`                             |
+| Second-launch, window state, swallowed shortcuts   | `src-tauri/src/lib.rs`                                 |
+| What to say when a folder cannot be read           | `src/features/launch/model/blocked.ts`                 |
+| Files two tabs are changing at once                | `src/features/fleet/model/collisions.ts`               |
+| Whether a paste becomes text or a file             | `src/features/terminal/model/paste.ts`                 |
+| Writing pasted text out for an agent to read       | `src-tauri/src/attach.rs`                              |
+| Earlier-sessions drawer                            | `src/features/journal/ui/JournalPanel.tsx`             |
+| Agent registry                                     | `src/entities/agent/model/agents.ts`                   |
+| Terminal ↔ PTY binding                             | `src/features/terminal/ui/TerminalView.tsx`            |
+| New-tab start screen                               | `src/features/launch/ui/Launcher.tsx`                  |
+| One tab's contents                                 | `src/widgets/pane/ui/Pane.tsx`                         |
+| Changed files, diffs, file reads, listings         | `src-tauri/src/review.rs`                              |
+| Unified-diff parsing                               | `src/features/review/model/diff.ts`                    |
+| Changed-file ordering and path matching            | `src/features/review/model/changes.ts`                 |
+| Syntax highlighting, and which grammar             | `src/features/review/model/highlight.ts`               |
+| Type the review panel borrows from the terminal    | `src/features/review/model/codestyle.ts`               |
+| What the file tree shows                           | `src/features/review/model/tree.ts`                    |
+| The review drawer: lists and navigation            | `src/features/review/ui/ReviewPanel.tsx`               |
+| The changed-file list                              | `src/features/review/ui/ChangedFiles.tsx`              |
+| The file tree, a folder at a time                  | `src/features/review/ui/FileTree.tsx`                  |
+| One line of coloured code                          | `src/features/review/ui/TokenLine.tsx`                 |
+| Reading changes, diffs and directories             | `src/features/review/model/use*.ts`                    |
+| The column a diff or a file is read in             | `src/features/review/ui/FileViewer.tsx`                |
+| Markdown rendering, and what it refuses            | `src/features/review/model/markdown.ts`                |
+| Mermaid drawing and image loading                  | `src/features/review/ui/MarkdownView.tsx`              |
+| Matching xterm's cell size in CSS                  | `src/shared/lib/fontmetrics.ts`                        |
+| The diff, rendered row by row                      | `src/features/review/ui/DiffView.tsx`                  |
+| A whole file, as text or as a picture              | `src/features/review/ui/CodePreview.tsx`               |
+| Reading a file as text, once, for both             | `src/features/review/model/useTextFile.ts`             |
+| What the column is showing                         | `src/features/review/model/viewed.ts`                  |
+| Opening a file at a line in the editor             | `src/features/review/model/openline.ts`                |
+| A panel edge you can drag                          | `src/shared/ui/DragEdge.tsx`                           |
+| The menu a right-click opens                       | `src/shared/ui/ContextMenu.tsx`                        |
+| The agent picker, filterable                       | `src/shared/ui/Combobox.tsx`                           |
+| Byte sizes as a person reads them                  | `src/shared/lib/bytes.ts`                              |
+| Material icons, and which file gets which          | `src/shared/ui/`                                       |
+| Text a dropped file types                          | `src-tauri/src/platform.rs`                            |
+| Drawer widths, dragged and remembered              | `src/shared/lib/usePanelWidth.ts`                      |
+| Which paths are images                             | `src/shared/lib/imagepaths.ts`                         |
+| Windows' caption buttons                           | `src/shared/ui/WindowControls.tsx`                     |
+| The frame Windows does not draw                    | `src-tauri/tauri.windows.conf.json`                    |
+| The scrollbar the webview would draw itself        | `src/app/index.css`                                    |
 
 The shape to keep in mind: `src-tauri` owns processes and the filesystem and
 knows nothing about tabs; `src/entities/tab/model/deck.ts` owns what a tab _is_
@@ -322,6 +324,25 @@ hold the xterm addons that reach into `_core` to the core version this app
 ships — the addons reach
 through `terminal._core` into private fields, so a version bump that renames
 one fails nowhere else.
+
+## Testing what a suite cannot reach
+
+Neither runner starts a window, so nothing under `bun test` or `cargo test`
+exercises a PTY, the terminal grid, the scrollbar or the overview ruler. For
+those, drive the running app: `bun run dev:mcp` exposes
+`tauri-plugin-mcp` on `/tmp/muster-mcp.sock`, and the
+[`mcp-live-test` skill](.agents/skills/mcp-live-test/SKILL.md) holds the client
+script, the commands worth knowing and the four ways a measurement taken this
+way comes back wrong — every mounted pane answering the same query is the first
+of them.
+
+Two rules matter more than the mechanics. Do not run `dev:mcp` while anyone is
+working in a Muster window: a Rust edit restarts the binary and a frontend edit
+reloads the webview, so their sessions and scrollback go with it. And a pattern
+matched against agent output is measured against a journal file, never guessed
+from what a tool call looks like — `Updated <path>` is what Claude Code prints,
+and the guess that it writes `Update(<path>)` shipped a feature that rendered
+nothing.
 
 ## Accessibility
 

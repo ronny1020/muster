@@ -39,11 +39,16 @@ const PROBE_COLUMNS = 4
 /** Newest first, since the rail shows the most recent and they are what a reader wants. */
 const MOST_RECENT_FIRST = (a: Message, b: Message) => b.row - a.row
 
-/** Where a message starts, and enough of it to tell one mark from another. */
-export interface Message {
+/** A place in the scrollback with a name: what every ruler mark is. */
+export interface Mark {
   row: number
   label: string
+  /** The last row the mark covers, when it stands for a span rather than a point. */
+  endRow?: number
 }
+
+/** Where a message starts, and enough of it to tell one mark from another. */
+export type Message = Mark
 
 /**
  * As many marks as the rail can draw and still show every one of them: the
@@ -58,8 +63,9 @@ const MAX_MARKS = 12
  * How far back a single scan reads. Enough to cover many screens of history,
  * and far short of the 200,000-row scrollback a user can configure — the scan
  * runs per frame while output flows, and the buffer API allocates per row.
+ * Shared with the file scan, which reads the same buffer for the same reason.
  */
-const MAX_SCANNED = 4000
+export const MAX_SCANNED = 4000
 
 /** Long enough to recognise a message by, short enough for a tooltip. */
 const LABEL_LENGTH = 80
@@ -96,7 +102,9 @@ export function findMessageRows(
     if (below && !tinted) found.push(labelled(buffer, row + 1))
     below = tinted
   }
-  if (below) found.push(labelled(buffer, 0))
+  // Still inside a tinted run when the walk stopped: it starts at the row the
+  // walk reached, which is `floor` — not row 0, whose text is unrelated.
+  if (below) found.push(labelled(buffer, floor))
 
   return found.sort(MOST_RECENT_FIRST)
 }

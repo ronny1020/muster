@@ -1,5 +1,7 @@
 import { type Deck, type LauncherStart, newTab, startOf } from './deck'
 import type { Backend } from '../../../shared/lib/platform'
+import { appState, setAppState } from '../../../shared/lib/appstate'
+import { windowLabel } from '../../../shared/ipc'
 
 /**
  * Remembering the window's tabs across a restart.
@@ -16,7 +18,12 @@ import type { Backend } from '../../../shared/lib/platform'
  * to fix it.
  */
 
-const STORAGE_KEY = 'muster.deck'
+/**
+ * One key per window: the deck is what a window is showing, so two windows
+ * must not share it. The backend store is global, which is exactly why the
+ * window's own name has to be in the key.
+ */
+const storageKey = () => `muster.deck:${windowLabel()}`
 
 /** How many tabs are worth remembering; past this it is clutter, not state. */
 const MAX_TABS = 24
@@ -36,17 +43,12 @@ export function saveDeck(deck: Deck) {
     activeIndex: activeIndex < 0 ? 0 : Math.min(activeIndex, MAX_TABS - 1),
   }
   const record = JSON.stringify(stored)
-  try {
-    // Compared against what is stored, not a remembered string: `patch`
-    // rebuilds the tab array on every dispatch and the git poll dispatches per
-    // tab per interval, so this ran constantly with nothing to say. A read is
-    // far cheaper than the synchronous write it skips, and unlike a memo it
-    // stays correct when something else clears the store.
-    if (localStorage.getItem(STORAGE_KEY) === record) return
-    localStorage.setItem(STORAGE_KEY, record)
-  } catch {
-    /* private browsing or a full quota: this run keeps its tabs anyway */
-  }
+  // Compared against what is stored, not a remembered string: `patch` rebuilds
+  // the tab array on every dispatch and the git poll dispatches per tab per
+  // interval, so this ran constantly with nothing to say. Unlike a memo, a read
+  // stays correct when something else clears the store.
+  if (appState(storageKey()) === record) return
+  setAppState(storageKey(), record)
 }
 
 /**
@@ -73,7 +75,7 @@ export function loadDeck(nextId: () => string): Deck {
 
 function readStarts(): StoredDeck {
   try {
-    return normalizeDeck(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}'))
+    return normalizeDeck(JSON.parse(appState(storageKey()) ?? '{}'))
   } catch {
     return { tabs: [], activeIndex: 0 }
   }

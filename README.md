@@ -421,6 +421,16 @@ Click a dot to jump to that message. The `↑` and `↓` buttons in the bottom-r
 corner step through the same list, and past the last message in either direction
 they carry on to the end or the top of the scrollback.
 
+The `⟳` beside them redraws the conversation. Resizing the window — or opening a
+panel — changes how many columns the terminal has, and an agent's own frames
+cannot be re-wrapped to fit: rather than show you the offset blocks that makes,
+Muster drops the history and this button asks the agent to print it again at the
+new width. Anything written after the resize is kept and marked as usual; only
+what came before is reprinted.
+
+Shell tabs are left alone — their output wraps like ordinary text, so it
+survives a resize — and they have no conversation to reopen, so they get no `⟳`.
+
 The dots are found by how your prompt was drawn rather than by what it says — a
 tinted block of cells — so they work for any CLI that renders a prompt that way,
 without Muster knowing anything about it. Two consequences worth knowing:
@@ -430,9 +440,37 @@ without Muster knowing anything about it. Two consequences worth knowing:
   columns — a diff gutter, a coloured log — can be marked instead, so treat a
   dot as "something was highlighted here", not as proof you typed it.
 - **Only the most recent dozen are shown**, and only what is still in the
-  scrollback. A full-screen agent TUI draws into the alternate screen buffer,
-  which is one screen tall and keeps no scrollback at all, so both surfaces stay
-  empty for as long as an agent is drawing its own interface.
+  scrollback.
+- **Claude Code sessions are asked for a scrollback**, because a full-screen TUI
+  normally draws into the alternate screen buffer — one screen tall, no history,
+  nothing for the dots, the label or the find bar to read. Muster asks it for the
+  ordinary buffer instead. The cost is that Claude Code no longer reports mouse
+  events, so answer its own prompts with the keyboard. Other agents are left as
+  they are, and one that draws full-screen has no dots.
+
+## 🗂 Knowing where you are in the output
+
+Scroll back through a long session and a label rides up the scrollbar naming
+the file the output around you is about — the nearest `Updated …` or
+`Created …` line the agent printed above what is on screen. It sits at the height the scrollbar
+thumb does, so the bar says how far back you are and the label says what you
+are looking at. It steps aside near the bottom, where the `↑`/`↓` buttons are.
+
+Click the label to open that file in the reader beside the terminal.
+
+Every file the session named is also marked on the scrollbar itself, in blue,
+beside the orange marks for your own messages — so one glance says where the
+work happened. Each mark is as tall as the output that touched the file, and
+takes only the left edge of the bar, so the two kinds stay apart by shape as
+well as by colour.
+
+The review panels mark their own scrollbars too: open a changed file and the
+edits show as green and red bands down the bar, with a green bar beside each
+changed line in the gutter, so a long file with three changed lines does not
+have to be scrolled to find them.
+
+It reads the output rather than the code, so it needs no index and no
+configuration — and it shows nothing when the agent has not named a file.
 
 ## 🔎 Searching the scrollback
 
@@ -562,8 +600,9 @@ session rather than the ones already going.
 
 - **New tabs** — which agent and directory to start on.
 - **Terminal** — theme, font, size, line height, text width, scrollback,
-  blinking cursor. The font list is every family installed on the machine,
-  narrowed to the ones that can hold a column; **Show all system fonts**
+  blinking cursor. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
+  single glyph will do so here. The font list is every family installed on the
+  machine, narrowed to the ones that can hold a column; **Show all system fonts**
   widens it to the rest. The review panel's diffs and files are drawn in the
   same type, so a column of code reads exactly like the output beside it.
 - **Background** — an image behind the terminal, with a brightness slider and a

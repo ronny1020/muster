@@ -410,6 +410,27 @@ export const dropPaths = (paths: string[], backend: Backend) =>
  * import time, where nothing could catch it.
  */
 export const minimizeWindow = async () => getCurrentWindow().minimize()
+/**
+ * This window's own name. Tabs are stored per window, so two windows never
+ * write each other's list.
+ */
+export const windowLabel = () => {
+  try {
+    return getCurrentWindow().label
+  } catch {
+    // No Tauri here — `bun run serve` and the test runner both reach this.
+    // One notional window is the right answer for both.
+    return 'main'
+  }
+}
+
+/** The whole backend-held store, read once at startup. */
+export const readAppState = () => invoke<Record<string, string>>('state_read')
+
+/** Stores one entry, or forgets it when `value` is `null`. */
+export const writeAppState = (key: string, value: string | null) =>
+  invoke<void>('state_write', { key, value })
+
 export const toggleMaximizeWindow = async () =>
   getCurrentWindow().toggleMaximize()
 export const closeWindow = async () => getCurrentWindow().close()

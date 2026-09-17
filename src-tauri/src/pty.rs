@@ -41,6 +41,16 @@ struct Session {
     /// Set once the session is deliberately ended, so the reader thread can
     /// tell a kill apart from the child exiting on its own.
     killed: Arc<AtomicBool>,
+    /// Where this session's output goes, which is whichever window is showing
+    /// the tab. Swappable so a tab can move between windows without its child
+    /// being ended and respawned — `pty_spawn` on a live id kills what was
+    /// there, so moving a tab cannot go through it.
+    ///
+    /// Shared with the reader thread rather than looked up per chunk: the
+    /// thread starts before `pty_spawn` has finished registering the session,
+    /// so a lookup would miss on the first chunk and end the thread before a
+    /// single byte reached the window.
+    output: Arc<Mutex<Channel<InvokeResponseBody>>>,
 }
 
 #[derive(Default)]
@@ -135,6 +145,19 @@ const INHERITED_SESSION_MARKERS: &[&str] = &[
     "CLAUDE_PID",
 ];
 
+/// What each agent needs in its environment to leave a scrollback behind.
+///
+/// A TUI in the alternate buffer is exactly `rows` tall and keeps no history,
+/// so a session run that way has nothing for the scrollback surfaces to read:
+/// no message marks, no path beside the scrollbar, and a find bar over one
+/// screen. The whole point of putting an agent in a tab is being able to
+/// scroll back through what it did, so the app asks for the normal buffer.
+///
+/// The cost is that Claude Code stops reporting mouse events, so its own
+/// prompts answer to the keyboard rather than to a click. The variable is
+/// undocumented and only Claude Code reads it; another agent ignores it.
+const SCROLLBACK_ENV: &[(&str, &str)] = &[("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", "1")];
+
 /// How long to watch for the agent to publish its session id. Generous, since
 /// a cold start behind a login shell can take seconds, and cheap: one stat per
 /// tick against one file.
@@ -146,6 +169,24 @@ const SESSION_ID_INTERVAL: Duration = Duration::from_millis(500);
 struct ExitPayload {
     id: String,
     code: u32,
+}
+
+/// Points a running session's output at a different window.
+///
+/// This is how a tab moves between windows: `pty_spawn` on a live id ends the
+/// child that was there, so it cannot be used to adopt one. Swap **before**
+/// the old window lets go — the reader thread still stops when the channel it
+/// is writing to dies, which is what keeps a pty nobody displays from parking
+/// a thread forever.
+#[tauri::command]
+pub fn pty_reattach(
+    sessions: tauri::State<'_, Sessions>,
+    id: String,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    let session = sessions.get(&id)?;
+    *session.output.lock() = on_output;
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -196,6 +237,9 @@ pub fn pty_spawn(
     cmd.cwd(&resolved.cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    for (key, value) in SCROLLBACK_ENV {
+        cmd.env(key, value);
+    }
     for marker in INHERITED_SESSION_MARKERS {
         cmd.env_remove(marker);
     }
@@ -256,6 +300,7 @@ pub fn pty_spawn(
         );
     }
 
+    let output = Arc::new(Mutex::new(on_output));
     let (stdin, queued) = mpsc::channel::<Vec<u8>>();
     let killed = Arc::new(AtomicBool::new(false));
 
@@ -278,6 +323,7 @@ pub fn pty_spawn(
             group,
             killer: Mutex::new(killer),
             killed: killed.clone(),
+            output: output.clone(),
         }),
     );
     // Re-using a live id would otherwise drop the old session's killer and
@@ -321,6 +367,7 @@ pub fn pty_spawn(
         });
     }
 
+    let reader_output = output.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         while let Ok(len) = reader.read(&mut buf) {
@@ -335,7 +382,10 @@ pub fn pty_spawn(
             if let Some(journal) = journal.as_mut() {
                 journal.write(&buf[..len]);
             }
-            if on_output
+            // Through the shared handle, so a window that adopts this tab
+            // receives the next chunk. The lock covers the enqueue alone.
+            if reader_output
+                .lock()
                 .send(InvokeResponseBody::Raw(buf[..len].to_vec()))
                 .is_err()
             {

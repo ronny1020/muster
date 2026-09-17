@@ -25,11 +25,16 @@ export function useViewportRow(term: Terminal | null, active: boolean): number {
     }
 
     read()
+    // `onScroll` covers API scrolls only: xterm's viewport passes
+    // `suppressScrollEvent` for a wheel or a scrollbar drag, so it never fires
+    // for the gesture a reader actually uses. `onRender` does.
     const scrolled = term.onScroll(schedule)
     const written = term.onWriteParsed(schedule)
+    const rendered = term.onRender(schedule)
     return () => {
       scrolled.dispose()
       written.dispose()
+      rendered.dispose()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
   }, [term, active])

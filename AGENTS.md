@@ -56,6 +56,11 @@ behaviour. Update them **in the same change**, not afterwards:
 
 - **AGENTS.md** — the invariants, the layer table, the conventions. The layer
   table is meant to be what exists, so a new slice or segment belongs in it.
+- **`.agents/skills/*/SKILL.md`** — the procedures an agent loads instead of
+  reading this file end to end. A skill nobody maintains rots the same way a
+  stale invariant does, and worse: it is copy-pasted rather than read. The
+  `mcp-live-test` one describes the terminal surfaces, so a change to how they
+  are drawn or measured belongs in it.
 - **SECURITY.md** — what the app promises about the three parties it does not
   trust. A new command that reads the filesystem, or a new renderer fed by file
   contents, changes what that document has to claim.
@@ -325,11 +330,23 @@ only line that reads it is the addon's own dispose callback — so every
 terminal rendered correctly and closing a tab threw, on every close, whatever
 the dispose order. So the pin is `0.18.0` — the build that pairs with xterm
 5.5.0 — exactly rather than ranged;
-the other four addons and the core keep `^` ranges, and `test/xterm.test.ts`
+the other five addons and the core keep `^` ranges, and `test/xterm.test.ts`
 is what stands behind them — it fails when an addon names a core field this
 xterm does not have. Read its doc comment before trusting a green run: the
 bundles are minified, so it sees only the literal `_core.x` spelling and not
 the aliased reads that most of them compile to.
+
+**Ligatures are activated with the Local Font Access API hidden.** The addon
+reads a font's real ligature set through `queryLocalFonts` where the browser
+has it and falls back to a fixed programming set where it does not — and
+WebView2 has it while WKWebView does not, so activating it plainly would raise
+a font permission dialog on Windows alone, at startup, for something the user
+did nothing to ask for. `withoutLocalFonts` deletes the property for the
+duration of `loadAddon` and puts it back, which is the same stance as the
+native font enumeration below and has the side effect of making one host's
+ligatures match another's. The version is the last on the xterm 5 line
+(`0.9.0`, peer `^5.0.0`); `0.10.0` declares no peer at all, which is the trap
+the pinning invariant above describes.
 
 **`workspace_info` does not add a `read_dir` unless it is asked to.** `denied`
 costs one, and `read_dir` is enumeration where `metadata` is a stat — on macOS
@@ -378,15 +395,21 @@ registers decoration, buffer and dimension listeners and **no pointer
 handler**, so a mark there can never take a click; and xterm sets that canvas
 to `display: none` whenever the alternate buffer is active.
 
-That second clause is also the ceiling on both surfaces, and it is worth being
-exact about: a full-screen TUI holds the alternate buffer, which is `rows` tall
-and keeps no scrollback, so there is nothing to mark and no ruler to mark it
-in. Neither surface has anything to show in an agent tab unless that agent is
-kept out of the alternate buffer — which is not something this app does today.
-Measured with `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` in the environment the
-PTY inherits, the same session went from one screen to 24,000px of scroll
-extent and the rail filled. That is an undocumented Claude Code variable and
-the condition the feature was demonstrated under — not the default one.
+That second clause is what `SCROLLBACK_ENV` in `pty.rs` exists to answer, and
+it is worth being exact about: a full-screen TUI holds the alternate buffer,
+which is `rows` tall and keeps no scrollback, so there is nothing to mark, no
+ruler to mark it in, and one screen for the find bar to search. Neither
+surface has anything to show in an agent tab unless the agent is kept out of
+that buffer, so every session is spawned asking for the normal one — the same
+session went from one screen to 24,000px of scroll extent and the rail filled.
+
+Two things about that hold whatever else changes here. The variable is
+undocumented and read by Claude Code alone, so any other agent that holds the
+alternate buffer has no rail and no path strip, and there is no measurement
+here saying otherwise. And it must never join
+`INHERITED_SESSION_MARKERS`: the strip loop runs after the environment is
+set, so a variable in both lists is removed by the line that follows the one
+setting it, which reads exactly like working.
 
 `MessageSteps` walks the identical list `useMessages` returns, so the number of
 dots and the number of presses always agree — that is the property to preserve
@@ -398,10 +421,16 @@ The list is capped at `MAX_MARKS`, derived from the shortest pane the window's
 420px floor allows: past that the oldest dot would be clipped while the step
 buttons still walked it, so "one press per dot" would quietly stop being true.
 
-What the list cannot hold is history the tint never marked. `findMessageRows`
-keys on a tinted block, so a replayed transcript that draws past turns untinted
-contributes nothing, and a plain shell — whose prompt carries no tint at all —
-contributes nothing either. And what it _can_ be made to hold is anything
+What the list cannot hold is history the tint never marked, and a **resumed
+session is mostly that**. Measured on a `--continue` of a 977-row transcript:
+the stream carried 1,206 background SGRs spread evenly through it, and the scan
+found five marks — the banner and the last four prompts. Claude Code redraws
+older turns without the tinted prompt block, and most of those SGRs are diff
+gutters rather than prompts. So the marks describe the live part of a session,
+not its history; a plain shell, whose prompt carries no tint at all,
+contributes nothing at any point. Matching the prompt glyph instead is the
+thing that dates immediately, so there is no cheap fix here — only a different
+signal, and `OSC 777`'s `prompt_submit` arrives for live turns alone. And what it _can_ be made to hold is anything
 tinted: `isTinted` reads a cell attribute, so a coloured diff gutter, a
 line-number column or an agent's own banner produces an entry indistinguishable
 from a message you typed — which is why the label is presented as what was
@@ -450,6 +479,131 @@ sequence**, which is why `parseAgentEvent` answers `null` for anything
 unexpected rather than throwing inside xterm's parser, and why it caps the
 text it carries — an unbounded `response` becomes the body of a desktop
 notification. Treat the field checks as the feature, not as detail.
+
+**A width change destroys a TUI's scrollback, so the scrollback is dropped
+rather than shown.** This is the price of `SCROLLBACK_ENV` above, and it has to
+be stated next to it: the normal buffer is the only one xterm reflows, so
+keeping an agent out of the alternate buffer is also what exposes its history
+to re-wrapping. An agent pads every frame to the full width, so a narrower grid
+spills each padded row into a second one and the transcript above the live
+frame becomes offset blocks. Measured: narrowing a pane from 1883px to 1120px
+took one session's scroll extent from 21,060px to 30,096px, and widening it
+back gave 21,870 — reflow is lossy, so even the round trip does not undo it.
+
+Nothing can repair those rows. xterm's buffer holds cells with no memory of
+where the original breaks were, and the journal is not a transcript but a
+width-specific render log — one recorded session holds 14,628 absolute column
+moves, so replaying it into a different width would misplace every one of
+them. So `sync` clears on a `cols` change and the ⟳ beside the step buttons reopens
+the session with the agent's own `continue`, which is the only thing that can
+print the conversation again at the width it now has. Verified: a clear took a
+tab to one screen and the button brought it back to 15,066px with its marks.
+
+`reflowRuins` is what decides, and it excludes two sessions for one reason:
+`Terminal.clear()` keeps **only the cursor's line**, not the visible screen. A
+plain shell's wraps are genuine, so its scrollback reflows correctly and has
+nothing to repair — clearing it would throw away good history and blank the
+screen of the one session that does not repaint on `SIGWINCH`. An agent still
+in the alternate buffer has no scrollback to damage, so its `rows` of frame are
+all there is to lose. The control is passed only where a `continue` mode
+exists, so a shell is not offered a button whose click would do nothing.
+
+What survives a clear is the machinery, and that is worth knowing because it
+is not obvious: the scan is subscribed to `onWriteParsed` for the life of the
+mount, so output written after a resize is marked as usual — a cleared tab
+still painted 702 pixels of file marks from the agent's repaint. Only the
+history is gone.
+
+**Tabs and settings belong to the app, not to a window.** They live in
+`state.json` beside the journal, written by `store.rs`, because `localStorage`
+is per-origin: every window of the app shares one copy, so two windows editing
+tabs would overwrite each other, and anything that clears site data takes the
+tab list with it.
+
+The whole store is read once, before the first render — `main.tsx` awaits
+`loadAppState`, and a component that read state earlier would see an empty
+store and restore a blank deck over a real one. Callers keep their synchronous
+shape because reads are served from that cache; only writes leave the webview,
+and `store.rs` persists each one as it arrives via a temp file and a rename, so
+an interrupted write cannot leave a half-written file that parses as empty.
+
+Per-window preferences stay in `localStorage` on purpose: a panel width dragged
+in one window must not move in another. That is the test for where a value
+belongs — is it the app's, or this window's?
+
+**The path beside the scrollbar is searched upward, never scanned.** Agent
+CLIs announce each file they touch on its own line, so `fileAbove` walks _up_
+from the viewport to the nearest one and stops, bounded by `LOOK_BACK`. It runs
+on every scroll, so a full-buffer scan of the kind `findMessageRows` does would
+be the wrong shape here: only the nearest match matters and it is usually a few
+rows away.
+
+**Which line that is was guessed wrong once, and the guess cost the whole
+feature.** `TOUCHED` began as `Update(path)`, `Write(path)`, `Read(path)` —
+the shape a tool call reads as — and the label then stayed blank for a whole
+session while looking exactly like a layout bug. Measured over 4.1 MB of
+recorded sessions here, Claude Code names the file **after** the fact and with
+a space: `Updated` 320 times, `Created` 44, `Deleted` 7, and `Read(…)`,
+`Write(…)` or `Update(…)` not once. So the past-tense form is first and the
+parenthesised one is kept only for the CLIs that write it. Two consequences
+to preserve: `Bash(…)` — the one parenthesised header Claude Code does print,
+25 times — must stay out of the verbs, because it names a command; and the
+past-tense form must require an extension on the path, or a sentence about
+having updated something reads as a filename. Verify a change here against a
+journal file, never against what a tool call looks like.
+
+It reads the rendered row, not the pty stream. The stream interleaves cursor
+moves mid-path — the same recordings hold `Updaed`, `Updatd` and `Udated`,
+which are one word torn by a cursor move — so matching the raw bytes would
+find a truncated path; the buffer holds what was actually drawn. What it drew
+is not always a path, though: an agent elides one too long for its column to
+`Read(…)`, so a capture with no letter or digit in it is skipped and the walk
+carries on upward.
+
+The label rides the scrollbar rather than sitting still, at
+`viewportRow / baseY` of the pane's height — the ratio the bar draws itself
+from — so it reads as a label on the bar. It keeps `STEPS_RESERVE` of the
+bottom edge clear, because the one place it must never come to rest is on top
+of the step buttons. Clicking it opens the file through the same `onPath` a
+path clicked in the output goes through, which is why `fileAbove` answers with
+both forms: the tail is what fits beside the bar, and the printed path is what
+`resolvePath` can turn into a file.
+
+**`findFileBlocks` scans where `fileAbove` walks, and the two are not
+interchangeable.** The label answers "what am I looking at" for one position,
+so it stops at the first match above the viewport; the ruler marks answer
+"where did the work happen" for the whole session, so they need every match and
+scan like `findMessageRows` does, on the same `MAX_SCANNED` bound and for the
+same reason. A file touched twice is two marks — deduping would hide the second
+edit, which is a place in the session.
+
+File marks take the ruler's **left** lane and messages keep the full width.
+That is what tells the two apart by shape as well as by colour, which the
+accessibility bar asks for; it is _not_ what protects the message marks —
+`_refreshDecorations` draws every non-`full` zone and then every `full` one
+over the top with an opaque fill, so a message mark wins a shared row whatever
+lane the file mark takes. Both go through `useBufferMarks`, whose identity
+preservation is load-bearing rather than tidy — a fresh array per write batch
+would dispose and re-register every decoration in the ruler on every frame of
+output.
+
+**A file mark is a span, and both of its bounds were got wrong once.** The
+ruler has no tall mark: `ColorZoneStore.addDecoration` reads `marker.line` and
+ignores a decoration's `height`, so a span is drawn by sampling it at the
+padding the store merges within — `floor(bufferLines / (canvasHeight - 1) *
+markHeight)`, which `strideFor` reproduces rather than estimates. Estimating
+it as one row per drawn pixel made the stride ten times finer than needed, the
+newest block spent the whole decoration budget, and every older mark vanished
+from the bar; the budget is now shared per mark for the same reason.
+
+At the other end, a block left to run to the next header tiled the scrollback
+and painted 93% of the bar one colour. `MAX_BLOCK_ROWS` is small because the
+ruler is already generous: its minimum mark is
+`clamp(canvasHeight / bufferLines, 6, 12)` device pixels, so one row is
+already a band and the span's only job is to make a large edit read taller
+than a one-line one. This is where the bar and the label part company on
+purpose — the label attributes every row to the nearest header above it, and
+the mark covers only where the file was touched.
 
 **A tab's status is measured, not announced.** `isWorking` reads one thing:
 whether the session has printed in the last `QUIET_MS`. Every CLI writes to
@@ -612,6 +766,33 @@ renders on every tab: a launcher tab has no session, and would otherwise have no
 way to reach settings but the shortcut. The bar's own last item needs
 `flex-none`, and something before it needs `min-w-0`, or a long branch name
 pushes settings past the edge at the window's 620px floor.
+
+**The review panels mark their own scrollbars, and they measure rows rather
+than compute them.** `ChangeRuler` reads `offsetTop` off the rendered
+`[data-change]` rows, because a diff's rows are real elements whose height
+depends on the font, the wrap setting and the width — none of which a model can
+predict. It takes a `revision` for exactly that reason: nothing about the DOM
+announces a re-read, a context change or a new file, so the measure has to be
+told.
+
+Two things there are the same shape as the terminal's own surfaces. The first
+measure is synchronous, because an occluded window gets no animation frames and
+a ruler that waited for one stayed empty in a way that reads as "nothing
+changed". And only the changed rows carry `data-change`: a diff is mostly
+context, and marking every row would have the ruler filtering thousands of
+attributes that say nothing. The plain file view marks the same way, from
+`changedLines` over the same patch the diff view reads — reading a file says
+nothing about what changed in it, and a file opened from outside a working tree
+gets no marks rather than wrong ones.
+
+**A panel's close button may never be the control that clips.** Every `Action`
+in `FileViewer`'s header is `flex-none`, so a narrow panel overflowed the row
+and pushed the last item — the close button — out of sight, leaving Escape as
+the only way back. The optional controls sit in their own `min-w-0 shrink
+overflow-hidden` group and close sits outside it, so the row clips the things
+you can do without and keeps the one you cannot. The panel is draggable down
+to a few pixels, so this is reachable by ordinary use rather than only at the
+window's floor.
 
 **A styled scrollbar uses the `-webkit-` pseudo-elements, never
 `scrollbar-color`.** WKWebView

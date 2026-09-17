@@ -1,9 +1,10 @@
 import { stackFor } from '../../../shared/lib/fonts'
 import type { Backend } from '../../../shared/lib/platform'
 import { DEFAULT_THEME_ID, THEMES } from '../../../shared/lib/themes'
+import { appState, setAppState } from '../../../shared/lib/appstate'
 
 /**
- * User settings, persisted in `localStorage`. Loading is total: anything
+ * User settings, persisted by the backend. Loading is total: anything
  * missing, mistyped or out of range falls back to the default rather than
  * breaking the window, since a bad value here would leave nothing to fix it in.
  */
@@ -193,20 +194,14 @@ export function normalizeSettings(input: unknown): Settings {
 
 export function loadSettings(): Settings {
   try {
-    return normalizeSettings(
-      JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}'),
-    )
+    return normalizeSettings(JSON.parse(appState(STORAGE_KEY) ?? '{}'))
   } catch {
     return DEFAULT_SETTINGS
   }
 }
 
 export function saveSettings(settings: Settings) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-  } catch {
-    /* private browsing or a full quota: the session keeps its settings anyway */
-  }
+  setAppState(STORAGE_KEY, JSON.stringify(settings))
 }
 
 function flag(value: unknown, fallback: boolean): boolean {

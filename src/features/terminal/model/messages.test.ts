@@ -223,3 +223,12 @@ describe('the label a mark carries', () => {
     expect(label).toBe('x'.repeat(79))
   })
 })
+
+test('a run still open when the walk stops belongs to the row it stopped on', () => {
+  // The scan is bounded, so a tinted block straddling that bound must be
+  // recorded where the walk reached — row 0 is thousands of rows away and its
+  // text has nothing to do with the message.
+  const rows = ['.', ...Array.from({ length: 4200 }, () => '#')]
+  const found = findMessageRows(bufferOf(rows.join('\n')))
+  expect(found.every(({ row }) => row > 0)).toBe(true)
+})

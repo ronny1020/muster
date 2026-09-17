@@ -1,8 +1,9 @@
 import { beforeEach, expect, test } from 'bun:test'
 
 import { recentDirs, rememberDir } from './recents'
+import { seedAppState } from '../../../shared/lib/appstate'
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => seedAppState({}))
 
 test('no history yet reads as an empty list', () => {
   expect(recentDirs()).toEqual([])
@@ -28,11 +29,11 @@ test('history is capped at eight entries', () => {
 })
 
 test('corrupt storage degrades to an empty list', () => {
-  localStorage.setItem('muster.recent-dirs', '{not json')
+  seedAppState({ ['muster.recent-dirs']: '{not json' })
   expect(recentDirs()).toEqual([])
 })
 
 test('non-string entries are discarded', () => {
-  localStorage.setItem('muster.recent-dirs', JSON.stringify(['/a', 7, null]))
+  seedAppState({ ['muster.recent-dirs']: JSON.stringify(['/a', 7, null]) })
   expect(recentDirs()).toEqual(['/a'])
 })

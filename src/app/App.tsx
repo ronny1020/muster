@@ -72,11 +72,11 @@ export function App() {
   useEffect(() => saveDeck(deck), [deck])
 
   const { settings } = useSettings()
-  // Retention is enforced here rather than in Rust because the period is a
-  // user setting, and settings live in `localStorage` where only the webview
-  // can read them — and so is the list of tabs currently recording, which the
-  // sweep must not delete out from under. Re-runs when either changes, which
-  // is rare: the records expire by the day.
+  // Retention is enforced here rather than in Rust because both of its inputs
+  // are the frontend's: the period is a user setting, and the list of tabs
+  // currently recording — which the sweep must not delete out from under — is
+  // the deck. Re-runs when either changes, which is rare: records expire by
+  // the day.
   const retention = settings.journalRetentionDays
   // Serialised so the effect does not restart on every unrelated render.
   // Gated on the exit code as well as the session: a tab keeps its session

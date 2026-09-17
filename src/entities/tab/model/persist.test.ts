@@ -3,6 +3,8 @@ import { beforeEach, expect, test } from 'bun:test'
 import { deckReducer, initialDeck, type Session } from './deck'
 import { loadDeck, normalizeDeck, saveDeck } from './persist'
 import { startOf } from './deck'
+import { seedAppState } from '../../../shared/lib/appstate'
+import { windowLabel } from '../../../shared/ipc'
 
 const session = (over: Partial<Session> = {}): Session => ({
   agentId: 'claude',
@@ -20,7 +22,7 @@ let counter = 0
 const nextId = () => `t-${++counter}`
 
 beforeEach(() => {
-  localStorage.clear()
+  seedAppState({})
   counter = 0
 })
 
@@ -128,8 +130,19 @@ test('an unknown backend falls back to the host', () => {
   ).toBe('native')
 })
 
-test('a truncated localStorage value does not stop the window opening', () => {
-  localStorage.setItem('muster.deck', '{"tabs":[{"cwd":"/work"')
+/** What `saveDeck` writes under, so a test can seed what `loadDeck` will read. */
+const deckKey = () => `muster.deck:${windowLabel()}`
+
+test('a stored record is read back from the key the deck is saved under', () => {
+  // The control for the test below: an empty store also yields one tab, so
+  // without a case that can only pass when the record is genuinely read, a
+  // misspelled key would look exactly like a successful repair.
+  seedAppState({ [deckKey()]: '{"tabs":[null,null],"activeIndex":1}' })
+  expect(loadDeck(nextId).tabs).toHaveLength(2)
+})
+
+test('a truncated stored record does not stop the window opening', () => {
+  seedAppState({ [deckKey()]: '{"tabs":[{"cwd":"/work"' })
   expect(loadDeck(nextId).tabs).toHaveLength(1)
 })
 
