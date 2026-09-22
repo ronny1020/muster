@@ -51,11 +51,24 @@ fn an_unknown_agent_reports_nothing_rather_than_zero() {
     assert_eq!(count_sessions("shell", "/work", "native"), None);
 }
 
+/// Whether this machine has a Claude Code store that can be read at all.
+///
+/// The three assertions below are about the difference between "the store was
+/// read and holds nothing here" and "the store could not be read", which is
+/// the distinction `agent_sessions` exists to keep — so each one has to say
+/// which machine it is on rather than assume the CLI has ever run. A fresh
+/// checkout on a CI runner has no store, and a test that assumes one is
+/// asserting an environment rather than a behaviour.
+fn store_is_readable() -> bool {
+    projects_root().is_some_and(|root| std::fs::read_dir(root).is_ok())
+}
+
 #[test]
 fn a_directory_the_store_has_no_record_of_counts_zero() {
+    let expected = if store_is_readable() { Some(0) } else { None };
     assert_eq!(
         count_sessions("claude", "/definitely/not/here", "native"),
-        Some(0)
+        expected
     );
 }
 
@@ -66,15 +79,18 @@ fn a_directory_the_store_has_no_record_of_counts_zero() {
 #[test]
 fn a_session_whose_store_we_cannot_see_answers_unknown_rather_than_empty() {
     assert_eq!(count_sessions("claude", "/work", "wsl"), None);
-    assert!(count_sessions("claude", "/work", "native").is_some());
+    assert_eq!(
+        count_sessions("claude", "/work", "native").is_some(),
+        store_is_readable()
+    );
 }
 
 #[test]
 fn finds_this_repos_own_claude_sessions_if_any_exist() {
-    // Whether this machine has history is its business; that the lookup
-    // runs and answers is ours.
+    // Whether this machine has history is its business; that the lookup runs
+    // and answers the store it can see is ours.
     let count = count_sessions("claude", env!("CARGO_MANIFEST_DIR"), "native");
-    assert!(count.is_some());
+    assert_eq!(count.is_some(), store_is_readable());
 }
 
 #[test]
@@ -169,4 +185,134 @@ fn a_published_id_cannot_spell_a_path() {
         assert!(!super::is_session_id(bad), "{bad:?} is not an id");
     }
     assert!(!super::is_session_id(&"x".repeat(65)));
+}
+
+/// The stem of every file listed becomes `--resume <id>`, so a transcript
+/// whose name is not an id is left out rather than offered.
+#[test]
+fn a_transcript_whose_name_is_not_a_session_id_is_not_offered() {
+    let dir = std::env::temp_dir().join(format!("muster-listing-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    std::fs::write(dir.join("--dangerously-skip-permissions.jsonl"), b"{}").expect("write");
+    std::fs::write(dir.join("notes.txt"), b"x").expect("write");
+    std::fs::write(
+        dir.join("019bf2a4-1c7e-7b3f-9a2d-4e5f60718293.jsonl"),
+        b"{}",
+    )
+    .expect("write");
+
+    let ids = super::listed_in(&dir)
+        .listed
+        .into_iter()
+        .map(|past| past.id)
+        .collect::<Vec<_>>();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(ids, vec!["019bf2a4-1c7e-7b3f-9a2d-4e5f60718293"]);
+}
+
+/// The newest conversation is the one most likely to be wanted, and the bound
+/// drops from the other end.
+///
+/// The two mtimes are set rather than taken from the writes: a filesystem with
+/// one-second resolution gives both files the same one, and the sort is stable,
+/// so the assertion would fall back to `read_dir` order and pin nothing.
+#[test]
+fn conversations_are_listed_newest_first() {
+    let dir = std::env::temp_dir().join(format!("muster-order-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    for (name, at) in [("older", 1_000_000), ("newer", 2_000_000)] {
+        let path = dir.join(format!("{name}.jsonl"));
+        std::fs::write(&path, b"{}").expect("write");
+        written_at(&path, at);
+    }
+
+    let ids = super::listed_in(&dir)
+        .listed
+        .into_iter()
+        .map(|past| past.id)
+        .collect::<Vec<_>>();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(ids, vec!["newer", "older"]);
+}
+
+/// An empty list is the cue to fall back to the CLI's own picker, which is
+/// the right answer for every store this process cannot read.
+#[test]
+fn a_store_we_do_not_read_lists_nothing_rather_than_guessing() {
+    assert!(list_sessions("codex", "/work", "native").listed.is_empty());
+    assert!(list_sessions("claude", "/work", "wsl").listed.is_empty());
+}
+
+/// A conversation is a file, so a directory or a link wearing the same name is
+/// not one — it would draw a row whose resume has nothing behind it.
+#[test]
+fn only_a_regular_file_is_offered_as_a_conversation() {
+    let dir = std::env::temp_dir().join(format!("muster-kinds-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    std::fs::write(dir.join("realone.jsonl"), b"{}").expect("write");
+    std::fs::create_dir_all(dir.join("adirectory.jsonl")).expect("mkdir");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dir.join("realone.jsonl"), dir.join("alink.jsonl")).expect("link");
+
+    let ids = super::listed_in(&dir)
+        .listed
+        .into_iter()
+        .map(|past| past.id)
+        .collect::<Vec<_>>();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(ids, vec!["realone"]);
+}
+
+/// Gives a file an mtime of its own, so an ordering assertion does not depend
+/// on how finely this filesystem records one.
+fn written_at(path: &std::path::Path, seconds: u64) {
+    let when = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(seconds);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .expect("open")
+        .set_times(std::fs::FileTimes::new().set_modified(when))
+        .expect("set mtime");
+}
+
+/// The bound is what hides history, so only the listing can say any is hidden:
+/// the count beside it applies none of these filters, and comparing the two
+/// would offer the picker for a directory that has nothing more in it.
+#[test]
+fn a_store_larger_than_the_bound_says_so() {
+    let dir = std::env::temp_dir().join(format!("muster-bound-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    for n in 0..super::MAX_LISTED + 5 {
+        std::fs::write(dir.join(format!("session-{n:04}.jsonl")), b"{}").expect("write");
+    }
+
+    let found = super::listed_in(&dir);
+    let counted = super::count_transcripts(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(found.listed.len(), super::MAX_LISTED);
+    assert!(found.more, "the store holds more than the list carries");
+    assert_eq!(counted, super::MAX_LISTED as u32 + 5);
+}
+
+/// And a store the bound did not reach says nothing is hidden, whatever the
+/// count says — a directory holding one entry that is not a conversation
+/// counts higher than it lists.
+#[test]
+fn a_store_within_the_bound_offers_no_more() {
+    let dir = std::env::temp_dir().join(format!("muster-within-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    std::fs::write(dir.join("realone.jsonl"), b"{}").expect("write");
+    std::fs::create_dir_all(dir.join("adirectory.jsonl")).expect("mkdir");
+
+    let found = super::listed_in(&dir);
+    let counted = super::count_transcripts(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(found.listed.len(), 1);
+    assert!(!found.more);
+    assert_eq!(counted, 2, "the count sees what the list refused");
 }

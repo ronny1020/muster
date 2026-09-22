@@ -244,6 +244,27 @@ prompt. That macOS case is not hypothetical here: the app is ad-hoc signed, so
 TCC keys its grants to the binary's hash and every release is new code with no
 permissions.
 
+**An empty list of past conversations means "let the CLI pick", never "there is
+nothing".** Two commands read the same store and answer differently on purpose.
+`agent_sessions` counts, and is three-valued, because a caller hides a control
+on a zero. `agent_session_list` lists, and is not: it answers empty for a store
+this process does not read, for a WSL distro, and for a directory with no
+history alike. That is only safe because of what the caller does with it — the
+start screen falls back to launching the agent's own `--resume`, which is what
+every agent did before the list existed, so an unreadable store costs the
+picker rather than the mode. Disable the mode on an empty list and Codex, the
+only other agent with a `resume`, silently loses it — while Claude Code, the
+one store that is read, goes on working. The count is what greys the button
+out, and it is the one that can tell "unknown" from "empty".
+
+Two consequences. The list is read on the **click**, never beside the count:
+the count is re-read on every keystroke in the directory field, while each row
+of the list costs a bounded read of a transcript's head for the line it
+carries. And whether history was left out is answered by the **listing**, which
+is the only thing that knows what it dropped — the count applies none of the
+list's filters, so comparing the two offers a picker for a directory with
+nothing more in it.
+
 **Window state is saved on `RunEvent::Exit` too, and for the same reason.**
 `tauri-plugin-window-state` saves from its own window hooks, which `Cmd+Q`
 never reaches — so the most common quit gesture on macOS would restore the
@@ -1380,7 +1401,12 @@ These are the seams for common asks:
   sidecar is what makes a record actionable — our file is keyed on the _tab_,
   which outlives any one session, so only the id the CLI published can reopen
   a conversation. `resumeArgs` builds the argv from the agent's existing
-  `resume` mode rather than a second table.
+  `resume` mode rather than a second table — and it builds the start screen's
+  own list too, so a row there and a row in the drawer launch the same argv.
+  Which conversations that list offers comes from the **agent's** store
+  (`agent_session_list`), not from the journal: the journal holds only what
+  Muster recorded, with recording on, while the store is the same one the
+  CLI's picker reads.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.
 - **A new font choice** is not a code change any more, and the monospace

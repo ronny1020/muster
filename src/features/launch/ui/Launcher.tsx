@@ -4,6 +4,7 @@ import {
   AGENTS,
   type Agent,
   pickableAgent,
+  resumeArgs,
   SHELL_AGENT,
 } from '../../../entities/agent/model/agents'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -16,13 +17,16 @@ import type { TerminalMode } from '../../../entities/preferences/model/settings'
 import { type BlockedHint, blockedHint } from '../model/blocked'
 import { splitFlags } from '../model/flags'
 import {
+  agentSessionList,
   agentSessions,
   createDirectory,
   homeDir,
+  type PastSessions,
   pickDirectory,
   report,
   workspaceInfo,
 } from '../../../shared/ipc'
+import { agoLabel } from '../../../shared/lib/ago'
 import { basename } from '../model/paths'
 import {
   type Backend,
@@ -135,11 +139,68 @@ export function Launcher({
    * see the first one's answer without waiting for a render.
    */
   const warned = useRef(new Set<string>())
+  /**
+   * Whether this screen has already handed a session over.
+   *
+   * Every control here launches through one `await`, so a second click inside
+   * that window dispatches a second session for the same tab — and
+   * `TerminalView` spawns from an effect keyed on the tab id, which does not
+   * change, so nothing respawns: the tab runs the first program while the
+   * status bar, the mode control and the ⟳ all describe the second. Only the
+   * dispatch is guarded, so a click that ends in a warning or a prompt leaves
+   * the screen usable.
+   */
+  const launched = useRef(false)
   const hint = blocked ? blockedHint(OS) : null
   // null = the agent's store is unreadable, so every mode stays offered.
   const [sessions, setSessions] = useState<number | null>(null)
+  /**
+   * The conversations Resume is offering, or `null` while it is offering none.
+   *
+   * Read on the click rather than beside the count above: a summary costs a
+   * bounded read of every listed transcript, and the directory field re-reads
+   * on each keystroke.
+   */
+  const [past, setPast] = useState<PastSessions | null>(null)
+  const [reading, setReading] = useState(false)
+  /**
+   * Which read the open list is allowed to have come from.
+   *
+   * The directory, the agent and the backend can all move while a read is in
+   * flight, and an answer names the three it was asked about — so a reply that
+   * lands late would put one directory's conversations under another's name,
+   * and every row here launches. A ref rather than state, because the check
+   * happens after an await, where state is the render's.
+   */
+  const asked = useRef(0)
+  /** Whether a Resume click is still being answered. See `offerResume`. */
+  const handling = useRef(false)
 
   const distros = platform?.wslDistros ?? []
+  /**
+   * The backend a launch from here would really use. A distro that has since
+   * been removed would strand the session, so the choice only survives while
+   * WSL still offers it — and the store is asked about the same one, or the
+   * list describes a host the session will not run on.
+   */
+  const runIn: Backend = distros.length > 0 ? backend : 'native'
+  /** Narrows `resumeMode.args` below; the list exists only where it does. */
+  const resumeMode = agent.modes.find((mode) => mode.id === 'resume')
+  /**
+   * The session settings as they are now, rather than as the click found them.
+   *
+   * Every launch crosses at least one await — the directory probe, and for
+   * Resume the store read before it — so a setting changed in between would be
+   * captured in the closure and lost: the agent reads its terminal mode once,
+   * at spawn, and a session started in the mode the control no longer shows
+   * has no way back but reopening the conversation.
+   *
+   * The agent and its arguments are deliberately not here. They are chosen
+   * together, so pairing a newly picked agent with the previous one's
+   * arguments would be worse than the staleness it repaired.
+   */
+  const chosen = useRef({ flags, mode, distro, backend: runIn, distros })
+  chosen.current = { flags, mode, distro, backend: runIn, distros }
 
   useEffect(() => {
     if (!cwd) void homeDir().then(setCwd, () => setCwd(''))
@@ -153,23 +214,30 @@ export function Launcher({
     if (active) directory.current?.focus()
   }, [active])
 
-  // Re-read on every directory or agent change: `claude --continue` in a
-  // directory with no history just prints `No conversation found to continue`
-  // and exits, which is a worse answer than not offering the mode.
+  // Re-read on every directory, agent or backend change: `claude --continue`
+  // in a
+  // directory with no history just prints `No conversation found to
+  // continue` and exits, which is a worse answer than not offering the mode.
   useEffect(() => {
     const directory = cwd.trim()
+    // Dropped before the guard below, because an emptied field is a change
+    // like any other: a list left standing under it offers conversations no
+    // button on the page can start. The ticket goes with it, so a read still
+    // in flight has nowhere to land.
+    setPast(null)
+    asked.current += 1
     if (!directory) return
     let cancelled = false
     // Until the new answer lands, "unknown" is the honest state — keeping the
     // previous directory's count would gate on the wrong directory.
     setSessions(null)
-    void agentSessions(agent.id, directory, backend)
+    void agentSessions(agent.id, directory, runIn)
       .then((count) => !cancelled && setSessions(count))
       .catch(() => !cancelled && setSessions(null))
     return () => {
       cancelled = true
     }
-  }, [agent.id, cwd])
+  }, [agent.id, cwd, runIn])
 
   /**
    * `as` is how the shell starts without being in the picker: it is not one of
@@ -217,21 +285,80 @@ export function Launcher({
       setError('')
       return
     }
+    if (launched.current) return
+    launched.current = true
     rememberDir(directory)
-    const extra = as.acceptsFlags ? splitFlags(flags) : []
+    // The directory stays the one that was probed above; everything else is
+    // read as it stands. See `chosen`.
+    const live = chosen.current
+    const extra = as.acceptsFlags ? splitFlags(live.flags) : []
     onLaunch({
       agent: as,
       cwd: directory,
       args: [...modeArgs, ...extra],
       title: workspace.label,
-      // A distro that has since been removed would strand the session, so the
-      // choice only survives while WSL still offers it.
-      backend: distros.length > 0 ? backend : 'native',
-      distro: distros.includes(distro) ? distro : '',
+      backend: live.backend,
+      distro: live.distros.includes(live.distro) ? live.distro : '',
       // Only where the CLI answers it; anywhere else the launch takes the
       // preference, which is what `App` does with an absent value.
-      ...(as.scrollbackMode ? { scrollback: mode === 'scrollback' } : {}),
+      ...(as.scrollbackMode ? { scrollback: live.mode === 'scrollback' } : {}),
     })
+  }
+
+  /**
+   * Answers the Resume mode on this page rather than in the terminal.
+   *
+   * A CLI's own resume flag opens a picker inside the session, so choosing
+   * which conversation to reopen costs a launch of its own — and that picker
+   * is a full-screen TUI in a tab that may have asked for a scrollback. The
+   * store behind the list is the one the CLI itself reads, so where it can be
+   * read the choice is made here and the launch names the conversation
+   * outright.
+   *
+   * An empty list covers every case that cannot be read — another agent, a
+   * session in a WSL distro, a directory with no history — and those launch
+   * the mode as it always was, picker and all.
+   */
+  const offerResume = async (modeArgs: string[]) => {
+    // A second click on the same button closes what the first one opened.
+    if (past) {
+      setPast(null)
+      return
+    }
+    // Re-entry rather than a disabled button: disabling the control under the
+    // keyboard blurs it, and the read is long enough for that to strand focus
+    // on `<body>`. Held past the read, because the launch it can fall back to
+    // is the slower half.
+    if (handling.current) return
+    handling.current = true
+    const directory = cwd.trim()
+    if (!directory) {
+      setError('Choose a directory first.')
+      handling.current = false
+      return
+    }
+    const ticket = ++asked.current
+    setReading(true)
+    const found = await agentSessionList(agent.id, directory, runIn).catch(
+      () => ({ listed: [], more: false }),
+    )
+    // The read is over either way, and what follows is a launch: a notice
+    // still naming the read would sit above the prompt a blocked or missing
+    // directory raises.
+    setReading(false)
+    // The selection moved while this was in flight, so this answer describes
+    // something else now — including the launch below, which would take the
+    // directory this render closed over rather than the one on screen.
+    if (ticket !== asked.current) {
+      handling.current = false
+      return
+    }
+    if (found.listed.length === 0) {
+      await launch(modeArgs)
+    } else {
+      setPast(found)
+    }
+    handling.current = false
   }
 
   /** Creates the directory the user just tried to open, then launches into it. */
@@ -418,10 +545,18 @@ export function Launcher({
                 key={mode.id}
                 type="button"
                 disabled={unavailable}
+                aria-disabled={
+                  mode.id === 'resume' && reading ? true : undefined
+                }
                 title={
                   unavailable ? 'No past sessions in this directory' : undefined
                 }
-                onClick={() => void launch(mode.args)}
+                aria-expanded={mode.id === 'resume' ? Boolean(past) : undefined}
+                onClick={() =>
+                  void (mode.id === 'resume'
+                    ? offerResume(mode.args)
+                    : launch(mode.args))
+                }
                 style={
                   index === 0 && !unavailable
                     ? { borderColor: `${agent.accent}8c` }
@@ -437,6 +572,64 @@ export function Launcher({
             )
           })}
         </div>
+
+        {/* Mounted with only its text changing, for the same reason as the
+            hint below. */}
+        <div role="status" className="min-h-0">
+          {(reading || past) && (
+            <p className="m-0 text-[11px] text-faint">
+              {reading
+                ? 'Reading past conversations…'
+                : `${past?.listed.length ?? 0} past conversations`}
+            </p>
+          )}
+        </div>
+
+        {past && (
+          <ul
+            aria-label="Past conversations"
+            className="m-0 max-h-56 list-none divide-y divide-line overflow-y-auto rounded-[10px] border border-line p-0"
+          >
+            {past.listed.map((session) => {
+              const args = resumeArgs(agent, session.id)
+              // A row with nothing to launch is left out rather than drawn
+              // dead: every agent reaching here has a resume mode, so this is
+              // narrowing rather than a case the user can meet.
+              return args ? (
+                <li key={session.id}>
+                  <button
+                    type="button"
+                    onClick={() => void launch(args)}
+                    className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-surface-hover"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {session.summary || 'Nothing typed in this one'}
+                    </span>
+                    <span className="flex-none text-[11px] text-faint">
+                      {agoLabel(session.at, Date.now())}
+                    </span>
+                  </button>
+                </li>
+              ) : null
+            })}
+            {/* The list is the newest few, so a directory with more history
+                than that would otherwise lose the rest: the CLI's own picker
+                is where all of it still is. */}
+            {resumeMode && past.more && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => void launch(resumeMode.args)}
+                  className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-muted hover:bg-surface-hover hover:text-ink"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    Older conversations — open {agent.name}&rsquo;s own picker
+                  </span>
+                </button>
+              </li>
+            )}
+          </ul>
+        )}
 
         {/* Mounted whether or not there is a hint: a region inserted with its
             content already in it is announced by almost nothing, and this is

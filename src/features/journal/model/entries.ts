@@ -1,23 +1,5 @@
 import type { JournalEntry } from '../../../shared/ipc'
 
-const MINUTE = 60
-const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
-
-/**
- * How long ago a recorded session last printed, at the coarseness a list wants.
- *
- * The record has no heartbeat — the file's mtime is the last byte written — so
- * this deliberately says "last printed", never "ran for".
- */
-export function agoLabel(endedAt: number, now: number): string {
-  const seconds = Math.max(0, Math.round(now / 1000) - endedAt)
-  if (seconds < MINUTE) return 'just now'
-  if (seconds < HOUR) return `${Math.floor(seconds / MINUTE)}m ago`
-  if (seconds < DAY) return `${Math.floor(seconds / HOUR)}h ago`
-  return `${Math.floor(seconds / DAY)}d ago`
-}
-
 /**
  * The entries a tab should offer, newest first and excluding the run it is
  * currently recording — reopening the session you are looking at is not a

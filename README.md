@@ -20,7 +20,10 @@ years. The point is that Muster knows what is _in_ the tab:
 - 🎯 **The launcher asks which agent**, then offers New, Continue or Resume — and
   greys out the ones that would fail, because it checks for a recorded
   conversation in that directory first instead of letting the CLI print
-  `No conversation found to continue`.
+  `No conversation found to continue`. Where it can read the agent's own store
+  — Claude Code today — Resume lists the conversations on the page, each under
+  what you first asked it, so picking one is a click rather than a session
+  spent inside the CLI's own picker.
 - 🧹 **Agent session markers are stripped from every tab**, so an agent launched
   from inside another agent still records its own transcript. Without that,
   `--continue` later finds nothing.
@@ -186,8 +189,8 @@ Pick a mode and the terminal takes over the tab.
 
 | Agent       | Command         | New session | Continue          | Pick from past       |
 | ----------- | --------------- | ----------- | ----------------- | -------------------- |
-| Claude Code | `claude`        | ✓           | most recent       | ✓                    |
-| Codex       | `codex`         | ✓           | most recent       | ✓                    |
+| Claude Code | `claude`        | ✓           | most recent       | listed in Muster     |
+| Codex       | `codex`         | ✓           | most recent       | its own picker       |
 | OpenCode    | `opencode`      | ✓           | most recent       | —                    |
 | Gemini CLI  | `gemini`        | ✓           | —                 | —                    |
 | Goose       | `goose session` | ✓           | most recent       | —                    |
@@ -205,6 +208,16 @@ A dash under Continue means that CLI documents no flag for it, not that Muster
 forgot: a flag a CLI does not have makes it refuse to start, so the mode is
 left off rather than guessed at. Several of them keep their own history anyway
 and pick it up when you start them.
+
+**Resume** opens the list here instead of in the terminal. Each row is a past
+conversation in that directory, newest first, under the first thing you typed
+in it — clicking one starts the agent straight into that conversation. The
+newest 30 are listed, and a directory with more offers a last row that opens
+the CLI's own picker, where the rest still are. This reads the agent's own
+store, so it is Claude Code today, and only there does a directory with no
+history grey the mode out. Codex still opens its own picker inside the session,
+as it always did, and the agents with no Resume column above have no picker to
+open.
 
 **Open a plain shell instead** is there for the times you want a plain
 terminal in the same window — it takes no flags, because there is no program to
@@ -572,6 +585,13 @@ quietly start something new.
 
 The button is there whenever a directory is: while a session runs, and on a
 restored or just-ended tab before the next one starts.
+
+A tab with a session also gets **New session here** at the top of the drawer,
+which ends whatever is still running and hands the tab back its start screen
+with the
+directory and agent still filled in — the other half of the question the list
+asks. A tab that has not started anything yet is already looking at that
+screen, so it is not offered there.
 
 The records are verbatim, so they hold whatever the agent printed — including
 anything secret that reached the screen, and anything running as you can read

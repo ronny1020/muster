@@ -186,6 +186,36 @@ export const createDirectory = (path: string) =>
 export const agentSessions = (agentId: string, cwd: string, backend: Backend) =>
   invoke<number | null>('agent_sessions', { agentId, cwd, backend })
 
+/** One past conversation an agent's own store holds for a directory. */
+export interface PastSession {
+  /** The agent's own id for it, which is what its `--resume` takes. */
+  id: string
+  /** Seconds since the epoch, from when the conversation was last written. */
+  at: number
+  /** The first thing the user typed in it; empty when it holds none. */
+  summary: string
+}
+
+/** What a directory's store holds, and whether the bound hid any of it. */
+export interface PastSessions {
+  /** Newest first, and bounded — `more` says whether that bound bit. */
+  listed: PastSession[]
+  more: boolean
+}
+
+/**
+ * Past conversations for a directory, newest first.
+ *
+ * Empty wherever the store cannot be read, which is the caller's cue to let
+ * the CLI show its own picker instead — unlike the count above, an empty list
+ * costs nothing, so it is not three-valued.
+ */
+export const agentSessionList = (
+  agentId: string,
+  cwd: string,
+  backend: Backend,
+) => invoke<PastSessions>('agent_session_list', { agentId, cwd, backend })
+
 export interface Editor {
   command: string
   name: string

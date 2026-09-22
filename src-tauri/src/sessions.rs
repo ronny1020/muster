@@ -1,4 +1,4 @@
-//! Whether an agent has anything to continue in a given directory.
+//! What an agent has to continue in a given directory — how much, and which.
 //!
 //! `claude --continue` in a directory with no history prints
 //! `No conversation found to continue` and exits, which reads as a broken app
@@ -9,6 +9,10 @@
 //! is not one we know how to read* — and an unknown store must leave the mode
 //! enabled, because refusing a launch that would have worked is the worse
 //! failure of the two.
+//!
+//! Listing the conversations themselves is the other half, and it answers
+//! two-valued on purpose: an empty list costs the start screen nothing but the
+//! CLI's own picker. `agent_session_list` has why.
 
 use std::path::{Path, PathBuf};
 
@@ -125,6 +129,118 @@ fn store_keys(cwd: &str) -> Vec<String> {
         keys.push(resolved);
     }
     keys
+}
+
+/// How many past conversations one directory offers.
+///
+/// Newest first, so what the bound drops is what is least likely to be
+/// wanted — and each one listed costs a bounded read of its transcript's head
+/// for the line beside it.
+const MAX_LISTED: usize = 30;
+
+/// What a directory's store holds, and whether the bound hid any of it.
+#[derive(Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PastSessions {
+    /// Newest first, and at most `MAX_LISTED` of them.
+    pub listed: Vec<PastSession>,
+    /// Whether the store holds conversations this list does not carry.
+    ///
+    /// Answered here rather than by comparing the list against the count
+    /// beside it: the two apply different rules to the same directory — the
+    /// count asks only for the extension — so a store with one odd entry in it
+    /// would report more history than it has. Only the listing knows what it
+    /// dropped.
+    pub more: bool,
+}
+
+/// One past conversation, as a list offers it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PastSession {
+    /// The agent's own id for the conversation, which is what `--resume`
+    /// takes.
+    pub id: String,
+    /// Seconds since the epoch, from the transcript's mtime — when the
+    /// conversation was last written to.
+    pub at: u64,
+    /// The first thing the person typed in it; empty when the transcript
+    /// holds none.
+    pub summary: String,
+}
+
+/// The conversations an agent's own store holds for `cwd`, newest first.
+///
+/// Empty wherever the store cannot be read — another agent, a WSL session, a
+/// directory with no history — because the caller's answer to an empty list is
+/// to launch the CLI's own picker, which is what every agent had before this
+/// existed. That makes the emptiness harmless in a way `agent_sessions`'
+/// cannot afford, so this one is not three-valued.
+#[tauri::command]
+pub async fn agent_session_list(agent_id: String, cwd: String, backend: String) -> PastSessions {
+    tauri::async_runtime::spawn_blocking(move || list_sessions(&agent_id, &cwd, &backend))
+        .await
+        .unwrap_or_default()
+}
+
+fn list_sessions(agent_id: &str, cwd: &str, backend: &str) -> PastSessions {
+    // Same two limits as the count above: only Claude Code's layout is
+    // verified, and a distro's store is not this process's to read.
+    if backend != "native" || agent_id != "claude" {
+        return PastSessions::default();
+    }
+    claude_project_dir(cwd)
+        .map(|dir| listed_in(&dir))
+        .unwrap_or_default()
+}
+
+/// Every conversation one project directory holds, newest first and bounded.
+///
+/// Ordered on the mtime itself rather than on the second it falls in: two
+/// sessions written within the same second still have an order, and it is the
+/// one the bound below drops from.
+fn listed_in(dir: &Path) -> PastSessions {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return PastSessions::default();
+    };
+    let mut found: Vec<(std::time::SystemTime, PathBuf, String)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension()? != "jsonl" {
+                return None;
+            }
+            let id = path.file_stem()?.to_string_lossy().into_owned();
+            // The file name is another program's, and it becomes
+            // `--resume <id>` in a real argv.
+            if !is_session_id(&id) {
+                return None;
+            }
+            // A directory or a symlink can carry the same name, and neither
+            // is a conversation: `opening_message` refuses to read one, so
+            // the row would offer a resume with nothing behind it.
+            let info = entry.metadata().ok()?;
+            if !info.is_file() {
+                return None;
+            }
+            Some((info.modified().ok()?, path, id))
+        })
+        .collect();
+    found.sort_by_key(|(at, ..)| std::cmp::Reverse(*at));
+    let more = found.len() > MAX_LISTED;
+    found.truncate(MAX_LISTED);
+    PastSessions {
+        // Read after the bound, never before: the summary is the expensive part.
+        listed: found
+            .into_iter()
+            .map(|(at, path, id)| PastSession {
+                summary: crate::transcript::opening_message(&path),
+                at: crate::journal::seconds_since_epoch(at),
+                id,
+            })
+            .collect(),
+        more,
+    }
 }
 
 fn count_transcripts(dir: &Path) -> u32 {

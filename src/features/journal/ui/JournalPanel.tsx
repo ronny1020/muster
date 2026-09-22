@@ -5,7 +5,8 @@ import {
   type Agent,
   resumeArgs,
 } from '../../../entities/agent/model/agents'
-import { agoLabel, earlierThan } from '../model/entries'
+import { agoLabel } from '../../../shared/lib/ago'
+import { earlierThan } from '../model/entries'
 import { DragEdge } from '../../../shared/ui/DragEdge'
 import { formatBytes } from '../../../shared/lib/bytes'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
@@ -23,6 +24,15 @@ export interface JournalPanelProps {
   busy: boolean
   /** Reopen this conversation in this tab, ending whatever runs here now. */
   onResume(agent: Agent, args: string[]): void
+  /**
+   * Start again in this tab, ending whatever runs here now — absent for a tab
+   * already on its start screen, where the same thing is a click away behind
+   * this drawer.
+   *
+   * The drawer's list answers "take me back to one of these", and "none of
+   * these" is the other half of that question.
+   */
+  onNew?(): void
   onClose(): void
 }
 
@@ -43,6 +53,7 @@ export function JournalPanel({
   recording,
   busy,
   onResume,
+  onNew,
   onClose,
 }: JournalPanelProps) {
   const { settings } = useSettings()
@@ -83,6 +94,28 @@ export function JournalPanel({
           ✕
         </button>
       </header>
+
+      {onNew && (
+        <div className="flex-none border-b border-line px-2.5 py-2">
+          <button
+            type="button"
+            onClick={onNew}
+            title={
+              busy
+                ? 'Ends the session running in this tab, then opens its start screen'
+                : 'Opens the start screen for this tab'
+            }
+            className="w-full rounded border border-line px-1.5 py-1 text-[11px] text-ink hover:bg-surface"
+          >
+            New session here
+          </button>
+          {busy && (
+            <span className="mt-1 block text-[10px] text-faint">
+              Ends the session running here.
+            </span>
+          )}
+        </div>
+      )}
 
       <div role="status" className="flex-none">
         {entries === null && (

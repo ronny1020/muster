@@ -194,6 +194,7 @@ building.
 | The menu a right-click opens                       | `src/shared/ui/ContextMenu.tsx`                        |
 | The agent picker, filterable                       | `src/shared/ui/Combobox.tsx`                           |
 | Byte sizes as a person reads them                  | `src/shared/lib/bytes.ts`                              |
+| How long ago something was, as a list says it      | `src/shared/lib/ago.ts`                                |
 | Material icons, and which file gets which          | `src/shared/ui/`                                       |
 | Text a dropped file types                          | `src-tauri/src/platform.rs`                            |
 | Drawer widths, dragged and remembered              | `src/shared/lib/usePanelWidth.ts`                      |
@@ -294,7 +295,11 @@ component needs touching. The other places that follow:
   [AGENTS.md](AGENTS.md) says how to find out.
 - **`src-tauri/src/sessions.rs`**, which decides whether the new agent's
   Continue and Resume modes are offered at all. An agent whose session store it
-  does not know returns `None`, which leaves both modes enabled.
+  does not know returns `None`, which leaves both modes enabled. The same file
+  decides whether Resume is answered on the start screen: `agent_session_list`
+  lists that store's conversations, and an agent it cannot read lists none —
+  which sends the click to the CLI's own picker, the behaviour every agent had
+  before the list existed.
 
 ## Adding an icon
 

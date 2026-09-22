@@ -588,6 +588,7 @@ export function Pane({
                 recording={settings.journalEnabled}
                 busy={tab.exitCode === null}
                 onResume={resumeFromJournal}
+                onNew={() => dispatch({ type: 'relaunch', id: tab.id })}
                 onClose={toggleJournal}
               />
             )}

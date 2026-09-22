@@ -261,3 +261,61 @@ fn a_file_turn_naming_an_absurd_path_is_skipped() {
     let fine = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","input":{"file_path":"/tmp/real.rs"}}]}}"#;
     assert_eq!(turns(&[fine]).len(), 1, "an ordinary path still counts");
 }
+
+/// What names a conversation in a list is the first thing the person asked
+/// for — not the tool result or the compaction summary that may precede it.
+#[test]
+fn a_summary_is_the_first_thing_the_person_typed() {
+    let dir = scratch("summary");
+    let path = dir.join("session.jsonl");
+    std::fs::write(
+        &path,
+        [
+            r#"{"type":"user","message":{"content":"tool output"}}"#,
+            r#"{"type":"user","promptSource":"typed","message":{"content":"mark files on the scrollbar\nand keep them"}}"#,
+            r#"{"type":"user","promptSource":"typed","message":{"content":"then fix the ruler"}}"#,
+        ]
+        .join("\n"),
+    )
+    .expect("write");
+
+    assert_eq!(
+        super::opening_message(&path),
+        "mark files on the scrollbar",
+        "the first typed prompt, cut to one line"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A record the person never typed into is listed without a line beside it
+/// rather than with a tool result standing in for one.
+#[test]
+fn a_transcript_with_nothing_typed_in_it_summarises_to_nothing() {
+    let dir = scratch("nosummary");
+    let path = dir.join("session.jsonl");
+    std::fs::write(&path, r#"{"type":"assistant","message":{"content":[]}}"#).expect("write");
+
+    assert_eq!(super::opening_message(&path), "");
+    assert_eq!(super::opening_message(&dir.join("absent.jsonl")), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The same stance as the tail read beside it: the program that writes these
+/// files is the one being defended against.
+#[test]
+#[cfg(unix)]
+fn a_summary_is_not_read_through_a_symlink() {
+    let dir = scratch("summarylink");
+    let real = dir.join("real.jsonl");
+    std::fs::write(
+        &real,
+        r#"{"type":"user","promptSource":"typed","message":{"content":"secret"}}"#,
+    )
+    .expect("write");
+    let link = dir.join("link.jsonl");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+
+    assert_eq!(super::opening_message(&link), "");
+    assert_eq!(super::opening_message(&real), "secret");
+    let _ = std::fs::remove_dir_all(&dir);
+}

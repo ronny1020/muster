@@ -101,11 +101,11 @@ fn turns_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<Turn> {
 
 /// The last `MAX_BYTES` of a transcript, from a line boundary, or `None`.
 ///
-/// Refuses a symlink, and hands back a reader that cannot outrun the cap —
-/// both because this read happens on its own, with no click behind it. The
-/// app's other automatic reads are bounded for the same reason (see
-/// AGENTS.md); a `.jsonl` that is a link to `/dev/zero`, or one very long
-/// line, would otherwise grow without limit inside a blocking task.
+/// Opened through `open_plain`, which holds the refusals, and handed back as a
+/// reader that cannot outrun the cap: this read happens on its own, with no
+/// click behind it, and a `.jsonl` that is a link to `/dev/zero`, or one very
+/// long line, would otherwise grow without limit inside a blocking task. The
+/// app's other automatic reads are bounded for the same reason (see AGENTS.md).
 ///
 /// A seek lands mid-line and half an object parses as nothing, so the partial
 /// first line is dropped — one turn at the far end of the window rather than
@@ -117,16 +117,8 @@ fn turns_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<Turn> {
 /// leaving the position where it lands skips several turns instead of one
 /// fragment.
 fn open_tail(path: &std::path::Path) -> Option<impl Read> {
-    let info = std::fs::symlink_metadata(path).ok()?;
-    if !info.is_file() {
-        return None;
-    }
-    // Opened without following, so the refusal above cannot be raced: an
-    // agent can replace its own transcript with a link between the check and
-    // the open, and this read happens on a status edge with no click behind
-    // it. Same call, and the same reason, as `read_capped`.
-    let mut file = crate::review::open_without_following(path).ok()?;
-    if info.len() > MAX_BYTES {
+    let (mut file, len) = open_plain(path)?;
+    if len > MAX_BYTES {
         file.seek(SeekFrom::End(-(MAX_BYTES as i64))).ok()?;
         let mut reader = BufReader::new(&mut file);
         let mut partial = Vec::new();
@@ -136,6 +128,60 @@ fn open_tail(path: &std::path::Path) -> Option<impl Read> {
         file.seek(SeekFrom::Current(-unread)).ok()?;
     }
     Some(file.take(MAX_BYTES))
+}
+
+/// A transcript opened for reading, with its size, or `None` for anything that
+/// is not a plain file.
+///
+/// Opened without following, so the `symlink_metadata` refusal cannot be
+/// raced: an agent can replace its own transcript with a link between the
+/// check and the open, and these reads happen with no click behind them. Same
+/// call, and the same reason, as `read_capped`.
+fn open_plain(path: &std::path::Path) -> Option<(std::fs::File, u64)> {
+    let info = std::fs::symlink_metadata(path).ok()?;
+    if !info.is_file() {
+        return None;
+    }
+    Some((
+        crate::review::open_without_following(path).ok()?,
+        info.len(),
+    ))
+}
+
+/// How much of a transcript's **head** a summary is read from.
+///
+/// Small because the first thing a person typed is one of the first entries,
+/// and because a listing reads one head per session where `open_tail` reads
+/// one tail per tab.
+const HEAD_BYTES: u64 = 256 * 1024;
+
+/// The first thing the person typed in a transcript, cut to one line, or
+/// empty when this window of it holds none.
+///
+/// What names a conversation in a list: the file is called after a uuid, and a
+/// session is remembered by what it was asked to do.
+///
+/// The bound is a window rather than a promise: one line can carry a pasted
+/// attachment, so an opening turn larger than `HEAD_BYTES` is cut mid-line,
+/// parses as nothing, and leaves the row unnamed. A row with no line beside it
+/// is the honest answer there — the alternative is reading further into every
+/// listed transcript for a label.
+pub fn opening_message(path: &std::path::Path) -> String {
+    let Some((file, _)) = open_plain(path) else {
+        return String::new();
+    };
+    let mut raw = Vec::new();
+    if file.take(HEAD_BYTES).read_to_end(&mut raw).is_err() && raw.is_empty() {
+        return String::new();
+    }
+    String::from_utf8_lossy(&raw)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        // A subagent's own conversation is the agent's, not the person's.
+        .filter(|entry| !entry["isSidechain"].as_bool().unwrap_or(false))
+        .find_map(|entry| user_text(&entry))
+        .map(|text| first_line(&text))
+        .unwrap_or_default()
 }
 
 /// Parses a transcript into turns. Split from the file handling so a test can

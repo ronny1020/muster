@@ -123,10 +123,21 @@ it reads is still agent-authored — the file is written by the CLI, in the
 user's own home — so everything the section below says about provenance
 applies to it too.
 
-## Three places an agent's own text is drawn outside the grid
+The start screen's Resume list reads the same store, on a click: a listing of
+`~/.claude/projects` to find this directory's folder, a listing of that folder,
+then the **first** 256 KB of at most 30 transcripts for the line each row
+carries. Two values leave it. The file's own name becomes
+`--resume <id>` in an argv, so it is refused by `is_session_id` before it is
+listed at all — the same check, and the same reason, as the journal's Resume
+button. And the line beside it is the first entry the CLI marked as the person's
+own — `typed`, or `queued` while the agent was still working — cut to 120
+characters and drawn as text; it is the agent's file, so it says what that file
+says.
 
-All three are display-only, and all three are worth knowing because the grid
-is where agent output is normally confined.
+## Four places an agent's own text is drawn outside the grid
+
+All four are display-only, and all four are worth knowing because the grid is
+where agent output is normally confined.
 
 **A desktop notification body**, from `OSC 777`'s `stop` event — bounded as the
 section above describes.
@@ -155,6 +166,11 @@ it is inert either way. The cap is in Rust, so it holds wherever the text is
 drawn: the label a dot carries is the turn's first line, cut to 120
 characters, out of a turn cut to 4,000. What it is not is proof of
 authorship — see the rail section below.
+
+**A past conversation's line on the start screen**, from the same transcripts
+and under the same caps — the read is described above. It is drawn as text, it
+reaches nothing else, and what a row's click launches is the file's name rather
+than its words.
 
 ## What a terminal click will read
 

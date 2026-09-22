@@ -111,6 +111,7 @@ pub fn run() {
             workspace::home_dir,
             workspace::create_directory,
             sessions::agent_sessions,
+            sessions::agent_session_list,
             journal::journal_sessions,
             transcript::agent_turns,
             journal::journal_read,

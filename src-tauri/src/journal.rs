@@ -505,7 +505,7 @@ fn tail_bytes(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn seconds_since_epoch(time: SystemTime) -> u64 {
+pub fn seconds_since_epoch(time: SystemTime) -> u64 {
     time.duration_since(SystemTime::UNIX_EPOCH)
         .map(|since| since.as_secs())
         .unwrap_or(0)
