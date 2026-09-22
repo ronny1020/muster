@@ -5,8 +5,8 @@ fn a_tilde_path_matches_the_store_the_same_as_its_absolute_form() {
     let home = platform::home().unwrap();
     // The failure this guards against disabled Continue on real history.
     assert_eq!(
-        count_sessions("claude", &format!("{home}/muster-no-such-dir")),
-        count_sessions("claude", "~/muster-no-such-dir"),
+        count_sessions("claude", &format!("{home}/muster-no-such-dir"), "native"),
+        count_sessions("claude", "~/muster-no-such-dir", "native"),
     );
 }
 
@@ -46,22 +46,34 @@ fn repeated_and_trailing_separators_are_ignored() {
 #[test]
 fn an_unknown_agent_reports_nothing_rather_than_zero() {
     // Zero would hide Continue; None leaves it to the CLI to decide.
-    assert_eq!(count_sessions("codex", "/work"), None);
-    assert_eq!(count_sessions("antigravity", "/work"), None);
-    assert_eq!(count_sessions("shell", "/work"), None);
+    assert_eq!(count_sessions("codex", "/work", "native"), None);
+    assert_eq!(count_sessions("antigravity", "/work", "native"), None);
+    assert_eq!(count_sessions("shell", "/work", "native"), None);
 }
 
 #[test]
-fn claude_always_answers_with_a_count() {
-    assert!(count_sessions("claude", "/definitely/not/here").is_some());
-    assert_eq!(count_sessions("claude", "/definitely/not/here"), Some(0));
+fn a_directory_the_store_has_no_record_of_counts_zero() {
+    assert_eq!(
+        count_sessions("claude", "/definitely/not/here", "native"),
+        Some(0)
+    );
+}
+
+/// A zero hides the ⟳, and the ⟳ is the only way to reprint a conversation
+/// after a resize — so a session whose store this process cannot see at all
+/// must answer "unknown", never "empty". A WSL session keeps its store inside
+/// the distro while `platform::home()` is the host's.
+#[test]
+fn a_session_whose_store_we_cannot_see_answers_unknown_rather_than_empty() {
+    assert_eq!(count_sessions("claude", "/work", "wsl"), None);
+    assert!(count_sessions("claude", "/work", "native").is_some());
 }
 
 #[test]
 fn finds_this_repos_own_claude_sessions_if_any_exist() {
     // Whether this machine has history is its business; that the lookup
     // runs and answers is ours.
-    let count = count_sessions("claude", env!("CARGO_MANIFEST_DIR"));
+    let count = count_sessions("claude", env!("CARGO_MANIFEST_DIR"), "native");
     assert!(count.is_some());
 }
 

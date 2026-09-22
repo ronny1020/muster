@@ -14,18 +14,31 @@ use std::path::{Path, PathBuf};
 
 use crate::platform;
 
-/// How many recorded sessions an agent has for `cwd`, or `None` when the
-/// agent's session store is unknown to us.
+/// How many recorded sessions an agent has for `cwd`, or `None` when we cannot
+/// say.
+///
+/// The difference between `None` and `Some(0)` is load-bearing, because a
+/// caller hides a control on a zero: the ⟳ that reprints a conversation after
+/// a resize, and the mode switch. A zero must therefore mean "the store was
+/// read and holds nothing for this directory", never "the store could not be
+/// found" — the second reported as the first takes the only repair for a
+/// resize away from a tab whose conversation is right there.
 #[tauri::command]
-pub async fn agent_sessions(agent_id: String, cwd: String) -> Option<u32> {
-    tauri::async_runtime::spawn_blocking(move || count_sessions(&agent_id, &cwd))
+pub async fn agent_sessions(agent_id: String, cwd: String, backend: String) -> Option<u32> {
+    tauri::async_runtime::spawn_blocking(move || count_sessions(&agent_id, &cwd, &backend))
         .await
         .ok()?
 }
 
-fn count_sessions(agent_id: &str, cwd: &str) -> Option<u32> {
+fn count_sessions(agent_id: &str, cwd: &str, backend: &str) -> Option<u32> {
+    // A session in a WSL distro writes its store inside that distro, while
+    // `platform::home()` is this process's own — so every key misses and the
+    // honest answer is that we cannot see it, not that it is empty.
+    if backend != "native" {
+        return None;
+    }
     match agent_id {
-        "claude" => Some(claude_sessions(cwd)),
+        "claude" => claude_sessions(cwd),
         // Codex keeps sessions under `$CODEX_HOME`, and Antigravity under its
         // own directory, but neither layout is verified here — so say nothing
         // rather than guess and hide a working mode.
@@ -35,17 +48,33 @@ fn count_sessions(agent_id: &str, cwd: &str) -> Option<u32> {
 
 /// Claude Code files each project under `~/.claude/projects`, named after the
 /// directory with its separators flattened, and one `.jsonl` per session.
-fn claude_sessions(cwd: &str) -> u32 {
-    claude_project_dir(cwd)
-        .map(|dir| count_transcripts(&dir))
-        .unwrap_or(0)
+///
+/// `None` where that root cannot be read at all — no home, no `.claude`, or a
+/// permission the app does not have.
+fn claude_sessions(cwd: &str) -> Option<u32> {
+    let projects = projects_root()?;
+    // Read once here rather than leaning on `claude_project_dir`, which cannot
+    // tell a root it could not open from one that held no match.
+    std::fs::read_dir(&projects).ok()?;
+    Some(
+        claude_project_dir(cwd)
+            .map(|dir| count_transcripts(&dir))
+            .unwrap_or(0),
+    )
+}
+
+/// `~/.claude/projects`, where Claude Code files every project.
+fn projects_root() -> Option<PathBuf> {
+    Some(
+        Path::new(&platform::home()?)
+            .join(".claude")
+            .join("projects"),
+    )
 }
 
 /// Where Claude Code keeps this directory's transcripts, if it has any.
 pub fn claude_project_dir(cwd: &str) -> Option<PathBuf> {
-    let projects = Path::new(&platform::home()?)
-        .join(".claude")
-        .join("projects");
+    let projects = projects_root()?;
     let wanted = store_keys(cwd);
     // Ordered by key rather than by whatever `read_dir` yields first: both
     // spellings can exist as directories — a store written before the CLI

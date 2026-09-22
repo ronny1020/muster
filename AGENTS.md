@@ -281,6 +281,18 @@ no window ever sees `CloseRequested` or `Destroyed`, and anything hung off those
 is skipped on the most common quit gesture on macOS. The confirmation prompt can
 live on `CloseRequested`; ending the sessions cannot.
 
+**A kill names a registration, not a tab.** `pty_kill` and `pty_spawn` are
+separate async commands with no ordering between them, and a tab reopening
+its conversation posts both for the **same id** in one commit — so a kill
+meant for the session being torn down can arrive after its replacement is
+registered. Removing by id alone then ends the child that just started, and
+because `end` sets `killed` the reader thread reads it as deliberate and
+reports no exit: the tab keeps its terminal, shows no ended bar and no way
+back, and has nothing running behind it. `EPOCHS` numbers every registration,
+`pty_spawn` answers with the one it took, and `pty_kill` refuses an epoch that
+is not the one currently registered. Same shape as `Sessions::forget`'s
+`Arc::ptr_eq`, and for the same reason.
+
 **A session must be forgotten when its child exits.** The pane stays mounted
 behind the "session ended" overlay, so `pty_kill` never runs on a natural exit.
 Without `Sessions::forget` in the reader thread the registry keeps dead entries,
@@ -585,6 +597,21 @@ view to the bottom on every repaint, so it drifts from the first turn
 onwards. `surfacesFor` answers `scrollbar: false` for that buffer, and a tab
 that wants a real one is a scrollback tab — which is the default, and the
 reason the choice is offered at launch rather than assumed.
+
+**A dot seeks only while the agent is reading the mouse, and that guard is
+not tidiness.** xterm answers a wheel on a buffer with no scrollback, with
+tracking off, by **typing**: it turns each line the notch would have scrolled
+into `ESC[A` or `ESC[B` and writes them to the pty. A burst is eight notches
+of roughly seven lines, so one stalled seek is about a hundred arrow presses
+into a live agent — and Up recalls the previous prompt in Claude Code, so a
+click meant to scroll overwrites a draft and nothing about the tab looks
+wrong afterwards. `seekTo` therefore returns unless `agentReadsMouse` says
+tracking is armed, and re-checks after every await, because a TUI can drop
+tracking mid-seek. The rail is drawn from the buffer and the turns, neither
+of which knows about tracking, so the check cannot live there — and for the
+same reason the transcript rail is not drawn at all when the seek could not
+work, since a dot that ignores a click is the thing `gateLinks` exists to
+prevent.
 
 **A dot seeks instead, and the stall check is the whole feature.** The wheel
 is the one thing that moves a view the agent owns, and xterm forwards it —

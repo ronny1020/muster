@@ -152,6 +152,7 @@ export function Pane({
   const past = usePastSessions(
     session && agentById(session.agentId).scrollbackMode ? session.agentId : '',
     journalCwd,
+    session?.backend ?? 'native',
     tab.status,
   )
   /**

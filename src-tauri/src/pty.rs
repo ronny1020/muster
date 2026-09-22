@@ -29,6 +29,8 @@ use crate::platform::{self, Backend, Launch};
 /// had already removed the session from the map, so a retry did nothing and the
 /// agent was orphaned for the life of the app.
 struct Session {
+    /// Which registration this is — see `EPOCHS`.
+    epoch: u64,
     master: Mutex<Box<dyn MasterPty + Send>>,
     /// Stdin goes through a queue drained by one thread, so bytes reach the
     /// child in the order they were typed. Commands run as independent tasks
@@ -52,6 +54,18 @@ struct Session {
     /// single byte reached the window.
     output: Arc<Mutex<Channel<InvokeResponseBody>>>,
 }
+
+/// Counts every session ever registered, so one can be told apart from
+/// whatever later takes its tab id.
+///
+/// A tab reopening its conversation kills and respawns under the **same** id,
+/// and the two are separate async commands with no ordering between them — so
+/// a kill meant for the old session can arrive after the new one is
+/// registered. Removing by id alone would then end the session that just
+/// started, and because `end` marks it deliberate the reader thread reports no
+/// exit: the tab keeps its terminal, shows no ended bar and no way back, and
+/// has no process behind it.
+static EPOCHS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
@@ -251,7 +265,7 @@ pub fn pty_spawn(
     sessions: tauri::State<'_, Sessions>,
     options: SpawnOptions,
     on_output: Channel<InvokeResponseBody>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let SpawnOptions {
         id,
         cwd,
@@ -370,7 +384,9 @@ pub fn pty_spawn(
         }
     });
 
+    let epoch = EPOCHS.fetch_add(1, Ordering::SeqCst);
     let session = Arc::new(Session {
+        epoch,
         master: Mutex::new(pair.master),
         stdin,
         group,
@@ -465,7 +481,9 @@ pub fn pty_spawn(
         }
     });
 
-    Ok(())
+    // The epoch the caller quotes back when it kills this session — see
+    // `EPOCHS`, and `pty_kill`, which refuses a kill that names an older one.
+    Ok(epoch)
 }
 
 /// Queues keystrokes for the session's writer thread.
@@ -528,10 +546,18 @@ pub async fn pty_cwd(
 /// Ends a session: signals the child's whole process group, then drops the
 /// pty handles.
 #[tauri::command(async)]
-pub fn pty_kill(sessions: tauri::State<'_, Sessions>, id: String) {
-    let Some(session) = sessions.0.lock().remove(&id) else {
+pub fn pty_kill(sessions: tauri::State<'_, Sessions>, id: String, epoch: u64) {
+    // Only the registration the caller meant — see `EPOCHS`.
+    let mut map = sessions.0.lock();
+    // Matched rather than `is_none_or`, which is newer than this crate's MSRV.
+    match map.get(&id) {
+        Some(current) if current.epoch == epoch => {}
+        _ => return,
+    }
+    let Some(session) = map.remove(&id) else {
         return;
     };
+    drop(map);
     end(&session);
 }
 

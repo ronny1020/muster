@@ -437,9 +437,13 @@ what came before is reprinted.
 
 It is not on every tab. Shell tabs are left alone — their output wraps like
 ordinary text, so it survives a resize — and they have no conversation to
-reopen. Nor is it on a clickable tab, which holds one screen and so has no
-history a resize could ruin, or on a tab in a directory where the agent has
-recorded nothing yet, since there would be nothing to print again.
+reopen. Nor is it on a tab whose terminal is holding a single screen, which a
+clickable tab usually is — there is no history for a resize to ruin. "Usually"
+because the button follows the buffer rather than the mode: a CLI that has
+turned its own fullscreen renderer off runs in the ordinary one and builds real
+history, and the `⟳` comes back with it. And not on a tab in a directory where
+the agent has recorded nothing yet, since there would be nothing to print
+again.
 
 The dots are found by how your prompt was drawn rather than by what it says — a
 tinted block of cells — so they work for any CLI that renders a prompt that way,

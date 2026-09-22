@@ -110,14 +110,18 @@ export function spawnPty(
         ? new Uint8Array(message)
         : new Uint8Array(message),
     )
-  return invoke<void>('pty_spawn', { options, onOutput: channel })
+  // The epoch that names this registration, quoted back by `killPty` — a tab
+  // reopening its conversation respawns under the same id, so a kill has to
+  // say which session it meant.
+  return invoke<number>('pty_spawn', { options, onOutput: channel })
 }
 
 export const writePty = (id: string, data: string) =>
   invoke<void>('pty_write', { id, data })
 export const resizePty = (id: string, cols: number, rows: number) =>
   invoke<void>('pty_resize', { id, cols, rows })
-export const killPty = (id: string) => invoke<void>('pty_kill', { id })
+export const killPty = (id: string, epoch: number) =>
+  invoke<void>('pty_kill', { id, epoch })
 
 export const journalSessions = (cwd: string) =>
   invoke<JournalEntry[]>('journal_sessions', { cwd })
@@ -172,12 +176,15 @@ export const createDirectory = (path: string) =>
   invoke<string>('create_directory', { path })
 
 /**
- * How many past sessions an agent has in a directory, or `null` when that
- * agent's session store is not one the backend knows how to read — in which
- * case the mode stays offered rather than being hidden on a guess.
+ * How many past sessions an agent has in a directory, or `null` when we cannot
+ * say — an agent whose store we do not read, a session in a WSL distro whose
+ * store lives inside it, or a store root this process cannot open.
+ *
+ * `null` and `0` are not interchangeable: a caller hides a control on a zero,
+ * so "cannot see it" answering as "empty" takes a working control away.
  */
-export const agentSessions = (agentId: string, cwd: string) =>
-  invoke<number | null>('agent_sessions', { agentId, cwd })
+export const agentSessions = (agentId: string, cwd: string, backend: Backend) =>
+  invoke<number | null>('agent_sessions', { agentId, cwd, backend })
 
 export interface Editor {
   command: string

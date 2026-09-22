@@ -163,7 +163,7 @@ export function Launcher({
     // Until the new answer lands, "unknown" is the honest state — keeping the
     // previous directory's count would gate on the wrong directory.
     setSessions(null)
-    void agentSessions(agent.id, directory)
+    void agentSessions(agent.id, directory, backend)
       .then((count) => !cancelled && setSessions(count))
       .catch(() => !cancelled && setSessions(null))
     return () => {

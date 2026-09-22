@@ -78,6 +78,7 @@ fn quitting_ends_every_session_and_empties_the_registry() {
         sessions.0.lock().insert(
             format!("tab-{index}"),
             Arc::new(Session {
+                epoch: 0,
                 master: Mutex::new(pair.master),
                 stdin,
                 group,
@@ -160,6 +161,7 @@ fn ending_a_session_reaches_the_children_the_agent_started() {
 
     let (stdin, _queued) = mpsc::channel::<Vec<u8>>();
     end(&Session {
+        epoch: 0,
         master: Mutex::new(pair.master),
         stdin,
         group,
@@ -311,6 +313,7 @@ fn re_pointing_a_session_leaves_its_child_running() {
     sessions.0.lock().insert(
         "tab-move".to_string(),
         Arc::new(Session {
+            epoch: 0,
             master: Mutex::new(pair.master),
             stdin,
             group,
@@ -395,6 +398,7 @@ fn parked_session() -> (Arc<Session>, i32) {
     let killer = child.clone_killer();
     let (stdin, _queued) = mpsc::channel::<Vec<u8>>();
     let session = Arc::new(Session {
+        epoch: super::EPOCHS.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
         master: Mutex::new(pair.master),
         stdin,
         group,
@@ -475,4 +479,47 @@ fn forgetting_a_session_already_gone_leaves_the_registry_alone() {
         "an unrelated session is untouched"
     );
     end(&current);
+}
+
+/// A tab reopening its conversation kills and respawns under the same id, and
+/// the two are independent async commands. If the spawn wins, a kill naming
+/// the old registration must not end the new one: `end` marks it deliberate,
+/// so the reader thread reports no exit and the tab keeps a terminal with no
+/// process behind it — no ended bar, no way back.
+#[test]
+fn a_late_kill_cannot_end_the_session_that_replaced_its_own() {
+    let sessions = Sessions::default();
+    let (old, _old_pid) = parked_session();
+    let (new, new_pid) = parked_session();
+
+    sessions.0.lock().insert("tab".to_string(), old.clone());
+    sessions.0.lock().insert("tab".to_string(), new.clone());
+
+    // What the unmounted view posts, naming the registration it started with.
+    pty_kill_for_test(&sessions, "tab", old.epoch);
+
+    assert!(
+        sessions.get("tab").is_ok(),
+        "the session that took the id is still registered"
+    );
+    assert!(alive(new_pid), "and its child was not signalled");
+
+    // The same call naming the current registration does end it.
+    pty_kill_for_test(&sessions, "tab", new.epoch);
+    assert!(sessions.get("tab").is_err());
+    end(&old);
+}
+
+/// `pty_kill` without the Tauri `State` wrapper, which a unit test cannot build.
+fn pty_kill_for_test(sessions: &Sessions, id: &str, epoch: u64) {
+    let mut map = sessions.0.lock();
+    match map.get(id) {
+        Some(current) if current.epoch == epoch => {}
+        _ => return,
+    }
+    let Some(session) = map.remove(id) else {
+        return;
+    };
+    drop(map);
+    end(&session);
 }

@@ -50,7 +50,7 @@ A concrete failure: the input or state, and the wrong output, crash or lost
 data that follows. "Consider extracting this" with no defect behind it is
 noise and must not be reported.
 
-Three kinds count here that a test suite structurally cannot see, so look for
+Four kinds count here that a test suite structurally cannot see, so look for
 them deliberately:
 
 - **A broken invariant.** Name the AGENTS.md entry it contradicts.

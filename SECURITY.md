@@ -203,10 +203,13 @@ What a dot there **does** is narrower than what it says: it scrolls. The
 label the agent supplied is matched against what is drawn on screen and the
 view is moved, so nothing is resolved and no file is read. It is not quite the
 silent gesture a scan-placed dot is, though, and the difference is worth
-stating: moving a view the agent owns means sending it wheel notches, so the
-terminal does write to the pty — its own `CSI <64` reports, at coordinates
-this app picks, carrying none of the agent's bytes. What reaches the session
-is built here, never relayed. The transcript's
+stating: moving a view the agent owns means sending it wheel notches, so while
+the agent is reading the mouse the terminal does write to the pty — its own
+`CSI <64` reports, at coordinates this app picks, carrying none of the agent's
+bytes. What reaches the session is built here, never relayed. Where the agent
+is **not** reading the mouse the dot does nothing at all: it sends no notch,
+because xterm would answer one on a buffer with no scrollback by typing arrow
+keys into the session instead of scrolling it. The transcript's
 text reaches the tooltip and the accessible name and stops there, cut to 120
 characters in Rust out of a turn cut to 4,000, so both caps hold wherever the
 text is drawn.

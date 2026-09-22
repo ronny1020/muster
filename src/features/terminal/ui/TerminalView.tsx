@@ -169,7 +169,16 @@ export function TerminalView({
     screenRows: mounted?.rows ?? 0,
     turns: turns.length,
   })
-  const fromTranscript = surfaces.rail === 'transcript'
+  // Gated on the seek being able to work, not just on there being turns: a
+  // dot that cannot move the view is the failure `gateLinks` exists to
+  // prevent — a surface that goes on claiming to be clickable while ignoring
+  // the click. The seek needs the agent to be reading the mouse, so a tab
+  // whose child has exited, or whose CLI never armed tracking, draws no rail
+  // rather than a dead one.
+  const fromTranscript =
+    surfaces.rail === 'transcript' &&
+    mounted !== null &&
+    agentReadsMouse(mounted, !ended)
   const said = useMemo(() => messagesIn(turns), [turns])
   /**
    * Which of the transcript's messages the step buttons are on.
@@ -187,13 +196,12 @@ export function TerminalView({
   // A sentinel rather than the first value: a turn the agent wrote no
   // timestamp for reads as the empty string, which would match a ref seeded
   // with one and leave the walk at the mount-time zero.
-  const newest = said.at(-1)?.at ?? ''
+  // Keyed on the length as well as the newest turn's timestamp, because the
+  // timestamp alone is not unique: the agent may write a turn without one,
+  // and two such turns in a row then compare equal while the list has grown —
+  // leaving the walk short of the newest message by however many arrived.
+  const newest = `${said.length}|${said.at(-1)?.at ?? ''}`
   const walked = useRef<string | null>(null)
-  // Skipped while the list is empty, which is every first render: the agent
-  // may write a turn with no timestamp, and `at` is then the same empty
-  // string the empty list produces — so a sentinel alone would call the two
-  // states equal and leave the walk at zero, sending the first ↑ to the
-  // oldest message instead of the newest.
   if (said.length > 0 && walked.current !== newest) {
     walked.current = newest
     stepped.current = said.length
@@ -215,6 +223,8 @@ export function TerminalView({
 
   /** Which seek owns the view: a later click supersedes an unfinished one. */
   const seeking = useRef(0)
+  /** Which registration this view's session is, for the kill on the way out. */
+  const epoch = useRef<number | null>(null)
   /**
    * Scrolls the agent's own view back to one of its messages.
    *
@@ -669,9 +679,13 @@ export function TerminalView({
           markWorking()
           term.write(bytes)
         },
-      ).catch((error) =>
-        term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
       )
+        .then((started) => {
+          epoch.current = started
+        })
+        .catch((error) =>
+          term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
+        )
     }
 
     const observer = new ResizeObserver(sync)
@@ -682,7 +696,10 @@ export function TerminalView({
       observer.disconnect()
       clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
-      bestEffort(killPty(sessionId))
+      // Named by epoch, never by id alone: this tab may already be respawning
+      // under the same id, and a kill that arrives after would otherwise end
+      // the session that replaced this one.
+      if (epoch.current !== null) bestEffort(killPty(sessionId, epoch.current))
       // Every addon before the terminal, not just the renderer. `dispose` on
       // the Terminal tears `_core` down and only then lets its addon manager
       // dispose what is still registered — and an addon that reaches through

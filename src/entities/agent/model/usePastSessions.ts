@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { agentSessions } from '../../../shared/ipc'
+import type { Backend } from '../../../shared/lib/platform'
 
 /**
  * How many conversations an agent already has in a directory, re-read when the
@@ -21,6 +22,7 @@ import { agentSessions } from '../../../shared/ipc'
 export function usePastSessions(
   agentId: string,
   cwd: string,
+  backend: Backend,
   status: string,
 ): number | null {
   const [count, setCount] = useState<number | null>(null)
@@ -33,7 +35,7 @@ export function usePastSessions(
     let live = true
     const read = async () => {
       try {
-        const found = await agentSessions(agentId, cwd)
+        const found = await agentSessions(agentId, cwd, backend)
         if (live) setCount(found)
       } catch {
         // An unreadable store is "unknown", not zero: see the doc comment.
@@ -44,7 +46,7 @@ export function usePastSessions(
     return () => {
       live = false
     }
-  }, [agentId, cwd, status])
+  }, [agentId, cwd, backend, status])
 
   return count
 }
