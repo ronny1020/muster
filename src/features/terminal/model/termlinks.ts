@@ -5,6 +5,10 @@
  * header — and every one of them is somewhere the user wants to go. The
  * matching has to stay conservative: a false positive underlines prose and
  * makes the terminal feel broken, which is worse than missing a path.
+ *
+ * A match needs **both** a separator and a file extension. The separator is
+ * what tells a path from a word; the extension is what tells a file from a
+ * directory, which is what a click can actually open.
  */
 
 export interface PathMatch {
@@ -61,11 +65,22 @@ export function findPaths(text: string): PathMatch[] {
   return matches
 }
 
+/** A final segment ending in `.` plus letters or digits — `a.ts`, `.env`. */
+const EXTENSION = /\.[A-Za-z0-9]+$/
+
 function looksLikePath(path: string): boolean {
   if (path.length < 2) return false
   // A separator is what distinguishes a path from a word.
   const separated = path.includes('/') || /^[A-Za-z]:\\/.test(path)
   if (!separated) return false
+  // A dot in the last segment is what stands in for "this is a file".
+  // Clicking one opens it for reading, which a directory has nothing to
+  // answer with — and agents name directories constantly (`cd src/features`,
+  // a tree drawn in output), so linking them underlines most of a session.
+  // The test is a proxy, not the question: `Makefile` and `/etc/hosts` are
+  // files it declines, and a version in a path — `node/v20.11.0` — is one it
+  // takes.
+  if (!EXTENSION.test(path.split(/[/\\]/).pop() ?? '')) return false
   // `http://…` is a URL; the web-links addon already owns those.
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return false
   // A bare `/` or `//` carries no filename.

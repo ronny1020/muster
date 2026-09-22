@@ -19,6 +19,13 @@ const same = (a: Mark[], b: Mark[]) =>
  * Gated on `active` because every pane stays mounted, and identity is kept when
  * nothing moved because consumers key effects on this array — a fresh array per
  * write batch would re-register every decoration in the overview ruler.
+ *
+ * The alternate buffer answers nothing. It is `rows` tall and has no scroll
+ * extent, so a mark found in it cannot be scrolled to — but a session in it
+ * still paints tinted cells (a clicks-mode agent's input box is one), and the
+ * rail and the step buttons are app DOM rather than xterm's ruler canvas, so
+ * they would happily draw dots whose every press is a no-op. Re-read on each
+ * write batch, which is also when the buffer is switched.
  */
 export function useBufferMarks(
   term: Terminal | null,
@@ -36,7 +43,8 @@ export function useBufferMarks(
 
     const read = () => {
       frame = 0
-      const found = scan(term.buffer.active)
+      const buffer = term.buffer.active
+      const found = buffer.type === 'normal' ? scan(buffer) : []
       setMarks((previous) => (same(previous, found) ? previous : found))
     }
     const schedule = () => {

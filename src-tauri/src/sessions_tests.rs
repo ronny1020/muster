@@ -93,3 +93,68 @@ fn a_pid_with_no_registry_entry_yields_nothing_rather_than_erroring() {
     // first moments after a spawn.
     assert_eq!(published_session_id("claude", 0), None);
 }
+
+/// macOS puts `/tmp` behind a symlink to `/private/tmp`, and the CLI files a
+/// project under the path its own process resolved to — so the directory a
+/// user opens and the directory the store names are the same one spelled two
+/// ways, and matching only what was typed found nothing.
+#[test]
+#[cfg(unix)]
+fn a_directory_reached_through_a_link_matches_the_store_it_resolves_to() {
+    let root = std::env::temp_dir().join(format!("muster-keys-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let real = root.join("real");
+    std::fs::create_dir_all(&real).expect("real directory");
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+
+    let keys = super::store_keys(&link.to_string_lossy());
+    let resolved = std::fs::canonicalize(&real).expect("canonical");
+    assert!(
+        keys.contains(&super::normalize_key(&resolved.to_string_lossy())),
+        "the resolved spelling is one of the keys"
+    );
+    assert!(
+        keys.contains(&super::normalize_key(&link.to_string_lossy())),
+        "the spelling the user typed is still a key"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A record outlives the directory it was made in, so a path that no longer
+/// resolves must still match what the store already holds.
+#[test]
+fn a_directory_that_no_longer_exists_still_matches_its_record() {
+    let keys = super::store_keys("/no/such/place/at/all");
+    assert_eq!(keys, vec![super::normalize_key("/no/such/place/at/all")]);
+}
+
+/// The value reaches an argv: the journal's Resume builds
+/// `['--resume', <id>]` from it. An alphabet of letters and hyphens is not
+/// enough on its own, because a flag is spelled from exactly that alphabet.
+#[test]
+fn a_published_id_that_is_really_a_flag_is_refused() {
+    assert!(!super::is_session_id("--dangerously-skip-permissions"));
+    assert!(!super::is_session_id("-r"));
+    assert!(super::is_session_id("019bf2a4-1c7e-7b3f-9a2d-4e5f60718293"));
+}
+
+/// The same value is joined into a path, and Windows resolves these names to
+/// devices whatever extension follows them.
+#[test]
+fn a_published_id_naming_a_windows_device_is_refused() {
+    for name in ["CON", "nul", "CoM1", "LPT9"] {
+        assert!(!super::is_session_id(name), "{name} names a device");
+    }
+    assert!(super::is_session_id("console"), "a real id is not a device");
+}
+
+/// The alphabet is what keeps the path half safe; these are the spellings that
+/// would escape the directory if it ever widened.
+#[test]
+fn a_published_id_cannot_spell_a_path() {
+    for bad in ["..", "a/b", "a\\b", "c:stream", "a.b", ""] {
+        assert!(!super::is_session_id(bad), "{bad:?} is not an id");
+    }
+    assert!(!super::is_session_id(&"x".repeat(65)));
+}

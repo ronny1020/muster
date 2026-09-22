@@ -169,6 +169,50 @@ pub struct JournalEntry {
     pub session_id: String,
 }
 
+/// Every conversation id this tab's records published, newest first.
+///
+/// A list rather than the newest one, because a published id is not a promise
+/// that a transcript exists: measured across this machine's records, 111 of
+/// 172 ids named no file on disk — a session ended soon enough after start
+/// that the id was registered before the CLI wrote anything. Taking only the
+/// newest would then answer nothing for a tab whose earlier run is readable.
+///
+/// Our record is keyed on the **tab**, which outlives any one session, so the
+/// id the CLI published is the only thing that names the conversation — see
+/// the session-record seam in AGENTS.md. Read from the sidecar rather than
+/// tracked in memory because a tab that was restored, or moved between
+/// windows, never told this process anything.
+pub fn session_ids_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<String> {
+    let Some(stem) = file_stem(tab_id) else {
+        return Vec::new();
+    };
+    sessions_in(app, cwd)
+        .into_iter()
+        .filter(|entry| entry.id.starts_with(&stem))
+        // Checked again on the way out, not only on the way in: the value is
+        // another program's, it arrives from a file anyone can edit, and the
+        // caller joins it into a path.
+        .filter(|entry| crate::sessions::is_session_id(&entry.session_id))
+        .map(|entry| entry.session_id)
+        .collect()
+}
+
+/// The published id a record may hand to the panel's Resume button, or empty.
+///
+/// Checked on the way **out**, not only where it was written: the sidecar is a
+/// plain file in the user's own data directory, so an agent can write one
+/// itself and never pass `published_session_id` at all. This is the value that
+/// becomes `--resume <id>` in a real argv, which is why an unusable one is
+/// blanked rather than carried — a row with no id draws no button, the state a
+/// record that never published one is already in.
+fn resumable_id(published: String) -> String {
+    if crate::sessions::is_session_id(&published) {
+        published
+    } else {
+        String::new()
+    }
+}
+
 /// Every recorded session for a directory, newest first.
 #[tauri::command]
 pub async fn journal_sessions(app: AppHandle, cwd: String) -> Vec<JournalEntry> {
@@ -198,7 +242,7 @@ fn sessions_in(app: &AppHandle, cwd: &str) -> Vec<JournalEntry> {
                 bytes: meta.len(),
                 ended_at: seconds_since_epoch(meta.modified().ok()?),
                 agent_id: about.agent_id,
-                session_id: about.session_id,
+                session_id: resumable_id(about.session_id),
                 id,
             })
         })

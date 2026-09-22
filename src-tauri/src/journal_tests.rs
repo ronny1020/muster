@@ -320,3 +320,18 @@ fn a_trim_that_cannot_stage_keeps_the_real_length_rather_than_zero() {
     assert_ne!(journal.written, 0, "the cap was reset to zero");
     assert_eq!(journal.written, 4096);
 }
+
+/// The sidecar is a file an agent can write, and its id becomes a real argv
+/// element through the panel's Resume button — so a value shaped like a flag
+/// must not survive the read, whatever wrote it.
+#[test]
+fn a_sidecar_id_shaped_like_a_flag_reaches_no_argv() {
+    assert_eq!(
+        super::resumable_id("--dangerously-skip-permissions".to_string()),
+        ""
+    );
+    assert_eq!(super::resumable_id("-r".to_string()), "");
+    assert_eq!(super::resumable_id("CON".to_string()), "");
+    let real = "019bf2a4-1c7e-7b3f-9a2d-4e5f60718293";
+    assert_eq!(super::resumable_id(real.to_string()), real);
+}

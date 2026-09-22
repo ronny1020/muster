@@ -9,6 +9,27 @@ import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
 import type { ReviewView } from '../../../entities/tab/model/deck'
 import { Icon } from '../../../shared/ui/Icon'
 
+/**
+ * The two terminal modes, as the control shows them.
+ *
+ * Both are always drawn, with the tab's own pressed. A single button labelled
+ * with the current mode reads as "press for this", which is the opposite of
+ * what it does — and the mode a user is looking for is the one they cannot
+ * see. AGENTS.md's clicks-and-scrollback invariant has what each costs.
+ */
+const MODES = [
+  {
+    scrollback: false,
+    label: 'Clicks',
+    hint: "Let the agent's own prompts, subagents and running shells answer the mouse; the rails then come from its transcript. Needs its fullscreen renderer. Switching reopens the conversation with continue.",
+  },
+  {
+    scrollback: true,
+    label: 'Scrollback',
+    hint: "Keep the terminal's own history, which the find bar, the path beside the scrollbar and the width repair all read. The agent takes no clicks. Switching reopens the conversation with continue.",
+  },
+] as const
+
 const CHIP_TONE: Record<GitChip['tone'], string> = {
   neutral: 'text-faint',
   staged: 'text-[#7fb37a]',
@@ -35,6 +56,13 @@ export interface StatusBarProps {
    * themselves: the bar renders, it does not decide what a collision means.
    */
   collision: string
+  /**
+   * Which of the two modes the session is in and what switches it, or `null`
+   * where the choice does not apply: a launcher, a shell, or a CLI that holds
+   * the alternate buffer whatever it is told. One prop rather than two, so the
+   * state and its control cannot disagree.
+   */
+  mode: { scrollback: boolean; onSwitch(): void } | null
   /** Whether a directory is known, so there is somewhere to look for records. */
   journal: boolean
   journalOpen: boolean
@@ -67,6 +95,7 @@ export function StatusBar({
   reviewView,
   editor,
   collision,
+  mode,
   journal,
   journalOpen,
   onToggleJournal,
@@ -169,6 +198,32 @@ export function StatusBar({
         >
           Open in {editor.name}
         </button>
+      )}
+      {mode && (
+        <span
+          className="flex flex-none items-center overflow-hidden rounded border border-line"
+          role="group"
+          aria-label="Terminal mode"
+        >
+          {MODES.map(({ scrollback, label, hint }) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={mode.scrollback === scrollback}
+              title={hint}
+              onClick={
+                mode.scrollback === scrollback ? undefined : mode.onSwitch
+              }
+              className={`px-1.5 ${
+                mode.scrollback === scrollback
+                  ? 'bg-surface text-ink'
+                  : 'hover:bg-surface-hover hover:text-ink'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
       )}
       {journal && (
         <button

@@ -289,6 +289,19 @@ pids the OS may already have recycled. For the same reason `end_all` drains into
 a vec before ending anything — `end` sleeps between `SIGHUP` and `SIGKILL`, and
 holding the map guard across those sleeps blocks the event loop.
 
+**But it must forget its own session, not whatever holds the id now.** A tab
+reopening its conversation respawns under the **same id** — the mode control,
+the width repair and a record from the journal all do — and `pty_spawn`
+registers the new session _before_ it ends the previous child. So the old
+reader thread reaches `forget` with a live session already in its place, and
+removing by id alone drops that one: every later `pty_write` answers
+`no session <id>`. Nothing about the tab looks wrong when it happens, which is
+what makes it expensive — the reader thread owns the output channel rather
+than the registry, so the terminal goes on drawing, the status stays
+"waiting for you", and only typing is dead. `forget` therefore takes a `Weak`
+to the session the caller owns and removes only on `Arc::ptr_eq`;
+`pty_tests.rs` pins both directions.
+
 **Tab ids must be unique across runs.** They key the backend's PTY map, and
 `pty_spawn` reads a reused id as "end that session and take its place". A
 per-run counter restarts at 1, so a restored tab and a later `⌘T` would collide;
@@ -385,7 +398,7 @@ nobody is looking at.
 **Two surfaces mark your messages, and they answer different questions.**
 `useRulerMarks` puts a decoration in xterm's overview ruler, which overlays the
 scrollbar and is drawn against the same scroll extent — so those marks carry
-each message's **true position** in the session. `MessageRail` draws its own
+each message's **true position** in the session. `Rail` draws its own
 bars **evenly spaced**, because proportional marks put every message of a long
 session into the same few pixels and read as one smudge: the rail is a list of
 places, not a map of them.
@@ -400,20 +413,242 @@ it is worth being exact about: a full-screen TUI holds the alternate buffer,
 which is `rows` tall and keeps no scrollback, so there is nothing to mark, no
 ruler to mark it in, and one screen for the find bar to search. Neither
 surface has anything to show in an agent tab unless the agent is kept out of
-that buffer, so every session is spawned asking for the normal one — the same
-session went from one screen to 24,000px of scroll extent and the rail filled.
+that buffer — the same session went from one screen to 24,000px of scroll
+extent and the rail filled.
 
-Two things about that hold whatever else changes here. The variable is
-undocumented and read by Claude Code alone, so any other agent that holds the
-alternate buffer has no rail and no path strip, and there is no measurement
-here saying otherwise. And it must never join
-`INHERITED_SESSION_MARKERS`: the strip loop runs after the environment is
-set, so a variable in both lists is removed by the line that follows the one
-setting it, which reads exactly like working.
+**But the mouse is on the other side of that trade, so it is a choice, not a
+constant.** A session started with this variable emits no `CSI ?1000h` at all,
+so its own prompts, its subagent picker and its running-shell list stop
+answering a click. Measured across 187 recorded sessions here: 54 armed
+`?1000h`/`?1002h`/`?1003h`/`?1006h`, all 54 carry an alternate-buffer marker,
+and no session in the normal buffer armed any of them.
 
-`MessageSteps` walks the identical list `useMessages` returns, so the number of
-dots and the number of presses always agree — that is the property to preserve
-if either surface changes. The rail sits clear of the scrollbar rather than
+Be exact about what that evidence is, because one recording looks like a
+counter-example and is not. The journal holds **output**, so it shows what the
+CLI asked the terminal for and can never show what the terminal sent back —
+"reports no mouse" here means "requests no mouse reporting", which is the
+thing that decides it. And the one recording with tracking but no `?1049h`
+(`179a52e0-…`, 3.0 MB) carries `?1049l` and begins mid-UTF-8-character: it is
+a session the 4 MB cap trimmed, and the `?1049h` was in the half that was
+dropped. Grep both markers, or a trimmed record reads as a normal-buffer
+session that took the mouse.
+
+What could still overturn it is a release, not a recording: if Claude Code's
+classic renderer starts reporting mouse events, the trade dissolves and the
+setting should go with it. Check a fresh record for `?1000h` before assuming
+it still holds.
+
+So the mode is carried per session, on `SpawnOptions::scrollback` from
+`Session.scrollback`, and it is chosen in three places that must stay in this
+order: the `terminalMode` **setting** is the default a launch takes, and a
+`LaunchRequest` that names a mode **overrides** it. Three callers name one —
+the start screen's own control, a resume that carries the tab's current mode,
+and the status bar, which flips the tab through the agent's own `continue`,
+because the variable is read once at spawn and the conversation is the only
+thing worth carrying across the restart. The setting
+defaults to `scrollback`, which is what every session did before it existed.
+The rails can read the agent's transcript instead, but nothing else can: the
+scrollbar and the marks on it, the path strip, the find bar and the width
+repair all read the terminal's own history, and the alternate buffer has
+none. So a clickable tab is the deliberate case.
+
+Which is also why `Agent.scrollbackMode` gates that control rather than every
+tab getting one: the variable is undocumented and read by Claude Code alone,
+so any other agent holds the alternate buffer whatever it is told, has no rail
+and no path strip, and would get a button that reopened the session and
+changed nothing. And it must never join `INHERITED_SESSION_MARKERS`: the
+strip loop runs after the environment is set, so a variable in both lists is
+removed by the line that follows the one setting it, which reads exactly like
+working.
+
+**The mode control draws both modes, never just the current one.** A single
+button labelled with the mode you are in reads as "press for this", which is
+the opposite of what it does — and the mode someone is looking for is the one
+it does not show. `MODES` in `StatusBar` is the pair, the tab's own carries
+`aria-pressed`, and only the other one takes a click.
+
+**And it is offered only where there is a conversation to reopen.** Having a
+`continue` mode is not the same as having something to continue: both this
+control and the ⟳ respawn through the agent's own `continue`, so a tab whose
+first turn has not been written yet reopens onto `No conversation found to
+continue`, the child exits, and a tab that was working is left at `exited 1`
+by a button that promised to change its mode. `usePastSessions` counts what
+the store holds and `canReopen` decides, on the quiet edge the deck already
+tracks rather than a timer — a count taken at spawn would read zero for a
+conversation that exists moments later. `null` means unknown and still
+offers: hiding a working control leaves the tab no way to change mode at all,
+which is the worse error.
+
+**Clicks mode only clears the way; the CLI still chooses its own renderer.**
+The variable forces the classic renderer, so removing it is necessary — and it
+is not sufficient. Claude Code's fullscreen renderer is a setting of its own
+(`/tui default | fullscreen`) that it also **turns off by itself** after
+repeated failures to start, and once off, no environment this app controls
+brings it back: measured on 2.1.276, launches with the variable absent, with it
+set, and with `CLAUDE_CODE_NO_FLICKER=1` produced byte-identical output, none
+of it entering the alternate buffer or arming `?1000h`. So a clicks tab whose
+clicks do nothing is the expected state after that, and `/tui fullscreen` in
+the session is the only cure. Say that wherever the control is explained —
+without it the tab reads as broken.
+
+**A clicks session removes the variable; declining to set it is not enough.**
+`apply_mode` strips it, and that direction is the one that breaks silently.
+`CommandBuilder` seeds every child from Muster's own environment, and a shell
+tab is itself a session run in the tab's mode — so a Muster started from a
+shell tab in scrollback mode inherits the variable, which is the ordinary dev
+loop here. Every session it then spawns would keep the classic renderer
+whatever the tab said, including one the control had just switched to clicks:
+the status bar reads Clicks, the conversation reopens, and nothing about it
+changes. This is the mirror of the marker invariant above, and `pty_tests.rs`
+pins both directions.
+
+What it cannot reach is the shell's own startup files. A session runs through
+a login shell, so a profile that exports the variable sets it again after
+`apply_mode` has removed it, and the tab is back in the state above with
+nothing in Rust able to see it. `INHERITED_SESSION_MARKERS` has the same hole
+for the same reason.
+
+**The app's own links stand down while the agent is reading the mouse.** xterm
+forwards the click to the child as soon as tracking is on, and its `Linkifier`
+activates a link from the same `mouseup` without consulting that — so one
+click on a path both opened the file column and reached the agent.
+`agentReadsMouse` in `TerminalView` reads `term.modes.mouseTrackingMode`, the
+platform's own answer rather than a guess about which mode the tab is in.
+
+Two things about it are load-bearing. It gates **`provideLinks`, not the
+activation** — a link that is still offered keeps xterm's underline and
+pointer cursor, so the output would go on claiming to be clickable while
+ignoring the click; the web-links addon registers its own provider, so
+`gateLinks` meets it at that one call, the same shape as `withoutLocalFonts`.
+And it is `false` once the session has ended, because xterm clears the mode
+only when the child asks it to: a TUI that is killed rather than closed leaves
+tracking armed forever, and the output stays on screen under the ended-session
+bar with every path in it dead until the tab is closed.
+
+**`macOptionClickForcesSelection` is toggled, never set.** It is what hands a
+macOS user a drag a tracking CLI would otherwise take — but xterm reads the
+same option in `shouldColumnSelect`, so it is also the switch that turns
+Option-drag block selection off. Left permanently on, every session loses block
+selection to buy an escape hatch only a clicks session needs;
+`syncSelectionModifier` therefore follows `mouseTrackingMode` on the write
+batch that changes it. Verified against xterm 5.5.0's own defaults:
+`altClickMovesCursor` is `true`, `rightClickSelectsWord` is `isMac`, and
+`macOptionClickForcesSelection` is `false` — this is the only one the app
+moves.
+
+Every surface the app floats over the grid answers to the same question, and
+two of them are controls rather than marks. `MessageSteps` — the step arrows
+and the ⟳ — is a real element over the bottom-right corner, and it is drawn
+for whichever list the tab has, the transcript's as readily as the scan's.
+The ⟳ inside it is the part that is conditional, and two gates decide it:
+`Pane` offers `onReplay` where the agent has a `continue` **and** `canReopen`
+says a conversation exists to reopen — see the mode-control invariant above,
+which the ⟳ shares — and `TerminalView` passes
+it on only where `surfaces.replay` says the live buffer has a scrollback for
+a width change to ruin.
+
+**A clickable session reads its places from the agent, not from the grid.**
+The alternate buffer keeps no scrollback, so the scan finds nothing there —
+and the agent has kept a structured record of the same conversation all
+along. `agent_turns` in `transcript.rs` reads Claude Code's own
+`~/.claude/projects/<dir>/<session>.jsonl`, resolved through the journal
+sidecar's published session id, and `TerminalView` switches the rail to it
+whenever the buffer is alternate and the transcript has turns.
+
+Finding that directory takes **two** spellings of the tab's own path, because
+two things can differ. The launcher sends tilde paths where the store's names
+are absolute; and the CLI files a project under the path its own process
+resolved to, which is not the one the user typed whenever a link stands
+between them — `/tmp` is a symlink to `/private/tmp` on macOS, so a tab opened
+at `/tmp/x` matched nothing, and the Continue button, the session count and
+the rail all reported empty for a conversation that was there. `store_keys`
+keeps both, and keeps the unresolved one too, because resolving needs the
+directory to exist and a record outlives the directory it was made in.
+
+Three things about that source are better than the scan, and one is worse.
+It reports the turns the person actually typed — `promptSource == "typed"`,
+the CLI's own distinction, where the scan infers from a tint that a diff
+gutter also carries; and it holds the history a `--continue` printed before this
+terminal existed, which the scan measured at five marks out of a 977-row
+transcript. What it cannot do is move the viewport by itself: the agent owns
+scrolling inside the alternate buffer, so `scrollToLine` does nothing there
+and a transcript place has to be sought instead. The step buttons walk
+either list; only the scan's marks are jumped to directly.
+
+**There is no scrollbar over that buffer, and there is nothing to draw one
+from.** The alternate buffer is exactly `rows` tall, so xterm has no extent
+to size a thumb against, and the agent never reports where its own view sits
+— nothing in the pty stream says how far back it has scrolled or how much it
+kept. A bar there could only be an estimate counted from the notches this
+app sent, and an estimate is what a scrollbar must not be: the agent pins its
+view to the bottom on every repaint, so it drifts from the first turn
+onwards. `surfacesFor` answers `scrollbar: false` for that buffer, and a tab
+that wants a real one is a scrollback tab — which is the default, and the
+reason the choice is offered at launch rather than assumed.
+
+**A dot seeks instead, and the stall check is the whole feature.** The wheel
+is the one thing that moves a view the agent owns, and xterm forwards it —
+measured, `CSI <64` on every notch — so `seekTo` sends bursts and reads the
+screen between them until the message is there. The first version had no
+stall check and was unusable: the agent pins its view to the bottom while it
+is **printing**, so 60 notches at a working session moved the top row not one
+line, and two attempts spent 48 and 52 seconds finding nothing. `moved` in
+`seek.ts` now ends it after two bursts that changed nothing, and the view goes
+back exactly as far as it came.
+
+Judging "changed nothing" is the part that needs care. An exact comparison
+says _moved_ on a frozen view, because the agent repaints its own spinner,
+token count and timer between frames — so `moved` calls a screen unchanged
+when three quarters of its rows match, and a test pins that case. A message
+shorter than eight characters is not sought at all: `do that` appears all over
+a conversation, and landing on the wrong one is worse than not moving.
+
+It is another program's private file, so every field check in
+`transcript.rs` is the feature: a line that does not parse costs one turn,
+never the rail, and a release that renames something leaves an empty list
+that falls back to reading the terminal.
+
+Three things about reading it were got wrong first, and each was measured
+against this machine's records rather than reasoned about:
+
+- **The bound has to be taken from the end.** The file is append-only and
+  oldest first, so capping the read at the first 20,000 lines kept the start
+  of a long session and dropped the rest: on a 23,796-line record that was
+  105 turns whose newest was three hours stale, against 120 for the whole
+  file — and since the rail shows the newest dozen of what it is handed, a
+  stale turn was presented as the current one. `open_tail` takes the last
+  `MAX_BYTES` and drops the partial line the seek lands in; bytes rather than
+  lines because one line can carry a pasted attachment.
+- **`typed` is not the only thing a person writes.** `queued` is the same
+  prompt submitted while the agent was still working — 38 here, reading
+  `btw, check out branch first`. `suggestion_accepted` stays out: those are an
+  offered action chosen from a list, so the words may be the CLI's own.
+- **A published session id is not a promise of a transcript.** 111 of 172
+  ids on this machine name no file, a session having ended before the CLI
+  wrote one, so `session_ids_for` answers with every id the tab published and
+  the reader takes the newest that resolves.
+
+Two things the corpus could not settle, so do not write them down as settled:
+no record here has ever carried `isSidechain`, and no tool call has used
+`notebook_path`. The sidechain skip and that key are insurance, not results.
+
+The read is reached through the journal sidecar, so it inherits that feature's
+switch: with recording off there is no sidecar, no published id and no rails
+in a clicks tab. `Pane` asks for turns only where they can be drawn — a
+Claude tab in clicks mode — because every pane stays mounted and an ungated
+read would parse a transcript per idle edge in every other one.
+
+The same buffer that costs the mouse costs the marks, so `useBufferMarks`
+scans the **normal buffer only**. An agent's frame paints tinted cells in the
+alternate buffer too, and the rail and the step buttons are app DOM rather
+than xterm's ruler canvas — which xterm hides there — so they would draw dots
+whose `scrollToLine` is a no-op on a buffer with no scroll extent.
+
+`MessageSteps` walks the identical list the rail beside it draws — the scan's
+marks in a scrollback tab, `messagesIn(turns)` in a clickable one — so the
+number of dots and the number of presses always agree. That is the property to
+preserve if either surface changes, and it is why the count is passed in
+rather than recomputed. The rail sits clear of the scrollbar rather than
 over it, and `pointer-events-none` on its column with `auto` on each dot keeps
 the gaps inert either way.
 
@@ -481,7 +716,7 @@ text it carries — an unbounded `response` becomes the body of a desktop
 notification. Treat the field checks as the feature, not as detail.
 
 **A width change destroys a TUI's scrollback, so the scrollback is dropped
-rather than shown.** This is the price of `SCROLLBACK_ENV` above, and it has to
+rather than shown.** This is the price of scrollback mode above, and it has to
 be stated next to it: the normal buffer is the only one xterm reflows, so
 keeping an agent out of the alternate buffer is also what exposes its history
 to re-wrapping. An agent pads every frame to the full width, so a narrower grid
@@ -504,8 +739,11 @@ tab to one screen and the button brought it back to 15,066px with its marks.
 plain shell's wraps are genuine, so its scrollback reflows correctly and has
 nothing to repair — clearing it would throw away good history and blank the
 screen of the one session that does not repaint on `SIGWINCH`. An agent still
-in the alternate buffer has no scrollback to damage, so its `rows` of frame are
-all there is to lose. The control is passed only where a `continue` mode
+in the alternate buffer has no scrollback to damage, so its `rows` of frame
+are all there is to lose. Note that a clicks tab is not the same thing: the
+CLI chooses its own renderer, so one whose fullscreen renderer is off runs in
+the normal buffer and builds real history — which is why the ⟳ is gated on
+the live buffer type and never on the tab's mode. The control is passed only where a `continue` mode
 exists, so a shell is not offered a button whose click would do nothing.
 
 What survives a clear is the machinery, and that is worth knowing because it
@@ -648,6 +886,26 @@ not in the commands — `read_image` must stay unconfined, because the terminal'
 overlay and the background picker legitimately point anywhere, while
 `resolveAgainst` refuses a markdown image that climbs out of its document's own
 folder.
+
+The transcript read holds to the same stance, and it has to: it happens on a
+status edge with **no click at all**, so it is the automatic kind. The final
+component goes through `open_without_following` — `review.rs`'s, rather than a
+second copy — because `symlink_metadata` alone is check-then-open and the
+program that writes the file is the one being defended against, so it can
+replace its own transcript with a link between the two. A project directory
+that is itself a link is skipped in `claude_project_dir` before anything under
+it is opened; `~/.claude` above it is not, for the reason `links_above` gives
+about a root — that is the user's own home, not something an agent chose.
+
+**An id another program published is checked once, for two hazards.**
+`is_session_id` is the only copy, and both callers need both halves: the
+journal sidecar's id reaches an **argv** through the Resume button, and a
+**path** through `transcript.rs`. The alphabet alone covers neither. A leading
+`-` is spelled from it — `--dangerously-skip-permissions` is thirty ASCII
+letters and hyphens — and would put a flag in front of a program nobody typed;
+a Windows device name is too, and `CON.jsonl` opens the console whatever
+directory it is joined under. `.`, `/`, `\` and `:` are outside the alphabet
+already, so the traversal half needs nothing more.
 
 **An editor installed on macOS usually has no shell command.** A bundle in
 `/Applications` puts nothing on `PATH`: VS Code's `code` arrives only if the

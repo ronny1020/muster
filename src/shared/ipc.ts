@@ -53,6 +53,12 @@ export interface SpawnOptions {
   journal: boolean
   /** Which agent this is, so a record remembers what wrote it. */
   agentId: string
+  /**
+   * Keep the session out of the alternate buffer, so it leaves a scrollback
+   * behind. Costs the agent's mouse — `SCROLLBACK_ENV` in `pty.rs` has the
+   * whole trade.
+   */
+  scrollback: boolean
 }
 
 /** One recorded session, as the journal panel lists it. */
@@ -69,6 +75,29 @@ export interface JournalEntry {
    */
   sessionId: string
 }
+
+/** One thing an agent's own transcript says happened in a session. */
+export interface Turn {
+  kind: 'message' | 'file'
+  /** One line: the start of a message, or a file's name. */
+  label: string
+  /** The whole message; empty for a file. */
+  text: string
+  /** Absolute path; empty for a message. */
+  path: string
+  /** The agent's own timestamp, as it wrote it. */
+  at: string
+}
+
+/**
+ * The turns of the conversation a tab is running, oldest first.
+ *
+ * Empty for anything that has no readable transcript — a shell, another agent,
+ * a session whose id was never published — so a caller falls back to reading
+ * the terminal.
+ */
+export const agentTurns = (cwd: string, id: string) =>
+  invoke<Turn[]>('agent_turns', { cwd, id })
 
 export function spawnPty(
   options: SpawnOptions,

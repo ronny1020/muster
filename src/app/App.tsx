@@ -193,6 +193,12 @@ export function App() {
         cwd: request.cwd,
         backend: request.backend,
         distro: request.distro,
+        // The setting is the default and the request is the override: the
+        // status bar's control and an in-tab resume both name the mode they
+        // want, and everything else — the launcher, a record reopened on a
+        // launcher tab — takes the preference.
+        scrollback:
+          request.scrollback ?? settings.terminalMode === 'scrollback',
       },
     })
 

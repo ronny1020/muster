@@ -14,7 +14,7 @@ you, with your full privileges. **"An attacker who can already run code in the
 webview can run arbitrary commands" is not a vulnerability here** — that is the
 product, and `pty_spawn` grants it by design.
 
-What _is_ in scope is anything that gives one of these three a capability it
+What _is_ in scope is anything that gives one of these five a capability it
 should not have:
 
 | Actor                                      | Why it counts                                                                                                                                                                                  |
@@ -103,12 +103,30 @@ What bounds it:
 
 The channel itself is not a new capability. The bytes already arrived in the
 pty stream Muster reads and records, so nothing was opened to get them — no
-hook, no plugin, and no read of the agent's own transcript files.
+hook and no plugin.
 
-## Two places an agent's own text is drawn outside the grid
+## Reading the agent's own transcript
 
-Both are display-only, and both are worth knowing because the grid is where
-agent output is normally confined.
+A clickable session draws in the alternate buffer, which keeps no scrollback,
+so the rails beside it are built from Claude Code's own record instead —
+`~/.claude/projects/<directory>/<session>.jsonl`, found through the id the CLI
+published into this app's journal sidecar. This is a read of another program's
+file, on no click, so it is bounded the way every automatic read here is:
+`symlink_metadata` refuses a link — and on unix `O_NOFOLLOW` means that
+refusal cannot be raced, where Windows has no such flag and the check stands
+alone; a project directory that is itself a link is skipped, though that skip
+is a separate syscall from the open and so is check-then-use; only the last
+8 MB is read, the newest 200 turns of each
+kind are kept, a path longer than any host accepts is dropped, and any line
+that does not parse costs that turn alone. What
+it reads is still agent-authored — the file is written by the CLI, in the
+user's own home — so everything the section below says about provenance
+applies to it too.
+
+## Three places an agent's own text is drawn outside the grid
+
+All three are display-only, and all three are worth knowing because the grid
+is where agent output is normally confined.
 
 **A desktop notification body**, from `OSC 777`'s `stop` event — bounded as the
 section above describes.
@@ -129,6 +147,15 @@ already print anything — but both affect what the surface _means_:
   reach it. It is read with a bounded column range and capped in length, and it
   reaches no other consumer: no path, no pty write, no IPC, no file.
 
+**A transcript dot's tooltip.** In a clickable tab the rail's text comes from
+the agent's transcript rather than the grid, so it is not filtered through a
+terminal cell on the way: a cell holds printable code points only, and a JSON
+string holds whatever the CLI wrote. React sets it through `setAttribute`, so
+it is inert either way. The cap is in Rust, so it holds wherever the text is
+drawn: the label a dot carries is the turn's first line, cut to 120
+characters, out of a turn cut to 4,000. What it is not is proof of
+authorship — see the rail section below.
+
 ## What a terminal click will read
 
 Clicking a path in the terminal opens it in the file column when it resolves to
@@ -147,10 +174,11 @@ Treat the directory test as "where the agent said it was", not as a boundary.
 
 ## What the message rail says, and what it does not
 
-The dots down the terminal's right edge, and the marks on its scrollbar, are
-placed by `findMessageRows`, which looks for a **tinted block of cells** — the
-way a CLI draws the prompt you typed. That is a guess about provenance, not a
-record of it, and the agent chooses every byte written to the pty. So:
+The dots down the terminal's right edge have two sources, and they are not
+equally trustworthy. In a tab that keeps a scrollback they are placed by
+`findMessageRows`, which looks for a **tinted block of cells** — the way a CLI
+draws the prompt you typed. That is a guess about provenance, not a record of
+it, and the agent chooses every byte written to the pty. So:
 
 - A rail entry means "something tinted the first few columns here". It does not
   mean you typed it. An agent can produce one deliberately, and ordinary output
@@ -163,6 +191,25 @@ record of it, and the agent chooses every byte written to the pty. So:
 - Clicking one only scrolls. The row comes from the scan, so it is in range by
   construction: no path is resolved, no file read, nothing typed into the
   session.
+
+In a clickable tab they come from the transcript instead, which is a better
+record and still not a promise. The CLI marks each entry with its own
+`promptSource`, so a dot there means "the agent recorded this as something you
+wrote" rather than "something was tinted" — but the file is the agent's, so a
+CLI that mislabelled an entry, or anything that can write that file, decides
+what the rail says.
+
+What a dot there **does** is narrower than what it says: it scrolls. The
+label the agent supplied is matched against what is drawn on screen and the
+view is moved, so nothing is resolved and no file is read. It is not quite the
+silent gesture a scan-placed dot is, though, and the difference is worth
+stating: moving a view the agent owns means sending it wheel notches, so the
+terminal does write to the pty — its own `CSI <64` reports, at coordinates
+this app picks, carrying none of the agent's bytes. What reaches the session
+is built here, never relayed. The transcript's
+text reaches the tooltip and the accessible name and stops there, cut to 120
+characters in Rust out of a turn cut to 4,000, so both caps hold wherever the
+text is drawn.
 
 The honest source for "what did I ask" is the `OSC 777` `prompt_submit` event,
 which names each message as the user sends it. Nothing consumes it yet.
@@ -204,10 +251,22 @@ Neither refuses a symlink today, which is a **known gap** — listed below.
 
 The journal is never sent anywhere. `journal_read` is the only way to read one
 back, and it is confined to the journal root the same way. The sidecar beside
-each record holds an agent's own session id, which is read back into an argv —
-so `published_session_id` accepts only the shape an id has (ASCII
-alphanumerics, `-`, `_`, at most 64 characters) rather than trusting what
-another program wrote.
+each record holds an agent's own session id, which is read back into an argv
+**and** joined into a path — so `is_session_id` accepts only the shape an id
+has rather than trusting what another program wrote: ASCII alphanumerics, `-`
+and `_`, at most 64 characters, never starting with `-`, and never a Windows
+device name.
+
+The leading `-` is the one that alphabet alone does not catch, and it is why
+the check is worth reading twice. `--dangerously-skip-permissions` is thirty
+characters of ASCII letters and hyphens, so an agent that published it as its
+own session id would have the journal's Resume button spawn
+`claude --resume --dangerously-skip-permissions` — a flag in front of a
+program nobody typed, which is exactly what the table at the top of this file
+says must not happen. The device names cover the path half on Windows, where
+`CON.jsonl` opens the console rather than a file; `.`, `/`, `\` and `:` are
+already outside the alphabet, so `..`, an absolute path and an alternate data
+stream cannot be spelled at all.
 
 ## What the review panel will not do
 
@@ -261,6 +320,15 @@ Named rather than hidden, because the code carries the same notes:
   vulnerabilities — but the invariant AGENTS.md states is not currently kept,
   and the fixes are one `symlink_metadata` call, one `create_new(true)`, and
   one more `symlink_metadata`.
+- **The transcript read has no kernel-side no-follow on Windows.** `O_NOFOLLOW`
+  closes the gap between `symlink_metadata` and the open on unix; Windows has
+  no equivalent flag, so `open_without_following` is a plain open there and the
+  check stands alone. The same applies to the skip of a symlinked project
+  directory, which is a separate syscall from the open on every host. Both are
+  dominated by the fact that the program being defended against is the one that
+  wrote the file and can read it itself, which is why these are gaps rather
+  than vulnerabilities; closing them properly means a handle-based open
+  rejecting reparse points, and `openat`-style relative opens.
 - **A paste is not scanned for a bracketed-paste end marker.** `drop_text`
   refuses control bytes in a dropped path for exactly this reason, but text
   reaching `term.paste` is not filtered: xterm wraps it in `ESC[200~`…`ESC[201~`

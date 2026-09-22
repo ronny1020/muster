@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc,
+        mpsc, Arc, Weak,
     },
 };
 
@@ -70,13 +70,35 @@ impl Sessions {
         self.0.lock().len()
     }
 
-    /// Forgets a session whose child has exited.
+    /// Forgets a session whose child has exited, if it is still the one
+    /// registered under that id.
     ///
     /// Without this the map keeps finished sessions, so the quit prompt counts
     /// tabs with nothing running and `end_all` signals pids the reader thread
     /// already reaped — which the OS is free to have recycled.
-    pub fn forget(&self, id: &str) {
-        self.0.lock().remove(id);
+    ///
+    /// The identity check is what makes it safe during a relaunch. A tab
+    /// reopening its conversation — the mode control, the width repair,
+    /// reopening a record — spawns under the **same id**, so the new session
+    /// is in the map before the old child has finished dying. Removing by id
+    /// alone deletes the live session, and every write then answers
+    /// `no session <id>`: the terminal goes on drawing, because the reader
+    /// thread holds the output channel rather than the map, so the tab looks
+    /// healthy and only typing is dead.
+    fn forget(&self, id: &str, session: &Weak<Session>) {
+        // A `Weak` that cannot be upgraded is a session nothing holds, and the
+        // map holds a strong reference to everything in it — so there is
+        // nothing of this session left to remove.
+        let Some(mine) = session.upgrade() else {
+            return;
+        };
+        let mut sessions = self.0.lock();
+        if sessions
+            .get(id)
+            .is_some_and(|current| Arc::ptr_eq(current, &mine))
+        {
+            sessions.remove(id);
+        }
     }
 
     /// Ends every session, for quit.
@@ -125,6 +147,12 @@ pub struct SpawnOptions {
     /// can offer that agent's own resume.
     #[serde(default)]
     pub agent_id: String,
+    /// Keep this session out of the alternate buffer, trading the agent's
+    /// mouse for a scrollback — see `SCROLLBACK_ENV`. The frontend always
+    /// sends it, from the tab's mode; the serde default only covers a caller
+    /// that predates the field.
+    #[serde(default)]
+    pub scrollback: bool,
 }
 
 /// Session-scoped variables an agent CLI exports for the processes it spawns.
@@ -145,18 +173,46 @@ const INHERITED_SESSION_MARKERS: &[&str] = &[
     "CLAUDE_PID",
 ];
 
-/// What each agent needs in its environment to leave a scrollback behind.
+/// What an agent CLI needs in its environment to leave a scrollback behind,
+/// set only for a session that asked for it.
 ///
 /// A TUI in the alternate buffer is exactly `rows` tall and keeps no history,
 /// so a session run that way has nothing for the scrollback surfaces to read:
 /// no message marks, no path beside the scrollbar, and a find bar over one
-/// screen. The whole point of putting an agent in a tab is being able to
-/// scroll back through what it did, so the app asks for the normal buffer.
+/// screen. Out of it, the whole session is in the normal buffer and every one
+/// of those surfaces works.
 ///
-/// The cost is that Claude Code stops reporting mouse events, so its own
-/// prompts answer to the keyboard rather than to a click. The variable is
-/// undocumented and only Claude Code reads it; another agent ignores it.
+/// The price is the mouse. Claude Code reports mouse events from its
+/// fullscreen renderer alone, so a session held in the normal buffer answers
+/// the keyboard and nothing else: its own prompts, the subagent picker and
+/// the running-shell list all stop taking a click. The two cannot be had at
+/// once, which is why this is a per-session choice rather than a constant —
+/// `SpawnOptions::scrollback` carries it, and a tab flips between them by
+/// reopening the conversation with the agent's own `continue`.
+///
+/// The variable is undocumented and only Claude Code reads it; another agent
+/// ignores it, so a tab of anything else is unaffected either way.
 const SCROLLBACK_ENV: &[(&str, &str)] = &[("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", "1")];
+
+/// Puts the session's mode into the environment it is spawned with.
+///
+/// Removing is as load-bearing as setting. `CommandBuilder` seeds itself from
+/// *this* process's environment, so a Muster launched from a shell that
+/// exports the variable hands it to every session it spawns — and a shell tab
+/// is itself a session run in whichever mode the tab is in, which makes the
+/// dev loop the ordinary way to arrive there. Declining to set it would leave
+/// that inherited copy in place: the agent keeps the classic renderer, reports
+/// no mouse, and the control that claims to have switched the tab changes
+/// nothing.
+fn apply_mode(cmd: &mut CommandBuilder, scrollback: bool) {
+    for (key, value) in SCROLLBACK_ENV {
+        if scrollback {
+            cmd.env(key, value);
+        } else {
+            cmd.env_remove(key);
+        }
+    }
+}
 
 /// How long to watch for the agent to publish its session id. Generous, since
 /// a cold start behind a login shell can take seconds, and cheap: one stat per
@@ -208,6 +264,7 @@ pub fn pty_spawn(
         distro,
         journal,
         agent_id,
+        scrollback,
     } = options;
 
     let pair = native_pty_system()
@@ -237,9 +294,7 @@ pub fn pty_spawn(
     cmd.cwd(&resolved.cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    for (key, value) in SCROLLBACK_ENV {
-        cmd.env(key, value);
-    }
+    apply_mode(&mut cmd, scrollback);
     for marker in INHERITED_SESSION_MARKERS {
         cmd.env_remove(marker);
     }
@@ -315,17 +370,18 @@ pub fn pty_spawn(
         }
     });
 
-    let previous = sessions.0.lock().insert(
-        id.clone(),
-        Arc::new(Session {
-            master: Mutex::new(pair.master),
-            stdin,
-            group,
-            killer: Mutex::new(killer),
-            killed: killed.clone(),
-            output: output.clone(),
-        }),
-    );
+    let session = Arc::new(Session {
+        master: Mutex::new(pair.master),
+        stdin,
+        group,
+        killer: Mutex::new(killer),
+        killed: killed.clone(),
+        output: output.clone(),
+    });
+    // Held weakly by the reader thread, so it can tell "my child exited" from
+    // "a newer session has taken this id" — see `Sessions::forget`.
+    let registered = Arc::downgrade(&session);
+    let previous = sessions.0.lock().insert(id.clone(), session);
     // Re-using a live id would otherwise drop the old session's killer and
     // leave its child running.
     if let Some(previous) = previous {
@@ -395,7 +451,7 @@ pub fn pty_spawn(
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
         // The child is gone, so the registry must let go of it: the pane stays
         // mounted behind the "session ended" overlay, so nothing else will.
-        app.state::<Sessions>().forget(&id);
+        app.state::<Sessions>().forget(&id, &registered);
         // A deliberate close needs no banner; the tab is already a launcher.
         let deliberate = killed.load(Ordering::SeqCst);
         // Set after that read, never before: this flag is also how anything

@@ -615,7 +615,7 @@ fn read_capped(path: &Path) -> Result<Capped, ReadError> {
 /// `O_NOFOLLOW` closes that, and is the only part of the refusal that cannot
 /// be raced.
 #[cfg(unix)]
-fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
+pub fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
     std::fs::OpenOptions::new()
         .read(true)
@@ -625,7 +625,7 @@ fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
 
 /// Windows has no `O_NOFOLLOW`, so the check above stands alone there.
 #[cfg(not(unix))]
-fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
+pub fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
     std::fs::File::open(path)
 }
 

@@ -154,3 +154,18 @@ test('a background path keeps trailing space, which names a different file', () 
     normalizeSettings({ backgroundImage: '/pics/wall.png ' }).backgroundImage,
   ).toBe('/pics/wall.png ')
 })
+
+test('a terminal mode that is neither of the two falls back to the default', () => {
+  // The value reaches `pty_spawn` as the environment a session is started
+  // with, so a hand-edited or stale one must resolve to a mode that exists
+  // rather than leaving the tab to decide.
+  expect(normalizeSettings({ terminalMode: 'mouse' }).terminalMode).toBe(
+    DEFAULT_SETTINGS.terminalMode,
+  )
+  expect(normalizeSettings({ terminalMode: 'scrollback' }).terminalMode).toBe(
+    'scrollback',
+  )
+  expect(normalizeSettings({ terminalMode: 'clicks' }).terminalMode).toBe(
+    'clicks',
+  )
+})

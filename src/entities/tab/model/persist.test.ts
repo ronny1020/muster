@@ -15,6 +15,7 @@ const session = (over: Partial<Session> = {}): Session => ({
   cwd: '/work/api',
   backend: 'native',
   distro: '',
+  scrollback: false,
   ...over,
 })
 

@@ -17,6 +17,7 @@ const session: Session = {
   cwd: '/work/repo',
   backend: 'native',
   distro: '',
+  scrollback: false,
 }
 
 /** A deck of n tabs, ids tab-1..tab-n, with the first active. */
@@ -363,6 +364,7 @@ test('a search opened on the launcher does not carry into the session it starts'
       cwd: '/work',
       backend: 'native',
       distro: '',
+      scrollback: false,
     },
     title: 'work',
   })

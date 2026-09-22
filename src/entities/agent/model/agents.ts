@@ -21,6 +21,16 @@ export interface Agent {
   accent: string
   /** Whether extra CLI flags mean anything to this agent. */
   acceptsFlags: boolean
+  /**
+   * Whether this CLI can be held out of the alternate buffer, which is what
+   * leaves a scrollback for the message rail, the path strip and the find bar
+   * to read — and costs the CLI's own mouse while it is.
+   *
+   * Only Claude Code answers the variable `SCROLLBACK_ENV` in `pty.rs` sets,
+   * so only Claude Code is offered the choice: a control that did nothing
+   * would be worse than none at all.
+   */
+  scrollbackMode: boolean
   modes: LaunchMode[]
 }
 
@@ -31,6 +41,7 @@ export const AGENTS: Agent[] = [
     command: 'claude',
     accent: '#d97757',
     acceptsFlags: true,
+    scrollbackMode: true,
     modes: [
       {
         id: 'new',
@@ -58,6 +69,7 @@ export const AGENTS: Agent[] = [
     command: 'codex',
     accent: '#10a37f',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -85,6 +97,7 @@ export const AGENTS: Agent[] = [
     command: 'opencode',
     accent: '#c2703a',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -106,6 +119,7 @@ export const AGENTS: Agent[] = [
     command: 'gemini',
     accent: '#4285f4',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -121,6 +135,7 @@ export const AGENTS: Agent[] = [
     command: 'goose',
     accent: '#8fbf6a',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         // `goose` alone configures and prints help; `goose session` is the
@@ -144,6 +159,7 @@ export const AGENTS: Agent[] = [
     command: 'openclaw',
     accent: '#e0603c',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -159,6 +175,7 @@ export const AGENTS: Agent[] = [
     command: 'hermes',
     accent: '#9b7fd4',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -174,6 +191,7 @@ export const AGENTS: Agent[] = [
     command: 'aider',
     accent: '#59b3a9',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -189,6 +207,7 @@ export const AGENTS: Agent[] = [
     command: 'agy',
     accent: '#4e8df5',
     acceptsFlags: true,
+    scrollbackMode: false,
     modes: [
       {
         id: 'new',
@@ -217,6 +236,7 @@ export const SHELL_AGENT: Agent = {
   command: '',
   accent: '#7f8794',
   acceptsFlags: false,
+  scrollbackMode: false,
   modes: [
     { id: 'new', label: 'Open shell', hint: 'Your default shell', args: [] },
   ],

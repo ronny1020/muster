@@ -9,7 +9,8 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::{end, Session, Sessions, INHERITED_SESSION_MARKERS, SCROLLBACK_ENV};
+use super::{apply_mode, end, Session, Sessions, INHERITED_SESSION_MARKERS, SCROLLBACK_ENV};
+use std::sync::Weak;
 
 /// An output channel that goes nowhere, for a session under test.
 fn discard() -> Channel<InvokeResponseBody> {
@@ -351,4 +352,127 @@ fn nothing_the_session_needs_is_also_stripped_from_it() {
             "{key} is both set and removed"
         );
     }
+}
+
+/// A clicks session must *remove* the variable, not merely decline to set it:
+/// `CommandBuilder` seeds itself from this process's own environment, so a
+/// Muster started from a shell that exports it would hand it to every session
+/// and the mode control would silently do nothing.
+#[test]
+fn a_clicks_session_strips_a_variable_it_inherited() {
+    let mut cmd = CommandBuilder::new("true");
+    for (key, value) in SCROLLBACK_ENV {
+        cmd.env(key, value);
+    }
+    apply_mode(&mut cmd, false);
+    for (key, _) in SCROLLBACK_ENV {
+        assert!(
+            cmd.get_env(key).is_none(),
+            "{key} survived a clicks session"
+        );
+    }
+}
+
+#[test]
+fn a_scrollback_session_carries_the_variable() {
+    let mut cmd = CommandBuilder::new("true");
+    apply_mode(&mut cmd, true);
+    for (key, value) in SCROLLBACK_ENV {
+        assert_eq!(cmd.get_env(key).and_then(|set| set.to_str()), Some(*value));
+    }
+}
+
+/// A session for the registry to hold, with a child that outlives the test.
+fn parked_session() -> (Arc<Session>, i32) {
+    let pair = native_pty_system()
+        .openpty(PtySize::default())
+        .expect("openpty");
+    let mut command = CommandBuilder::new("sleep");
+    command.arg("30");
+    let child = pair.slave.spawn_command(command).expect("spawn");
+    drop(pair.slave);
+    let group = child.process_id().map(|pid| pid as i32);
+    let killer = child.clone_killer();
+    let (stdin, _queued) = mpsc::channel::<Vec<u8>>();
+    let session = Arc::new(Session {
+        master: Mutex::new(pair.master),
+        stdin,
+        group,
+        killer: Mutex::new(killer),
+        killed: Arc::new(AtomicBool::new(false)),
+        output: Arc::new(Mutex::new(discard())),
+    });
+    (session, group.expect("group"))
+}
+
+/// Reopening a conversation — the mode control, the width repair, a record
+/// from the journal — respawns under the **same tab id**, so the new session
+/// is registered while the old child is still dying. The old reader thread
+/// then reports its exit, and forgetting by id alone would drop the live
+/// session: the terminal keeps drawing, because the reader thread owns the
+/// output channel rather than the registry, so the tab looks healthy and only
+/// typing is dead.
+#[test]
+fn a_dying_session_does_not_forget_the_one_that_replaced_it() {
+    let sessions = Sessions::default();
+    let (old, old_pid) = parked_session();
+    let (new, new_pid) = parked_session();
+    let old_identity = Arc::downgrade(&old);
+
+    sessions.0.lock().insert("tab".to_string(), old.clone());
+    let replaced = sessions.0.lock().insert("tab".to_string(), new.clone());
+    assert!(replaced.is_some(), "the respawn took the id");
+
+    // What the old child's reader thread does once `child.wait()` returns.
+    sessions.forget("tab", &old_identity);
+
+    let still_there = sessions
+        .get("tab")
+        .expect("the new session is still registered");
+    assert!(
+        Arc::ptr_eq(&still_there, &new),
+        "the old session's exit must not unregister the one that replaced it"
+    );
+
+    end(&old);
+    end(&new);
+    let _ = (old_pid, new_pid);
+}
+
+/// The other half: a session that really is the current one is forgotten, or
+/// the quit prompt counts tabs with nothing running.
+#[test]
+fn a_session_that_is_still_the_current_one_is_forgotten_on_exit() {
+    let sessions = Sessions::default();
+    let (only, _pid) = parked_session();
+    let identity = Arc::downgrade(&only);
+    sessions.0.lock().insert("tab".to_string(), only.clone());
+
+    sessions.forget("tab", &identity);
+
+    assert!(sessions.get("tab").is_err(), "the registry let go of it");
+    assert_eq!(sessions.live(), 0);
+    end(&only);
+}
+
+/// A weak handle to a session nothing holds any more names nothing to remove.
+#[test]
+fn forgetting_a_session_already_gone_leaves_the_registry_alone() {
+    let sessions = Sessions::default();
+    let (current, _pid) = parked_session();
+    sessions.0.lock().insert("tab".to_string(), current.clone());
+
+    let stale: Weak<Session> = {
+        let (gone, _) = parked_session();
+        let weak = Arc::downgrade(&gone);
+        end(&gone);
+        weak
+    };
+    sessions.forget("tab", &stale);
+
+    assert!(
+        sessions.get("tab").is_ok(),
+        "an unrelated session is untouched"
+    );
+    end(&current);
 }

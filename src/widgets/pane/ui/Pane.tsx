@@ -10,6 +10,11 @@ import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
 import { useHomeDir } from '../model/useHomeDir'
 import { useWorkspace } from '../../../features/workspace/model/useWorkspace'
+import {
+  canReopen,
+  usePastSessions,
+} from '../../../entities/agent/model/usePastSessions'
+import { useTurns } from '../../../entities/transcript/model/useTurns'
 import { treeRevision } from '../../../features/workspace/model/status'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
@@ -124,6 +129,32 @@ export function Pane({
   // cannot be made by a tab, and running it per pane would run it N times.
   const collisions = useCollisions(tab.id)
   /**
+   * The turns of this tab's conversation, for the rails a clicks session
+   * cannot scan off its own grid.
+   *
+   * Asked for only where they can be used: every pane stays mounted, so an
+   * ungated read would parse a transcript on every idle edge in every shell
+   * and every scrollback tab, for a rail none of them draws from it. A
+   * scrollback tab is the default, so leaving it out of the gate is the
+   * expensive half.
+   */
+  const readsTranscript = Boolean(
+    session && !session.scrollback && agentById(session.agentId).scrollbackMode,
+  )
+  const turns = useTurns(readsTranscript ? journalCwd : '', tab.id, tab.status)
+  /**
+   * Whether this tab has a conversation the mode control could reopen.
+   *
+   * Asked only where a switch is on offer, for the reason `readsTranscript`
+   * gives: every pane stays mounted, so an ungated read costs a directory
+   * listing per tab per idle edge.
+   */
+  const past = usePastSessions(
+    session && agentById(session.agentId).scrollbackMode ? session.agentId : '',
+    journalCwd,
+    tab.status,
+  )
+  /**
    * Reopen a recorded conversation here, ending whatever is running first.
    *
    * Routed through the tab's own start screen rather than launched directly,
@@ -135,7 +166,21 @@ export function Pane({
    * view, so the next render mounts it fresh and it spawns.
    */
   const [resuming, setResuming] = useState<LaunchRequest | null>(null)
-  const resumeHere = (agent: Agent, args: string[]) => {
+  const resumeHere = ({
+    agent,
+    args,
+    // Whatever this tab is running in, so reopening a record changes only the
+    // conversation. Left `undefined` when there is nothing running, because
+    // that is what lets `App`'s launch apply the `terminalMode` setting — an
+    // explicit `false` here would satisfy its `??` and force clicks on every
+    // record reopened from a launcher tab. The mode control is the one caller
+    // that names a mode outright.
+    scrollback = session?.scrollback,
+  }: {
+    agent: Agent
+    args: string[]
+    scrollback?: boolean
+  }) => {
     // The launcher's pre-fill is the only place the backend survives: a
     // just-ended or restored tab has no session, and defaulting to the host
     // would resume a recorded WSL conversation on the Windows side.
@@ -148,6 +193,7 @@ export function Pane({
       title: agent.name,
       backend: start?.backend ?? session?.backend ?? 'native',
       distro: start?.distro ?? session?.distro ?? '',
+      scrollback,
     }
     if (!session) {
       onLaunch(request)
@@ -173,12 +219,49 @@ export function Pane({
   const again = session
     ? agentById(session.agentId).modes.find((mode) => mode.id === 'continue')
     : undefined
-  // Passed only when there is something to reopen, so a shell tab — which has
-  // no `continue` to print its history again — is not offered a control whose
-  // click would do nothing.
-  const replayHere = again
-    ? () => resumeHere(agentById(session!.agentId), again.args)
-    : undefined
+  // Passed whenever there is a conversation to reopen — a shell has none, so
+  // it is not offered a control whose click would do nothing. Whether there
+  // is also a scrollback worth repairing is the terminal's to answer, from
+  // the live buffer, because that is what `reflowRuins` clears on.
+  const replayHere =
+    again && session && canReopen(past)
+      ? () =>
+          resumeHere({ agent: agentById(session.agentId), args: again.args })
+      : undefined
+
+  /**
+   * Flip this tab between answering clicks and keeping a scrollback.
+   *
+   * The agent reads the variable behind it once, at spawn, so the mode can
+   * only change by starting again — and the conversation survives that only
+   * where the CLI has a `continue`. Offered where both hold: `SCROLLBACK_ENV`
+   * in `pty.rs` has why the two cannot be had together.
+   *
+   * Having a `continue` mode is not the same as having something to continue,
+   * and that gap ends sessions: a tab whose first turn has not been written
+   * yet reopens onto `No conversation found to continue`, the child exits, and
+   * the tab that was working is left at `exited 1`. `past` is what closes it —
+   * `null` while unknown, so the control is hidden only on a real zero.
+   */
+  const switchMode =
+    session &&
+    again &&
+    agentById(session.agentId).scrollbackMode &&
+    canReopen(past)
+      ? () =>
+          resumeHere({
+            agent: agentById(session.agentId),
+            args: again.args,
+            scrollback: !session.scrollback,
+          })
+      : undefined
+
+  /**
+   * Reopen a record the journal panel offers, in whatever mode this tab is
+   * already in — the panel names a conversation, not a way of running it.
+   */
+  const resumeFromJournal = (agent: Agent, args: string[]) =>
+    resumeHere({ agent, args })
 
   const reviewOpen = tab.reviewOpen
   const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
@@ -423,7 +506,7 @@ export function Pane({
               liveId={null}
               recording={settings.journalEnabled}
               busy={false}
-              onResume={resumeHere}
+              onResume={resumeFromJournal}
               onClose={toggleJournal}
             />
           )}
@@ -444,6 +527,8 @@ export function Pane({
                 onBell={onBell}
                 onAgentEvent={onAgentEvent}
                 onWorking={onWorking}
+                ended={tab.exitCode !== null}
+                turns={turns}
                 cwd={cwd}
                 home={home}
                 onPath={onPath}
@@ -501,7 +586,7 @@ export function Pane({
                 liveId={tab.exitCode === null ? tab.id : null}
                 recording={settings.journalEnabled}
                 busy={tab.exitCode === null}
-                onResume={resumeHere}
+                onResume={resumeFromJournal}
                 onClose={toggleJournal}
               />
             )}
@@ -554,6 +639,11 @@ export function Pane({
         reviewOpen={reviewOpen}
         editor={session ? editor : null}
         collision={session ? collisionSummary(collisions) : ''}
+        mode={
+          session && switchMode
+            ? { scrollback: session.scrollback, onSwitch: switchMode }
+            : null
+        }
         journal={Boolean(journalCwd)}
         journalOpen={journalOpen}
         onToggleJournal={toggleJournal}

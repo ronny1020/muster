@@ -12,6 +12,7 @@ import { Combobox } from '../../../shared/ui/Combobox'
 import type { LauncherStart } from '../../../entities/tab/model/deck'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
+import type { TerminalMode } from '../../../entities/preferences/model/settings'
 import { type BlockedHint, blockedHint } from '../model/blocked'
 import { splitFlags } from '../model/flags'
 import {
@@ -40,6 +41,14 @@ export interface LaunchRequest {
   title: string
   backend: Backend
   distro: string
+  /**
+   * Which mode to start the session in, or absent to take the `terminalMode`
+   * setting as the default. Absent for an agent that does not answer the
+   * variable, since a mode it ignores is not a choice; named by the start
+   * screen's own control, by a resume carrying the tab's current mode, and
+   * by the status bar changing it.
+   */
+  scrollback?: boolean
 }
 
 /**
@@ -99,6 +108,14 @@ export function Launcher({
     start?.cwd || settings.defaultDirectory || recents[0] || '',
   )
   const [flags, setFlags] = useState(start?.flags ?? '')
+  /**
+   * Which mode this session starts in, seeded from the default in settings.
+   *
+   * Chosen here rather than only afterwards because the agent reads it once,
+   * at spawn: picking it later costs a relaunch, and the choice belongs with
+   * the other things a launch decides.
+   */
+  const [mode, setMode] = useState<TerminalMode>(settings.terminalMode)
   const [agent, setAgent] = useState<Agent>(() =>
     pickableAgent(start?.agentId || settings.defaultAgentId),
   )
@@ -211,6 +228,9 @@ export function Launcher({
       // choice only survives while WSL still offers it.
       backend: distros.length > 0 ? backend : 'native',
       distro: distros.includes(distro) ? distro : '',
+      // Only where the CLI answers it; anywhere else the launch takes the
+      // preference, which is what `App` does with an absent value.
+      ...(as.scrollbackMode ? { scrollback: mode === 'scrollback' } : {}),
     })
   }
 
@@ -316,6 +336,23 @@ export function Launcher({
             onSelect={(id) => setAgent(pickableAgent(id))}
           />
         </Field>
+
+        {agent.scrollbackMode && (
+          <Field label="Terminal mode">
+            <div className="flex gap-1.5">
+              <Choice
+                label="Scrollback"
+                selected={mode === 'scrollback'}
+                onSelect={() => setMode('scrollback')}
+              />
+              <Choice
+                label="Clicks"
+                selected={mode === 'clicks'}
+                onSelect={() => setMode('clicks')}
+              />
+            </div>
+          </Field>
+        )}
 
         {distros.length > 0 && (
           <Field label="Run in">

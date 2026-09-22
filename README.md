@@ -180,7 +180,8 @@ A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent** — type to filter the list, since
 there are nine of them — and how the session should open. The
 shell is not among them; its button sits between the agent list and the
-modes.
+modes. Claude Code also offers **Terminal mode** there, Scrollback or Clicks,
+starting on whichever Settings names as the default.
 Pick a mode and the terminal takes over the tab.
 
 | Agent       | Command         | New session | Continue          | Pick from past       |
@@ -242,6 +243,8 @@ Along the bottom of each tab:
   files are. A clean tree just says `clean`, and goes nowhere.
 - **`src/auth.ts also in …`** — a file another tab is changing at the same time.
   See "When two tabs touch one file".
+- **Clicks / Scrollback** — two buttons with the tab's own mode held down.
+  Press the other one to switch. See "Jumping back to what you asked".
 - **The Earlier sessions button** — conversations recorded in this directory,
   with a way back into one. See "Earlier sessions".
 - **Open in …** — opens the current directory in your editor. It finds whichever
@@ -280,7 +283,6 @@ Agents print paths and URLs constantly, and all of them are live:
 | You click                                                      | Muster does                                                                                                      |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | A file the agent changed — `src/features/review/model/diff.ts` | Opens its diff in the review panel, scrolled to the line if the output named one                                 |
-| A directory — `~/work/api`                                     | Reveals it in Finder or your file manager                                                                        |
 | An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
 | An unchanged file inside the session's directory               | Opens it in the file column beside the terminal, so reading it does not take you out of the tab                  |
 | Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
@@ -293,9 +295,12 @@ overlay. An image is asked about before the file column is considered, so one
 inside the session's directory still opens in the overlay rather than as text.
 
 Paths resolve against the tab's current directory, so `src/app/App.tsx` works as
-well as an absolute path, and `~` means home. A path is only underlined when it
-carries a separator — otherwise every sentence mentioning `package.json` would
-light up.
+well as an absolute path, and `~` means home. A path is underlined only when it
+carries both a separator and a file extension: without the separator every
+sentence mentioning `package.json` would light up, and without the extension so
+would every directory an agent names in passing. The cost is that a file with
+no extension — `scripts/build`, `.github/CODEOWNERS` — is not underlined
+either.
 
 Tools that emit images as terminal escape sequences work too: Sixel and
 iTerm2's inline-image protocol are both supported, so `imgcat`, `chafa
@@ -419,7 +424,9 @@ filled rather than outlined.
 
 Click a dot to jump to that message. The `↑` and `↓` buttons in the bottom-right
 corner step through the same list, and past the last message in either direction
-they carry on to the end or the top of the scrollback.
+they carry on to the end or the top of the scrollback. In a clickable tab there
+is no scrollback to carry on into, so they stop at the oldest and newest message
+instead.
 
 The `⟳` beside them redraws the conversation. Resizing the window — or opening a
 panel — changes how many columns the terminal has, and an agent's own frames
@@ -428,8 +435,11 @@ Muster drops the history and this button asks the agent to print it again at the
 new width. Anything written after the resize is kept and marked as usual; only
 what came before is reprinted.
 
-Shell tabs are left alone — their output wraps like ordinary text, so it
-survives a resize — and they have no conversation to reopen, so they get no `⟳`.
+It is not on every tab. Shell tabs are left alone — their output wraps like
+ordinary text, so it survives a resize — and they have no conversation to
+reopen. Nor is it on a clickable tab, which holds one screen and so has no
+history a resize could ruin, or on a tab in a directory where the agent has
+recorded nothing yet, since there would be nothing to print again.
 
 The dots are found by how your prompt was drawn rather than by what it says — a
 tinted block of cells — so they work for any CLI that renders a prompt that way,
@@ -441,12 +451,45 @@ without Muster knowing anything about it. Two consequences worth knowing:
   dot as "something was highlighted here", not as proof you typed it.
 - **Only the most recent dozen are shown**, and only what is still in the
   scrollback.
-- **Claude Code sessions are asked for a scrollback**, because a full-screen TUI
-  normally draws into the alternate screen buffer — one screen tall, no history,
-  nothing for the dots, the label or the find bar to read. Muster asks it for the
-  ordinary buffer instead. The cost is that Claude Code no longer reports mouse
-  events, so answer its own prompts with the keyboard. Other agents are left as
-  they are, and one that draws full-screen has no dots.
+- **In a clickable tab the dots come from the agent, not from the screen.** A
+  full-screen TUI draws into the alternate screen buffer — one screen tall, no
+  history — so there is nothing on screen for the dots to read. Muster reads
+  Claude Code's own transcript instead, which is the better source: every
+  message you typed, including the ones a `--continue` printed before the tab
+  existed. Clicking a dot scrolls the agent's view back to that message: it
+  sends the wheel and watches for the text, and gives up quickly if the view
+  will not move — which it does not while the agent is still printing.
+  Finding the transcript needs the session record, so turning **Record what
+  sessions print** off takes the dots in a clickable tab with it.
+- **A clickable tab has no scrollbar**, and cannot have a real one: the
+  terminal holds a single screen there and the agent holds the history, which
+  it never reports the position of. The dots are how you get back to a place
+  in it, and the wheel still scrolls the agent's own view. A tab in
+  **Scrollback** has the terminal's own bar, with the message and file marks
+  on it.
+- **A tab starts in Scrollback**, where the terminal keeps the history itself
+  — that is what the scrollbar and its marks, the find bar and the width
+  repair all read, and what every agent other than Claude Code needs for dots
+  at all. The **Clicks / Scrollback** control at the right of the status bar
+  switches a tab to the mode where the agent takes the mouse, and the start
+  screen offers the same choice per launch. It appears once the agent has
+  recorded a conversation in this directory — with none, `--continue` finds
+  nothing and the session ends rather than changing mode. It reopens that
+  directory's most recent conversation, which in a second tab on the same
+  directory may not be the one that tab was running. Switching
+  reopens the conversation with `--continue` so nothing is lost, and Settings
+  chooses which mode new tabs open in. The switch carries the conversation,
+  not the command line: extra flags the session was started with are not
+  replayed, the same as the ⟳ button beside the step arrows. In a clickable
+  session the agent is taking the mouse, so selecting output to copy it needs
+  **Option-drag** on macOS and **Shift-drag** elsewhere; block selection works
+  as usual in a Scrollback tab.
+
+  Clicks mode only gets out of the way. Claude Code still picks its own
+  renderer and reports the mouse from the fullscreen one alone — and it turns
+  that renderer off by itself after it fails to start, which nothing Muster
+  sets can undo. So if a click does nothing in a Clicks tab, run
+  `/tui fullscreen` in that session.
 
 ## 🗂 Knowing where you are in the output
 
@@ -594,11 +637,18 @@ with the exit code when they failed. All of it is adjustable, including off.
 
 Press the settings shortcut or click the gear at the right of the status bar.
 Settings open as a tab, and changes take effect immediately — including in
-terminals that are already running. The one exception is **Record what sessions
-print**: it is read when a session starts, so switching it off stops the next
-session rather than the ones already going.
+terminals that are already running. Two are read when a session starts instead,
+so they reach the next session rather than the ones already going: **Record
+what sessions print**, and **Default terminal mode** — for which the status
+bar's
+Clicks / Scrollback control is the way to change a tab that is already open.
 
-- **New tabs** — which agent and directory to start on.
+- **New tabs** — which agent and directory to start on, and the **Terminal
+  mode** a tab opens in: _Clicks_, which hands the mouse to Claude Code's own
+  prompts, subagents and shells and reads the dots from its transcript, or
+  _Scrollback_, which keeps the terminal's own history so the find bar and the
+  width repair have something to work on. No session can have both. The status
+  bar's control switches one tab without changing this.
 - **Terminal** — theme, font, size, line height, text width, scrollback,
   blinking cursor. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
   single glyph will do so here. The font list is every family installed on the

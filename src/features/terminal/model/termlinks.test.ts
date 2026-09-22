@@ -134,3 +134,16 @@ test('Windows separators compare the same as POSIX ones', () => {
 test('no session directory means nothing is inside it', () => {
   expect(isUnder('/work/repo/a.ts', '')).toBe(false)
 })
+
+test('a directory is not a file, so it is not linked', () => {
+  // A click opens something to read. Agents name directories constantly — a
+  // `cd`, a tree, a glob root — and linking those underlines half a session.
+  expect(paths('cd src/features and look')).toEqual([])
+  expect(paths('wrote it to /tmp/out')).toEqual([])
+  expect(paths('C:\\work\\repo')).toEqual([])
+})
+
+test('a dotfile counts as a file', () => {
+  expect(paths('edited ./.env today')).toEqual(['./.env'])
+  expect(paths('see config/.eslintrc')).toEqual(['config/.eslintrc'])
+})

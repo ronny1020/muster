@@ -16,6 +16,14 @@ export interface Session {
   backend: Backend
   /** Which WSL distro, when the backend is `wsl`. Empty means the default one. */
   distro: string
+  /**
+   * Whether this session was started in scrollback mode — held out of the
+   * alternate buffer, so the rail, the path strip and the find bar have
+   * history to read, and the agent reports no mouse. Per session because the
+   * environment that decides it is read once, at spawn: flipping it reopens
+   * the conversation.
+   */
+  scrollback: boolean
 }
 
 /**

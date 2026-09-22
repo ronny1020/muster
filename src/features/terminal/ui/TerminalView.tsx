@@ -1,13 +1,21 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { type ILink, Terminal } from '@xterm/xterm'
+import { type ILink, type ILinkProvider, Terminal } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
+import type { Turn } from '../../../shared/ipc'
 import { routePaste } from '../model/paste'
 import { clipboardIntent } from '../model/clipboard'
 import type { Session } from '../../../entities/tab/model/deck'
@@ -26,15 +34,24 @@ import { IS_MAC } from '../../../shared/lib/platform'
 import { flattenLogicalLine, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
+import { surfacesFor } from '../model/surfaces'
+import {
+  MAX_LOOKS,
+  MAX_STALLS,
+  moved,
+  needleFor,
+  NOTCHES_PER_LOOK,
+  onScreen,
+  rowsOf,
+} from '../model/seek'
+import {
+  messagesIn,
+  type Place,
+} from '../../../entities/transcript/model/turns'
 import { QUIET_MS } from '../model/working'
 import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { fileAbove, type NamedFile } from '../model/codeblocks'
-import {
-  currentMessage,
-  type Message,
-  nextMessage,
-  previousMessage,
-} from '../model/messages'
+import { currentMessage, nextMessage, previousMessage } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
@@ -67,6 +84,16 @@ export interface TerminalViewProps {
   onReplay?: () => void
   /** Whether the session is still printing, i.e. still working. */
   onWorking(working: boolean): void
+  /**
+   * Whether the session's process has gone. Only the mouse gate reads it —
+   * see `agentReadsMouse`.
+   */
+  ended: boolean
+  /**
+   * The turns of this tab's conversation, from the agent's own transcript.
+   * Empty where there is none — see `agentTurns`.
+   */
+  turns: Turn[]
   /** Whether this tab's scrollback search bar is showing. */
   findOpen: boolean
   onCloseFind(): void
@@ -106,6 +133,8 @@ export function TerminalView({
   onUrl,
   onReplay,
   onWorking,
+  ended,
+  turns,
   findOpen,
   onCloseFind,
   paste,
@@ -117,16 +146,165 @@ export function TerminalView({
   /** The same terminal as state, so what renders beside it can mount with it. */
   const [mounted, setMounted] = useState<Terminal | null>(null)
   const messages = useMessages(mounted, active)
+  /**
+   * Whether the agent is holding the alternate buffer, from xterm's own
+   * event rather than read while rendering.
+   *
+   * Nothing about a buffer switch re-renders this component, so a value read
+   * during render is whatever was true at the last one — and the switch
+   * happens seconds after mount, when the agent starts. Measured: the bar and
+   * the rail never appeared at all, because the render that would have drawn
+   * them had already happened.
+   */
+  const [alternate, setAlternate] = useState(false)
+  /**
+   * What this session's view supports — the rail's source, whether xterm
+   * draws a scrollbar, and whether a width change has anything to repair.
+   * One decision rather than three: `surfaces.ts` has what went wrong when
+   * they were gated separately.
+   */
+  const surfaces = surfacesFor({
+    buffer: alternate ? 'alternate' : 'normal',
+    bufferRows: mounted?.buffer.active.length ?? 0,
+    screenRows: mounted?.rows ?? 0,
+    turns: turns.length,
+  })
+  const fromTranscript = surfaces.rail === 'transcript'
+  const said = useMemo(() => messagesIn(turns), [turns])
+  /**
+   * Which of the transcript's messages the step buttons are on.
+   *
+   * The scan's marks are stepped by comparing the viewport to their rows;
+   * these have no rows, so the walk has to be remembered. Held past the end
+   * so the first ↑ goes to the newest — and put back there whenever the
+   * transcript grows, since the turns arrive after the first render and a
+   * new message is the newest thing to walk back from.
+   */
+  const stepped = useRef(said.length)
+  // Keyed on the newest turn, not the count: the list is a window on the last
+  // dozen, so past a dozen messages its length stops changing and a reset
+  // that watched the length would never fire again.
+  // A sentinel rather than the first value: a turn the agent wrote no
+  // timestamp for reads as the empty string, which would match a ref seeded
+  // with one and leave the walk at the mount-time zero.
+  const newest = said.at(-1)?.at ?? ''
+  const walked = useRef<string | null>(null)
+  // Skipped while the list is empty, which is every first render: the agent
+  // may write a turn with no timestamp, and `at` is then the same empty
+  // string the empty list produces — so a sentinel alone would call the two
+  // states equal and leave the walk at zero, sending the first ↑ to the
+  // oldest message instead of the newest.
+  if (said.length > 0 && walked.current !== newest) {
+    walked.current = newest
+    stepped.current = said.length
+  }
+  /** Walks the transcript's messages with the step buttons, newest last. */
+  const stepThrough = useCallback(
+    (direction: -1 | 1) => {
+      if (said.length === 0) return
+      const next = Math.max(
+        0,
+        Math.min(said.length - 1, stepped.current + direction),
+      )
+      stepped.current = next
+      void seekTo(said[next]!)
+    },
+    // `seekTo` is stable, and `said` changes only when the transcript does.
+    [said],
+  )
+
+  /** Which seek owns the view: a later click supersedes an unfinished one. */
+  const seeking = useRef(0)
+  /**
+   * Scrolls the agent's own view back to one of its messages.
+   *
+   * The wheel is the only thing that moves a view the agent owns, so this
+   * sends notches the way a hand would and reads the screen between them —
+   * see `seek.ts`. Dispatched on xterm's own element rather than encoded
+   * here: the report's shape is the terminal's business, and it is already
+   * right.
+   *
+   * It gives up the moment the view stops moving, which is what makes it
+   * usable — the agent pins its view to the bottom while it is printing, and
+   * a seek that kept trying through that spent the better part of a minute
+   * going nowhere. Not finding it leaves the view where it started.
+   *
+   * And it sends nothing at all unless the agent is reading the mouse, which
+   * is not a tidy guard but the whole safety of the gesture. xterm answers a
+   * wheel nobody asked to hear on a buffer with no scrollback by **typing**:
+   * it turns each line the notch would have scrolled into `ESC[A` or `ESC[B`
+   * and writes them to the pty. A burst is eight notches of roughly seven
+   * lines, so one stalled seek is around a hundred arrow presses into a live
+   * agent — and Up recalls the previous prompt in Claude Code, so a click
+   * meant to scroll would overwrite a draft and leave nothing looking wrong.
+   * The rail is drawn from the buffer and the turns, neither of which says
+   * whether tracking is armed, so the check has to be here.
+   */
+  const seekTo = useCallback(async (place: Place) => {
+    const term = terminal.current
+    const element = host.current?.querySelector<HTMLElement>('.xterm-screen')
+    const needle = needleFor(place.label)
+    if (!term || !element || !needle) return
+    if (!agentReadsMouse(term, live.current)) return
+    // A second dot clicked mid-seek supersedes the first: two loops sending
+    // bursts at one view, each undoing its own count afterwards, leave it
+    // somewhere neither click asked for.
+    const mine = (seeking.current += 1)
+    const screen = screenOf(term)
+    const notch = (up: boolean) => sendNotches(element, up ? -1 : 1)
+    // Only the bursts that moved the view are worth undoing. A burst the
+    // agent absorbed — at the top of what it kept, or while it was printing
+    // — scrolled nothing, so counting it into the way back drives the view
+    // past where it started and pins it to the bottom.
+    let travelled = 0
+    let stalls = 0
+    // Read before the first burst, not left empty: `moved` calls two empty
+    // screens moved so a seek always gets its first burst, and seeding this
+    // with one would bill that burst to the way back even when it scrolled
+    // nothing.
+    let before = rowsOf(screen)
+    for (let look = 0; look < MAX_LOOKS; look += 1) {
+      if (onScreen(screen, needle)) return
+      for (let i = 0; i < NOTCHES_PER_LOOK; i += 1) notch(true)
+      // The agent answers a burst by repainting over the pty, so the screen
+      // read next is only current once that has arrived.
+      await new Promise((settle) => setTimeout(settle, SEEK_SETTLE_MS))
+      // Re-checked, not just tested once: a TUI can drop tracking mid-seek,
+      // and every later notch would then be typed rather than reported.
+      if (seeking.current !== mine || !agentReadsMouse(term, live.current)) {
+        return
+      }
+      const after = rowsOf(screen)
+      const shifted = moved(before, after)
+      if (shifted) travelled += NOTCHES_PER_LOOK
+      stalls = shifted ? 0 : stalls + 1
+      before = after
+      if (stalls >= MAX_STALLS) break
+    }
+    if (onScreen(screen, needle) || seeking.current !== mine) return
+    // Put the view back as far as it actually came.
+    for (let i = 0; i < travelled; i += 1) notch(false)
+  }, [])
+
   useRulerMarks(mounted, messages, MESSAGE_MARK)
   const fileMarks = useFileMarks(mounted, active)
   useRulerMarks(mounted, fileMarks, FILE_MARK)
   const viewportRow = useViewportRow(mounted, active)
   /** The last row on screen: what "which message am I in" is measured against. */
   const viewportBottom = viewportRow + (mounted?.rows ?? 0) - 1
-  /** The file the output on screen is about, if anything above names one. */
-  const openFileHere = mounted
-    ? fileAbove(mounted.buffer.active, viewportBottom)
-    : null
+  /**
+   * The file the output on screen is about, if anything above names one.
+   *
+   * The normal buffer only, for the reason `useBufferMarks` gives: a live TUI
+   * frame has no scroll extent, so a row of it that happens to match reads as
+   * a label on history that is not there — and parks at the top of the bar,
+   * since `baseY` is 0.
+   */
+  const openFileHere =
+    mounted && mounted.buffer.active.type === 'normal'
+      ? fileAbove(mounted.buffer.active, viewportBottom)
+      : null
+
   /** Where the viewport sits in the scrollback, as the scrollbar reads it. */
   const scrolledFraction = mounted
     ? Math.min(1, viewportRow / Math.max(1, mounted.buffer.active.baseY))
@@ -144,6 +322,14 @@ export function TerminalView({
   /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
       pane cannot do it for itself. */
   const resync = useRef<(() => void) | null>(null)
+  /**
+   * Re-runs the selection-modifier sync, for the one moment no write does.
+   *
+   * It otherwise rides `onWriteParsed`, and a session that ends prints
+   * nothing more — so a TUI killed with tracking armed would keep
+   * Option-drag block selection off over its own dead scrollback.
+   */
+  const releaseSelection = useRef<(() => void) | null>(null)
   const showing = useRef(active)
   showing.current = active
   // Read through refs: these change with every poll, and the terminal is built
@@ -153,6 +339,9 @@ export function TerminalView({
   // Read through a ref so changing a setting never re-runs the spawn effect.
   const latest = useRef(settings)
   latest.current = settings
+  // Read the same way, by the link providers the spawn effect registers.
+  const live = useRef(!ended)
+  live.current = !ended
   // The session is fixed for the life of the tab, but reading it through a ref
   // keeps it out of the spawn effect's dependencies all the same.
   const launch = useRef(session)
@@ -203,12 +392,35 @@ export function TerminalView({
     const searchAddon = new SearchAddon()
     search.current = searchAddon
     term.loadAddon(searchAddon)
+    /**
+     * Registers a link provider that offers nothing while the agent is
+     * reading the mouse — see `agentReadsMouse`.
+     *
+     * Wrapping `provideLinks` rather than the activation: a link that is not
+     * offered draws no underline and no pointer cursor, so the output stops
+     * *claiming* to be clickable instead of quietly ignoring the click.
+     */
+    const gateLinks = (provider: ILinkProvider): ILinkProvider => ({
+      provideLinks: (row, callback) =>
+        agentReadsMouse(term, live.current)
+          ? callback(undefined)
+          : provider.provideLinks(row, callback),
+    })
     // A click opens a preview card rather than the browser: the card is what
     // makes the network fetch deliberate, and it carries the Open button.
     const linksAddon = new WebLinksAddon((_event, uri) =>
       link.current!.onUrl(uri),
     )
-    term.loadAddon(linksAddon)
+    // The addon registers its own provider, so the gate has to meet it at the
+    // one call it makes — the same shape as `withoutLocalFonts` below, and for
+    // the same reason: the addon offers no hook of its own.
+    const register = term.registerLinkProvider.bind(term)
+    term.registerLinkProvider = (provider) => register(gateLinks(provider))
+    try {
+      term.loadAddon(linksAddon)
+    } finally {
+      Reflect.deleteProperty(term, 'registerLinkProvider')
+    }
     // Sixel and iTerm2 inline images, which is how terminal tools ship pictures.
     const imageAddon = new ImageAddon({
       sixelSupport: true,
@@ -218,7 +430,9 @@ export function TerminalView({
       storageLimit: 32,
     })
     term.loadAddon(imageAddon)
-    term.registerLinkProvider({ provideLinks: pathLinks(term, link) })
+    term.registerLinkProvider(
+      gateLinks({ provideLinks: pathLinks(term, link) }),
+    )
     // Windows and Linux have no menu accelerator for copy, and Ctrl+C has to
     // stay SIGINT — so the Ctrl+Shift+C/V convention is ours to implement.
     /**
@@ -354,8 +568,31 @@ export function TerminalView({
         area.style.height = `${expected}px`
       }
     }
-    term.onWriteParsed(resyncScrollbar)
+    /**
+     * Keeps the Option-drag escape hatch on only while the agent has the
+     * mouse.
+     *
+     * `macOptionClickForcesSelection` is what lets a macOS user select output
+     * a tracking CLI would otherwise take every drag of — but xterm reads the
+     * same option in `shouldColumnSelect`, so leaving it on permanently trades
+     * block selection away in every session, tracking or not. The mode only
+     * ever changes through a written sequence, so this rides the same write
+     * batch the scrollbar does.
+     */
+    const syncSelectionModifier = () => {
+      // `live` for the reason `agentReadsMouse` reads it: a TUI killed with
+      // tracking armed would otherwise leave block selection off for good.
+      const needed = live.current && term.modes.mouseTrackingMode !== 'none'
+      if (term.options.macOptionClickForcesSelection !== needed) {
+        term.options.macOptionClickForcesSelection = needed
+      }
+    }
+    term.onWriteParsed(() => {
+      resyncScrollbar()
+      syncSelectionModifier()
+    })
     resync.current = resyncScrollbar
+    releaseSelection.current = syncSelectionModifier
 
     // Output is the one "is it working" signal every agent and every shell
     // has: a CLI prints while it thinks and goes quiet when it wants you.
@@ -375,6 +612,10 @@ export function TerminalView({
     }
 
     term.onData((data) => bestEffort(writePty(sessionId, data)))
+    setAlternate(term.buffer.active.type === 'alternate')
+    term.buffer.onBufferChange((buffer) =>
+      setAlternate(buffer.type === 'alternate'),
+    )
     // Read through a ref so a new handler identity never re-runs the spawn.
     term.onBell(() => bell.current())
     // The other half of "the session wants you": an agent CLI announces its
@@ -401,7 +642,8 @@ export function TerminalView({
         return
       }
       started = true
-      const { agentId, cwd, program, args, backend, distro } = launch.current
+      const { agentId, cwd, program, args, backend, distro, scrollback } =
+        launch.current
       void spawnPty(
         {
           id: sessionId,
@@ -419,6 +661,9 @@ export function TerminalView({
           // So a record remembers which agent wrote it, and the panel can
           // offer that agent's own resume for the conversation.
           agentId,
+          // Fixed for the life of the session: the agent reads it once, at
+          // start, so a tab changes mode by reopening the conversation.
+          scrollback,
         },
         (bytes) => {
           markWorking()
@@ -459,6 +704,7 @@ export function TerminalView({
       term.dispose()
       terminal.current = null
       resync.current = null
+      releaseSelection.current = null
       setMounted(null)
       if (paste) paste.current = null
     }
@@ -576,6 +822,13 @@ export function TerminalView({
     resync.current?.()
   }, [active])
 
+  // The child is gone, so nothing will clear the mouse mode it left armed and
+  // no further write will notice. Synchronising with the terminal outside
+  // React's control is what an effect is for.
+  useEffect(() => {
+    releaseSelection.current?.()
+  }, [ended])
+
   const closeFind = useCallback(() => {
     search.current?.clearDecorations()
     onCloseFind()
@@ -637,18 +890,58 @@ export function TerminalView({
           onOpen={() => onPath(resolvePath(openFileHere.path, cwd, home))}
         />
       )}
-      {messages.length > 0 && (
-        <MessageRail
-          messages={messages}
-          current={currentMessage(messages, viewportBottom)?.row ?? null}
-          onJump={jumpToMessage}
-        />
+      {fromTranscript ? (
+        <>
+          {said.length > 0 && (
+            <Rail
+              entries={said.map((place: Place, index: number) => ({
+                key: `said-${index}`,
+                label: place.label,
+                open: () => void seekTo(place),
+              }))}
+              current={null}
+              label="Your messages in this conversation"
+              className="right-[18px] text-brand"
+            />
+          )}
+          <MessageSteps
+            count={said.length}
+            onStep={stepThrough}
+            // Nothing to redraw: a clicks session keeps no scrollback for a
+            // width change to ruin, so the ⟳ has no work here.
+          />
+        </>
+      ) : (
+        <>
+          {messages.length > 0 && (
+            <Rail
+              // `useMessages` answers newest first, and the rail reads down
+              // the conversation — so the two rails would otherwise run in
+              // opposite directions on the same edge.
+              entries={[...messages].reverse().map((message) => ({
+                key: String(message.row),
+                label: message.label || `Line ${message.row}`,
+                open: () => jumpToMessage(message.row),
+              }))}
+              current={
+                currentMessage(messages, viewportBottom)?.row.toString() ?? null
+              }
+              label="Your messages in the scrollback"
+              className="right-[18px] text-brand"
+            />
+          )}
+          <MessageSteps
+            count={messages.length}
+            onStep={stepMessage}
+            // The live buffer, never the tab's mode: `reflowRuins` clears
+            // on the same test, so gating the only way back on anything else
+            // leaves a session cleared with no ⟳ to reopen it — which a
+            // clicks tab reaches whenever the agent runs its classic
+            // renderer.
+            onReplay={surfaces.replay ? onReplay : undefined}
+          />
+        </>
       )}
-      <MessageSteps
-        messages={messages}
-        onStep={stepMessage}
-        onReplay={onReplay}
-      />
       {findOpen && search.current && (
         <FindBar search={search.current} onClose={closeFind} />
       )}
@@ -666,50 +959,59 @@ export function TerminalView({
   )
 }
 
+/** One dot on a rail: what it says, and what a click on it does. */
+interface RailEntry {
+  key: string
+  label: string
+  open(): void
+}
+
 /**
- * One dot per message you sent, down the right edge, oldest at the top, with
- * the one the viewport is inside drawn filled.
+ * A column of dots down the right edge, oldest at the top.
  *
- * Evenly spaced rather than placed in proportion to the scroll extent, and
- * clear of the scrollbar rather than over it — AGENTS.md's message-marks
- * invariant has the reasons for both.
- *
- * `MessageSteps` walks this identical list, so the number of dots and the
- * number of presses are always the same.
+ * Evenly spaced rather than placed in proportion to the scroll extent — see
+ * AGENTS.md's message-marks invariant — which is also what lets the same
+ * component draw places that have no row at all, from a transcript.
  */
-function MessageRail({
-  messages,
+function Rail({
+  entries,
   current,
-  onJump,
+  label,
+  className,
 }: {
-  messages: Message[]
-  /** The row of the message the viewport is inside, drawn filled. */
-  current: number | null
-  onJump(row: number): void
+  entries: RailEntry[]
+  /** The key of the entry the viewport is inside, drawn filled. */
+  current: string | null
+  label: string
+  /** Where the column sits, and what colour its dots are. */
+  className: string
 }) {
-  const oldestFirst = [...messages].reverse()
   return (
     <div
       // `z-10` is load-bearing — see AGENTS.md's message-marks invariant for
       // why a later sibling still loses to xterm's canvases.
-      className="pointer-events-none absolute top-1/2 right-[18px] z-10 flex w-4 -translate-y-1/2 flex-col items-center gap-[11px]"
+      // The colour rides on `text-*` here and each dot asks for `current`:
+      // `border-color` is not inherited, so a dot asking to inherit one
+      // resolves against its own button — which preflight leaves at
+      // `currentcolor` — and both rails come out the same colour.
+      className={`pointer-events-none absolute top-1/2 z-10 flex w-4 -translate-y-1/2 flex-col items-center gap-[11px] ${className}`}
       role="group"
-      aria-label="Your messages in the scrollback"
+      aria-label={label}
     >
-      {oldestFirst.map(({ row, label }) => (
+      {entries.map((entry) => (
         <button
-          key={row}
+          key={entry.key}
           type="button"
-          title={label || `Line ${row}`}
-          aria-label={`Scroll to your message: ${label || `line ${row}`}`}
-          onClick={() => onJump(row)}
-          aria-current={row === current ? 'true' : undefined}
+          title={entry.label}
+          aria-label={`${label}: ${entry.label}`}
+          onClick={entry.open}
+          aria-current={entry.key === current ? 'true' : undefined}
           className="group pointer-events-auto flex h-3 w-4 flex-none items-center justify-center"
         >
           <span
-            className={`rounded-full border border-brand/70 group-hover:border-brand group-hover:bg-brand ${
-              row === current
-                ? 'h-[9px] w-[9px] border-brand bg-brand'
+            className={`rounded-full border border-current group-hover:bg-current ${
+              entry.key === current
+                ? 'h-[9px] w-[9px] bg-current'
                 : 'h-[7px] w-[7px]'
             }`}
           />
@@ -819,16 +1121,17 @@ const reflowRuins = (term: Terminal, agentId: string) =>
  * and "next" have nothing to say.
  */
 function MessageSteps({
-  messages,
+  count,
   onStep,
   onReplay,
 }: {
-  messages: Message[]
+  /** How many places there are to walk, from whichever source found them. */
+  count: number
   onStep(direction: -1 | 1): void
   /** Set when there is a session to reopen; absent on a launcher tab. */
   onReplay?: () => void
 }) {
-  const steppable = messages.length > 1
+  const steppable = count > 1
   if (!steppable && !onReplay) return null
   return (
     <div // Left of the rail's own 16px lane rather than sharing it: both hug the
@@ -847,7 +1150,7 @@ function MessageSteps({
             ↑
           </button>
           <span className="sr-only" role="status">
-            {messages.length} messages in the scrollback
+            {count} messages in this session
           </span>
           <button
             type="button"
@@ -992,6 +1295,72 @@ function FindBar({
     </div>
   )
 }
+
+/** What the agent is showing right now, for the seek and the bar to read. */
+const screenOf = (term: Terminal) => ({
+  get rows() {
+    return term.rows
+  },
+  row: (index: number) =>
+    term.buffer.active.getLine(index)?.translateToString(true) ?? '',
+})
+
+/** One wheel notch, in the units a browser reports for a line-mode wheel. */
+const WHEEL_DELTA = 120
+
+/**
+ * Turns the wheel on the agent's behalf, `count` notches, negative for up.
+ *
+ * Dispatched on xterm's own element rather than encoded here: a mouse report
+ * is the terminal's business and it already builds the right one. This is the
+ * only way to move a view the agent owns — see `seek.ts`.
+ */
+function sendNotches(element: HTMLElement, count: number) {
+  const box = element.getBoundingClientRect()
+  for (let sent = 0; sent < Math.abs(count); sent += 1) {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: count < 0 ? -WHEEL_DELTA : WHEEL_DELTA,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+      }),
+    )
+  }
+}
+
+/**
+ * How long to let a burst land before reading the screen again.
+ *
+ * The agent repaints over the pty, so a read taken in the same frame still
+ * sees the screen from before the scroll.
+ */
+const SEEK_SETTLE_MS = 40
+
+/**
+ * Whether a live session is having the mouse sent to it.
+ *
+ * xterm forwards a click to the child the moment a CLI turns tracking on, and
+ * its `Linkifier` activates a link from the same mouseup without consulting
+ * that — so a path under the pointer opened the file column *and* reached the
+ * agent, from one click. The app's own links stand down while the agent is
+ * listening: what is under the pointer then is the agent's control, and it is
+ * the one that should answer.
+ *
+ * `live` is the other half, and it is not belt-and-braces: xterm clears the
+ * mode only when the child asks it to, so an agent that is killed rather than
+ * closed leaves tracking armed for good. Its output stays on screen under the
+ * ended-session bar, and without this every path and URL in it would be dead
+ * until the tab closed.
+ *
+ * It answers for the **session's** process, which is the agent, because the
+ * session is an `exec` and the login shell goes with it. A TUI killed inside a
+ * still-running shell — `vim` with `set mouse=a` — leaves that tab's links off
+ * until something resets the terminal, and nothing here can see that it died.
+ */
+const agentReadsMouse = (term: Terminal, live: boolean) =>
+  live && term.modes.mouseTrackingMode !== 'none'
 
 /**
  * Underlines the file paths in one row and hands a click back to the pane.

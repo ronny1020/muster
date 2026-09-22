@@ -8,6 +8,18 @@ import { appState, setAppState } from '../../../shared/lib/appstate'
  * missing, mistyped or out of range falls back to the default rather than
  * breaking the window, since a bad value here would leave nothing to fix it in.
  */
+/**
+ * Which of the two a tab starts in.
+ *
+ * `clicks` leaves the agent in its own fullscreen renderer, where it reports
+ * mouse events and its prompts, subagent picker and running shells answer a
+ * click. `scrollback` holds it in the normal buffer, which is what gives the
+ * message rail, the path beside the scrollbar, the find bar and the width
+ * repair a session to read — and costs the mouse. `SCROLLBACK_ENV` in
+ * `pty.rs` has why no session can have both.
+ */
+export type TerminalMode = 'clicks' | 'scrollback'
+
 export interface Settings {
   /** Agent selected when a new tab opens. */
   defaultAgentId: string
@@ -17,6 +29,12 @@ export interface Settings {
   defaultBackend: Backend
   /** Which WSL distro a `wsl` session uses; empty means the default one. */
   defaultDistro: string
+  /**
+   * Which mode a new tab starts in. Only Claude Code answers it; every other
+   * CLI keeps its own renderer whatever this says, and the status bar's
+   * control overrides it for one tab.
+   */
+  terminalMode: TerminalMode
   /** Terminal colour scheme, by id. */
   themeId: string
   fontFamily: string
@@ -68,6 +86,12 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultDirectory: '',
   defaultBackend: 'native',
   defaultDistro: '',
+  // Scrollback, which is what every session did before this setting existed
+  // and what the scrollbar needs: the thumb, the marks on it, the path chip
+  // and the width repair all read the terminal's own history, and none of
+  // them can exist in the alternate buffer. Clicks is one press away on the
+  // tab that wants the agent's mouse.
+  terminalMode: 'scrollback',
   themeId: DEFAULT_THEME_ID,
   fontFamily: stackFor('JetBrains Mono'),
   fontSize: 13,
@@ -126,6 +150,10 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.defaultDistro,
       true,
     ),
+    terminalMode:
+      raw.terminalMode === 'clicks' || raw.terminalMode === 'scrollback'
+        ? raw.terminalMode
+        : DEFAULT_SETTINGS.terminalMode,
     // Validated against the table rather than kept as typed: a stored id for a
     // theme that no longer exists must not leave the terminal unstyled.
     themeId:

@@ -110,6 +110,26 @@ export function SettingsPane() {
           </Row>
 
           <Row
+            label="Default terminal mode"
+            hint="What a new tab starts on — the start screen offers it per launch, and the status bar switches a tab already running. Clicks lets Claude Code's own prompts, subagents and shells take the mouse; Scrollback keeps the terminal's own history, which is what the scrollbar, the find bar, the path beside the scrollbar and the width repair need. No session can have both."
+          >
+            <select
+              value={settings.terminalMode}
+              aria-label="Terminal mode"
+              onChange={(event) =>
+                update({
+                  terminalMode:
+                    event.target.value === 'clicks' ? 'clicks' : 'scrollback',
+                })
+              }
+              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+            >
+              <option value="scrollback">Scrollback</option>
+              <option value="clicks">Clicks</option>
+            </select>
+          </Row>
+
+          <Row
             label="Default directory"
             hint="Blank uses the last directory you opened"
           >

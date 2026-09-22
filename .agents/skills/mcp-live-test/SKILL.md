@@ -32,7 +32,12 @@ until [ -S /tmp/muster-mcp.sock ]; do sleep 2; done
 
 The first build takes a minute. `bun run dev` alone exposes no socket.
 
-**Never run this while someone is working in a Muster window.** `tauri dev`
+Both scripts run the app as **muster-dev**, under its own bundle identifier —
+so the tabs, the settings and the journal you measure are that build's, and
+never an installed Muster's. When this file says to read a recording, it means
+`~/Library/Application Support/io.github.ronny1020.muster.dev/journal`.
+
+**Never run this while someone is working in a muster-dev window.** `tauri dev`
 restarts the binary on a Rust edit, killing every session in it, and reloads
 the webview on a frontend edit, discarding every tab's scrollback. A session
 someone cares about must be in the installed app, not in the build you are
@@ -113,9 +118,12 @@ Three things about reading it, and each one is a wrong answer waiting to
 happen.
 
 `display: none` means the **alternate buffer** is active — the ruler is hidden
-and there is nothing to measure. That is not the same as "no marks are
+and there is nothing to measure. The rails are still drawn there, from the
+agent's transcript rather than the buffer, so read them from the DOM
+(`[role="group"][aria-label^="Your messages"]`) rather than from this canvas. That is not the same as "no marks are
 painted", and mistaking the one for the other reads exactly like a bug in the
-code under test.
+code under test. A clickable Claude Code tab is in that buffer by design, so
+check the mode before reading anything from this canvas.
 
 Pixels prove **presence and lane, never count or row**.
 `ColorZoneStore.addDecoration` merges any two decorations of the same colour
@@ -138,9 +146,13 @@ draws every non-`full` zone and then every `full` one on top, opaquely.
 
 A replayed transcript is the best fixture there is: real tool-call headers,
 thousands of rows, and no tokens spent as long as nothing is submitted. It has
-to be a **Claude Code** tab — `SCROLLBACK_ENV` keeps that one agent out of the
-alternate buffer and nothing keeps the other eight out, so any of them gives an
-empty ruler for reasons that have nothing to do with your change.
+to be a **Claude Code** tab **in scrollback mode** — `SCROLLBACK_ENV` takes
+that one agent out of the alternate buffer and nothing takes the other eight
+out at all. Scrollback is the default, so a fresh tab has a ruler to read; a clicks tab
+has none at all, and the mode is per tab and per the `terminalMode` setting,
+so check the status bar's **Clicks / Scrollback** control first: read against a clickable tab and the ruler is empty for reasons
+that have nothing to do with your change. Pressing it reopens the session with
+`--continue`, which is the replay you wanted anyway.
 
 What a replay does _not_ give you is the message marks. Measured on a 977-row
 `--continue`, only the banner and the last four prompts carried the tint the
@@ -172,7 +184,7 @@ bottom on every write, so a scroll taken mid-replay is undone under you.
 
 ## What the journal is for
 
-`~/Library/Application Support/io.github.ronny1020.muster/journal/<dir>/*.log`
+`~/Library/Application Support/io.github.ronny1020.muster.dev/journal/<dir>/*.log`
 is the pty stream verbatim. It is the only honest source for **what an agent
 actually prints** — strip the escapes and count. A pattern guessed from what a
 tool call looks like cost a whole feature once: Claude Code writes

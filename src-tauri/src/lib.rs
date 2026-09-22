@@ -12,6 +12,7 @@ mod pty;
 mod review;
 mod sessions;
 mod store;
+mod transcript;
 mod workspace;
 
 #[cfg(test)]
@@ -111,6 +112,7 @@ pub fn run() {
             workspace::create_directory,
             sessions::agent_sessions,
             journal::journal_sessions,
+            transcript::agent_turns,
             journal::journal_read,
             journal::journal_sweep,
             attach::attach_text,

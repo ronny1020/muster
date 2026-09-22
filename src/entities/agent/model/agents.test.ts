@@ -153,3 +153,21 @@ test('an unknown id falls back to a listed agent rather than nothing', () => {
     true,
   )
 })
+
+test('only the CLI that answers the variable is offered the mode switch', () => {
+  // `SCROLLBACK_ENV` in `pty.rs` is undocumented and read by Claude Code
+  // alone. Anywhere else the control would reopen the session and change
+  // nothing about it.
+  const offered = [...AGENTS, SHELL_AGENT].filter(
+    (agent) => agent.scrollbackMode,
+  )
+  expect(offered.map((agent) => agent.id)).toEqual(['claude'])
+})
+
+test('switching mode has a conversation to reopen', () => {
+  // The variable is read at spawn, so the switch starts the CLI again — which
+  // is only worth offering where its own `continue` can print the session back.
+  for (const agent of AGENTS.filter((agent) => agent.scrollbackMode)) {
+    expect(agent.modes.some((mode) => mode.id === 'continue')).toBe(true)
+  }
+})

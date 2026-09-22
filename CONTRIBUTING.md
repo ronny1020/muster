@@ -34,9 +34,18 @@ a subset of these (see `.github/workflows/ci.yml`); a local build wants them all
 ## Running
 
 ```bash
-bun run dev      # tauri dev; Bun serves the frontend on :1420 with hot reload
-bun run build    # typecheck, bundle, then produce this platform's installers
+bun run dev            # tauri dev as muster-dev; Bun serves the frontend on :1420
+bun run dev:installed  # the same, sharing the installed app's tabs and journal
+bun run build          # typecheck, bundle, then produce this platform's installers
 ```
+
+`dev` overrides the bundle identifier, which is what Tauri derives the app data
+directory from — so `muster-dev` keeps its own `state.json` and its own recorded
+sessions, and a development run cannot disturb the tabs or the journal of an
+installed Muster. That is the default because the app under test spawns real
+agents in real directories. `dev:installed` is the escape hatch for the rare
+case where you need to reproduce something against the installed app's own
+state; it writes to it, so treat it as you would editing that state by hand.
 
 Frontend edits hot-reload. Rust edits trigger a rebuild and restart the window,
 which drops every running session — expect that when working in `src-tauri/`.
@@ -46,7 +55,7 @@ component, but every `invoke` fails there: nothing outside the Tauri window has
 a backend.
 
 ```bash
-bun run dev:mcp  # tauri dev --features mcp
+bun run dev:mcp  # tauri dev --features mcp, as muster-dev
 ```
 
 `dev:mcp` adds `tauri-plugin-mcp`, which listens on `/tmp/muster-mcp.sock` and
@@ -116,6 +125,7 @@ building.
 | Piece                                              | Where                                                  |
 | -------------------------------------------------- | ------------------------------------------------------ |
 | PTY sessions, one per tab                          | `src-tauri/src/pty.rs`                                 |
+| An agent's own transcript, read for the rail       | `src-tauri/src/transcript.rs`                          |
 | Shells, WSL and process inspection per host        | `src-tauri/src/platform.rs`                            |
 | Path, git status, log, branches and checkout       | `src-tauri/src/workspace.rs`                           |
 | Commands exposed to the frontend                   | `src-tauri/src/lib.rs`                                 |
@@ -127,6 +137,11 @@ building.
 | Editor detection and launching                     | `src-tauri/src/editor.rs`                              |
 | Installed font family enumeration                  | `src-tauri/src/fonts.rs`                               |
 | Finding your messages in the scrollback            | `src/features/terminal/model/messages.ts`              |
+| The places a transcript's turns reduce to          | `src/entities/transcript/model/turns.ts`               |
+| Re-reading a transcript when its tab goes quiet    | `src/entities/transcript/model/useTurns.ts`            |
+| What an agent has already run here                 | `src/entities/agent/model/usePastSessions.ts`          |
+| Scrolling an agent's own view back to a message    | `src/features/terminal/model/seek.ts`                  |
+| Which surfaces a session's buffer supports         | `src/features/terminal/model/surfaces.ts`              |
 | Turn-end events an agent broadcasts                | `src/features/terminal/model/agentevents.ts`           |
 | Whether a session is still working                 | `src/features/terminal/model/working.ts`               |
 | Which file the output is about                     | `src/features/terminal/model/codeblocks.ts`            |
@@ -200,7 +215,7 @@ src/app/        composition root — App, main, the stylesheet, shortcut wiring
 src/widgets/    surfaces that compose several features — Pane, TabStrip
 src/features/   one capability each — terminal, workspace, launch, settings,
                 review, journal, fleet
-src/entities/   vocabulary features share — tab, agent, preferences
+src/entities/   vocabulary features share — tab, agent, preferences, transcript
 src/shared/     ipc.ts, lib/ for contained libraries, ui/ for presentation
                 with no domain in it
 ```
@@ -222,6 +237,7 @@ roster is written out by hand. Start with the entry:
   command: "mycli",        // resolved through the user's login shell
   accent: "#4e8df5",       // tab underline, dot, and selected-state border
   acceptsFlags: true,      // false only for something that takes no arguments
+  scrollbackMode: false,   // true only for a CLI that answers SCROLLBACK_ENV
   modes: [
     { id: "new", label: "New session", hint: "Start fresh in this directory", args: [] },
     { id: "continue", label: "Continue", hint: "Reopen the most recent session", args: ["--continue"] },
@@ -256,6 +272,13 @@ Rules the tests enforce, and the reasons for them:
 - **Id, command and accent are all unique.** `agentById` falls back to the first
   agent, so a duplicate id would shadow rather than fail; a shared accent makes
   two tabs indistinguishable.
+- **`scrollbackMode` stays `false` unless you have watched the CLI answer.**
+  It puts the status bar's Clicks / Scrollback control on the tab, and the
+  variable behind it — `SCROLLBACK_ENV` in `pty.rs` — is undocumented and read
+  by Claude Code alone. On any other CLI the control reopens the session and
+  changes nothing, which is worse than not offering it. A test pins the list to
+  Claude Code, and a second one pins that an agent offering the switch has a
+  `continue` mode to reopen the conversation with.
 
 The launcher, settings picker and status bar all read the registry, so no
 component needs touching. The other places that follow:
@@ -293,6 +316,19 @@ say so: they are drawn here rather than traced, for the reason AGENTS.md's icon
 invariant gives. Drawing one is the exception, not an option — reach for it only
 when the upstream glyph is wrong for the job, keep Material's 960 grid and match
 the 80-unit stroke those three use, and say in a comment that it is not traced.
+
+## Reviewing a change
+
+`.claude/agents/muster-reviewer.md` is a read-only reviewer that knows this
+repository: it freezes the diff, reads AGENTS.md's invariants as the
+specification, and checks the documents this repo requires a change to update
+in the same commit. Ask for it by name, or just ask for a review in a session
+that has it.
+
+It reports and never fixes, and it is deliberately not part of any check — the
+hooks and CI cannot see a broken invariant, a sideways import that
+`test/layers.test.ts` does not reach, or a paragraph describing the behaviour a
+change replaced, and that is the gap it exists to cover.
 
 ## Where the tests live
 
