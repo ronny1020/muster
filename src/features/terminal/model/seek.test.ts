@@ -1,12 +1,16 @@
 import { expect, test } from 'bun:test'
 
 import {
+  MAX_STALLS,
   moved,
   needleFor,
   normalise,
+  NOTCHES_PER_LOOK,
   onScreen,
   rowsOf,
   type Screen,
+  sweep,
+  type Sweep,
 } from './seek'
 
 const screenOf = (lines: string[]): Screen => ({
@@ -88,4 +92,53 @@ test('joining rows does not invent a match across the whole screen', () => {
   expect(
     onScreen(screenOf(['the resize and', 'something else entirely']), needle),
   ).toBe(false)
+})
+
+/** A sweep over a view that answers each burst by moving `step` rows. */
+function sweeping({ step, rows = 4 }: { step: number; rows?: number }) {
+  let top = 1000
+  const notches: number[] = []
+  const run: Sweep = {
+    screen: {
+      get rows() {
+        return rows
+      },
+      row: (index) => `line ${top + index}`,
+    },
+    up: true,
+    notch: (up) => notches.push(up ? -1 : 1),
+    settle: () => {
+      top -= step
+      return Promise.resolve()
+    },
+    owns: () => true,
+    done: () => false,
+  }
+  return { run, notches: () => notches }
+}
+
+test('a sweep gives up once the view stops moving', async () => {
+  // The agent pins its view to the bottom while it prints, so a sweep that
+  // kept going would spend its whole bound sending notches into a turn.
+  const { run, notches } = sweeping({ step: 0 })
+  const travelled = await sweep(run)
+  expect(travelled).toBe(0)
+  expect(notches().length).toBe(MAX_STALLS * NOTCHES_PER_LOOK)
+})
+
+test('a sweep counts only the bursts that moved the view', async () => {
+  const { run } = sweeping({ step: 6 })
+  let looks = 0
+  // Arrives on the third look, so two bursts are the way back.
+  const travelled = await sweep({ ...run, done: () => (looks += 1) > 2 })
+  expect(travelled).toBe(2 * NOTCHES_PER_LOOK)
+})
+
+test('a sweep that loses the view stops sending notches', async () => {
+  // A TUI can drop mouse tracking mid-sweep, and every later notch would
+  // then be typed into the agent rather than reported to it.
+  const { run, notches } = sweeping({ step: 6 })
+  const travelled = await sweep({ ...run, owns: () => false })
+  expect(travelled).toBe(0)
+  expect(notches().length).toBe(NOTCHES_PER_LOOK)
 })

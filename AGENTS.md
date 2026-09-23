@@ -731,7 +731,11 @@ terminal existed, which the scan measured at five marks out of a 977-row
 transcript. What it cannot do is move the viewport by itself: the agent owns
 scrolling inside the alternate buffer, so `scrollToLine` does nothing there
 and a transcript place has to be sought instead. The step buttons walk
-either list; only the scan's marks are jumped to directly.
+either list; only the scan's marks are jumped to directly. Past the newest
+place, ↓ goes to the live bottom in both — `scrollToBottom` in a scrollback
+tab, a sweep the other way in a clickable one — because the output after the
+last message is where the agent is working, and a walk that rests on the
+newest message cannot reach it.
 
 **There is no scrollbar over that buffer, and there is nothing to draw one
 from.** The alternate buffer is exactly `rows` tall, so xterm has no extent
@@ -761,13 +765,20 @@ prevent.
 
 **A dot seeks instead, and the stall check is the whole feature.** The wheel
 is the one thing that moves a view the agent owns, and xterm forwards it —
-measured, `CSI <64` on every notch — so `seekTo` sends bursts and reads the
+measured, `CSI <64` on every notch — so `sweep` sends bursts and reads the
 screen between them until the message is there. The first version had no
 stall check and was unusable: the agent pins its view to the bottom while it
 is **printing**, so 60 notches at a working session moved the top row not one
 line, and two attempts spent 48 and 52 seconds finding nothing. `moved` in
 `seek.ts` now ends it after two bursts that changed nothing, and the view goes
 back exactly as far as it came.
+
+The stall is also what the return to the bottom is built on. `seekToBottom`
+runs the same loop downward with nothing to look for and keeps what it sent,
+because nothing reports where the bottom is — arriving _is_ the stall. Both
+go through `wheelOver`, which is where the tracking check lives: a sweep that
+sends notches to a session not reading the mouse types a hundred arrow
+presses into it instead.
 
 Judging "changed nothing" is the part that needs care. An exact comparison
 says _moved_ on a frozen view, because the agent repaints its own spinner,
@@ -824,6 +835,18 @@ preserve if either surface changes, and it is why the count is passed in
 rather than recomputed. The rail sits clear of the scrollbar rather than
 over it, and `pointer-events-none` on its column with `auto` on each dot keeps
 the gaps inert either way.
+
+**The filled dot answers a different question on each rail, and only one of
+them can be measured.** A scrollback rail fills the mark the **viewport** is
+inside. A clickable one fills the place the **walk** is on, because the agent
+owns its own scrolling inside the alternate buffer and reports nothing about
+where its view sits — so where the buttons are is the only position anything
+here knows. That makes it state rather than a ref: it is the only thing the
+rail has to draw from, and a ref redraws nothing, so every dot looks the same
+however many times the buttons are pressed. The walk itself is `walk.ts`, out
+of the component so a test can reach it — `walkTo` is where ↓ past the newest
+message becomes the live bottom, and `placeKey` is what keeps the filled key
+one the rail actually drew.
 
 The list is capped at `MAX_MARKS`, derived from the shortest pane the window's
 420px floor allows: past that the oldest dot would be clipped while the step

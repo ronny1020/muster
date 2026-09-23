@@ -36,14 +36,13 @@ import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
 import { surfacesFor } from '../model/surfaces'
 import {
-  MAX_LOOKS,
-  MAX_STALLS,
-  moved,
   needleFor,
-  NOTCHES_PER_LOOK,
   onScreen,
-  rowsOf,
+  type Screen,
+  sweep,
+  type Sweep,
 } from '../model/seek'
+import { placeKey, walkTo, walkedKey } from '../model/walk'
 import {
   messagesIn,
   type Place,
@@ -277,8 +276,12 @@ export function TerminalView({
    * so the first ↑ goes to the newest — and put back there whenever the
    * transcript grows, since the turns arrive after the first render and a
    * new message is the newest thing to walk back from.
+   *
+   * State rather than a ref because the rail draws it: this is the only thing
+   * that says which place the walk is on, so a ref would leave every dot
+   * looking the same however many times the buttons were pressed.
    */
-  const stepped = useRef(said.length)
+  const [stepped, setStepped] = useState(said.length)
   // Keyed on the newest turn, not the count: the list is a window on the last
   // dozen, so past a dozen messages its length stops changing and a reset
   // that watched the length would never fire again.
@@ -293,23 +296,11 @@ export function TerminalView({
   const walked = useRef<string | null>(null)
   if (said.length > 0 && walked.current !== newest) {
     walked.current = newest
-    stepped.current = said.length
+    // A render-phase update of this component's own state, which React
+    // re-renders in place: the walk has to be put back before the rail is
+    // drawn, or one frame marks a dot the buttons have already left.
+    setStepped(said.length)
   }
-  /** Walks the transcript's messages with the step buttons, newest last. */
-  const stepThrough = useCallback(
-    (direction: -1 | 1) => {
-      if (said.length === 0) return
-      const next = Math.max(
-        0,
-        Math.min(said.length - 1, stepped.current + direction),
-      )
-      stepped.current = next
-      void seekTo(said[next]!)
-    },
-    // `seekTo` is stable, and `said` changes only when the transcript does.
-    [said],
-  )
-
   /** Which seek owns the view: a later click supersedes an unfinished one. */
   const seeking = useRef(0)
   /** Which registration this view's session is, for the kill on the way out. */
@@ -324,75 +315,116 @@ export function TerminalView({
    */
   const integrated = useRef(false)
   /**
-   * Scrolls the agent's own view back to one of its messages.
+   * Sets up a run of the wheel over the agent's own view, or answers null
+   * when nothing may be sent.
    *
-   * The wheel is the only thing that moves a view the agent owns, so this
+   * The wheel is the only thing that moves a view the agent owns, so a sweep
    * sends notches the way a hand would and reads the screen between them —
    * see `seek.ts`. Dispatched on xterm's own element rather than encoded
    * here: the report's shape is the terminal's business, and it is already
    * right.
    *
-   * It gives up the moment the view stops moving, which is what makes it
-   * usable — the agent pins its view to the bottom while it is printing, and
-   * a seek that kept trying through that spent the better part of a minute
-   * going nowhere. Not finding it leaves the view where it started.
-   *
-   * And it sends nothing at all unless the agent is reading the mouse, which
-   * is not a tidy guard but the whole safety of the gesture. xterm answers a
+   * It sends nothing at all unless the agent is reading the mouse, which is
+   * not a tidy guard but the whole safety of the gesture. xterm answers a
    * wheel nobody asked to hear on a buffer with no scrollback by **typing**:
    * it turns each line the notch would have scrolled into `ESC[A` or `ESC[B`
    * and writes them to the pty. A burst is eight notches of roughly seven
-   * lines, so one stalled seek is around a hundred arrow presses into a live
+   * lines, so one stalled sweep is around a hundred arrow presses into a live
    * agent — and Up recalls the previous prompt in Claude Code, so a click
    * meant to scroll would overwrite a draft and leave nothing looking wrong.
    * The rail is drawn from the buffer and the turns, neither of which says
    * whether tracking is armed, so the check has to be here.
    */
-  const seekTo = useCallback(async (place: Place) => {
-    const term = terminal.current
-    const element = host.current?.querySelector<HTMLElement>('.xterm-screen')
-    const needle = needleFor(place.label)
-    if (!term || !element || !needle) return
-    if (!agentReadsMouse(term, live.current)) return
-    // A second dot clicked mid-seek supersedes the first: two loops sending
-    // bursts at one view, each undoing its own count afterwards, leave it
-    // somewhere neither click asked for.
-    const mine = (seeking.current += 1)
-    const screen = screenOf(term)
-    const notch = (up: boolean) => sendNotches(element, up ? -1 : 1)
-    // Only the bursts that moved the view are worth undoing. A burst the
-    // agent absorbed — at the top of what it kept, or while it was printing
-    // — scrolled nothing, so counting it into the way back drives the view
-    // past where it started and pins it to the bottom.
-    let travelled = 0
-    let stalls = 0
-    // Read before the first burst, not left empty: `moved` calls two empty
-    // screens moved so a seek always gets its first burst, and seeding this
-    // with one would bill that burst to the way back even when it scrolled
-    // nothing.
-    let before = rowsOf(screen)
-    for (let look = 0; look < MAX_LOOKS; look += 1) {
-      if (onScreen(screen, needle)) return
-      for (let i = 0; i < NOTCHES_PER_LOOK; i += 1) notch(true)
-      // The agent answers a burst by repainting over the pty, so the screen
-      // read next is only current once that has arrived.
-      await new Promise((settle) => setTimeout(settle, SEEK_SETTLE_MS))
-      // Re-checked, not just tested once: a TUI can drop tracking mid-seek,
-      // and every later notch would then be typed rather than reported.
-      if (seeking.current !== mine || !agentReadsMouse(term, live.current)) {
-        return
+  const wheelOver = useCallback(
+    (up: boolean, arrived: (screen: Screen) => boolean): Sweep | null => {
+      const term = terminal.current
+      const element = host.current?.querySelector<HTMLElement>('.xterm-screen')
+      if (!term || !element) return null
+      if (!agentReadsMouse(term, live.current)) return null
+      // A second click mid-sweep supersedes the first: two loops sending
+      // bursts at one view, each undoing its own count afterwards, leave it
+      // somewhere neither click asked for.
+      const mine = (seeking.current += 1)
+      const screen = screenOf(term)
+      return {
+        screen,
+        up,
+        notch: (upward) => sendNotches(element, upward ? -1 : 1),
+        settle: () =>
+          new Promise((landed) => setTimeout(landed, SEEK_SETTLE_MS)),
+        owns: () =>
+          seeking.current === mine && agentReadsMouse(term, live.current),
+        done: () => arrived(screen),
       }
-      const after = rowsOf(screen)
-      const shifted = moved(before, after)
-      if (shifted) travelled += NOTCHES_PER_LOOK
-      stalls = shifted ? 0 : stalls + 1
-      before = after
-      if (stalls >= MAX_STALLS) break
-    }
-    if (onScreen(screen, needle) || seeking.current !== mine) return
-    // Put the view back as far as it actually came.
-    for (let i = 0; i < travelled; i += 1) notch(false)
-  }, [])
+    },
+    [],
+  )
+
+  /**
+   * Scrolls the agent's own view back to one of its messages.
+   *
+   * It gives up the moment the view stops moving, which is what makes it
+   * usable — the agent pins its view to the bottom while it is printing, and
+   * a seek that kept trying through that spent the better part of a minute
+   * going nowhere. Not finding it leaves the view where it started.
+   */
+  const seekTo = useCallback(
+    async (place: Place) => {
+      const needle = needleFor(place.label)
+      if (!needle) return
+      const run = wheelOver(true, (screen) => onScreen(screen, needle))
+      if (!run) return
+      const travelled = await sweep(run)
+      if (run.done() || !run.owns()) return
+      // Put the view back as far as it actually came.
+      for (let i = 0; i < travelled; i += 1) run.notch(!run.up)
+    },
+    [wheelOver],
+  )
+
+  /**
+   * Returns the agent's own view to the newest output.
+   *
+   * The end of the walk is the live bottom rather than the newest message:
+   * what an agent prints after it is where the work is, and nothing else here
+   * can reach it once a dot has taken the view up the conversation — the
+   * alternate buffer has no scrollback, so `scrollToBottom` moves nothing.
+   *
+   * It runs until the view stops rather than looking for anything, because
+   * nothing reports where the bottom is, and it keeps what it sent rather
+   * than undoing it: arriving *is* the stall.
+   */
+  const seekToBottom = useCallback(() => {
+    const run = wheelOver(false, () => false)
+    if (run) void sweep(run)
+  }, [wheelOver])
+
+  /**
+   * Walks the transcript's messages with the step buttons, newest last.
+   *
+   * Past the newest, ↓ goes to the live bottom rather than resting on it —
+   * the same gesture `stepMessage` answers with `scrollToBottom` in a
+   * scrollback tab, and the only way back to where the agent is working.
+   */
+  const stepThrough = useCallback(
+    (direction: -1 | 1) => {
+      if (said.length === 0) return
+      const next = walkTo({ at: stepped, count: said.length, direction })
+      setStepped(next)
+      if (next === said.length) seekToBottom()
+      else void seekTo(said[next]!)
+    },
+    [said, stepped, seekTo, seekToBottom],
+  )
+
+  /** Seeks to one message from a click on its dot, and walks on from there. */
+  const jumpToSaid = useCallback(
+    (index: number) => {
+      setStepped(index)
+      void seekTo(said[index]!)
+    },
+    [said, seekTo],
+  )
 
   useRulerMarks(mounted, messages, MESSAGE_MARK)
   const fileMarks = useFileMarks(mounted, active)
@@ -1067,11 +1099,15 @@ export function TerminalView({
           {said.length > 0 && (
             <Rail
               entries={said.map((place: Place, index: number) => ({
-                key: `said-${index}`,
+                key: placeKey(index),
                 label: place.label,
-                open: () => void seekTo(place),
+                open: () => jumpToSaid(index),
               }))}
-              current={null}
+              // Which place the walk is on, not which one the view is
+              // inside: the agent owns its own scrolling and reports nothing
+              // about it, so where the buttons are is the only position
+              // anything here knows.
+              current={walkedKey(stepped, said.length)}
               label="Your messages in this conversation"
               className="right-[18px] text-brand"
             />

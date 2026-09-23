@@ -120,3 +120,54 @@ export function moved(before: string[], after: string[]): boolean {
   const same = before.filter((row, index) => row === after[index]).length
   return same < before.length * STILL_FRACTION
 }
+
+/** One run of the wheel over a view the agent owns. */
+export interface Sweep {
+  /** What the agent is showing right now. */
+  screen: Screen
+  /** Which way it is going. Carried so a caller can undo what it sent. */
+  up: boolean
+  /** Turns the wheel one notch. */
+  notch(up: boolean): void
+  /** Waits for the agent's repaint to arrive. */
+  settle(): Promise<void>
+  /** Whether this sweep still owns the view, re-read after every await. */
+  owns(): boolean
+  /** Whether it has arrived. A sweep to the end never has. */
+  done(): boolean
+}
+
+/**
+ * Sends bursts one way until the sweep has arrived or the view stops moving.
+ *
+ * Answers how many notches actually moved it, because only those are worth
+ * undoing: a burst the agent absorbed — at the end of what it kept, or while
+ * it was printing — scrolled nothing, so counting it into the way back drives
+ * the view past where it started and pins it to the bottom.
+ */
+export async function sweep(run: Sweep): Promise<number> {
+  let travelled = 0
+  let stalls = 0
+  // Read before the first burst, not left empty: `moved` calls two empty
+  // screens moved so a sweep always gets its first burst, and seeding this
+  // with one would bill that burst to the way back even when it scrolled
+  // nothing.
+  let before = rowsOf(run.screen)
+  for (let look = 0; look < MAX_LOOKS; look += 1) {
+    if (run.done()) return travelled
+    for (let i = 0; i < NOTCHES_PER_LOOK; i += 1) run.notch(run.up)
+    // The agent answers a burst by repainting over the pty, so the screen
+    // read next is only current once that has arrived.
+    await run.settle()
+    // Re-checked, not just tested once: a TUI can drop tracking mid-sweep,
+    // and every later notch would then be typed rather than reported.
+    if (!run.owns()) return travelled
+    const after = rowsOf(run.screen)
+    const shifted = moved(before, after)
+    if (shifted) travelled += NOTCHES_PER_LOOK
+    stalls = shifted ? 0 : stalls + 1
+    before = after
+    if (stalls >= MAX_STALLS) break
+  }
+  return travelled
+}
