@@ -53,6 +53,13 @@ import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { fileAbove, type NamedFile } from '../model/codeblocks'
 import { currentMessage, nextMessage, previousMessage } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
+import {
+  parseShellEvent,
+  type Position,
+  type ShellEvent,
+} from '../model/blocks'
+import { ShellOverlay } from './ShellOverlay'
+import { type ResolvedBlock, useShellBlocks } from './useShellBlocks'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
 import { useViewportRow } from './useViewportRow'
@@ -140,6 +147,8 @@ export function TerminalView({
   paste,
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null)
+  /** The whole pane, which is what the overlay follows the pointer across. */
+  const pane = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal>(null)
   /** The grid's last column count, so either re-fit path can spot a change. */
   const lastCols = useRef(0)
@@ -157,6 +166,86 @@ export function TerminalView({
    * them had already happened.
    */
   const [alternate, setAlternate] = useState(false)
+  /**
+   * Where the terminal's `OSC 133` route delivers, filled in by the hook that
+   * tracks the blocks. Held here because the handler is registered with the
+   * terminal itself: a boundary reported before the hook had subscribed would
+   * be the first prompt of the session, which is the one the completion needs.
+   */
+  const shellSink = useRef<((event: ShellEvent, at: Position) => void) | null>(
+    null,
+  )
+  const shell = useShellBlocks({
+    term: mounted,
+    sessionId,
+    active,
+    live: !ended,
+    sink: shellSink,
+  })
+  /**
+   * When the last copy happened, so the control can confirm it.
+   *
+   * A copy leaves nothing on screen to show it worked — the clipboard is
+   * somewhere else — and both routes to it need the same answer.
+   */
+  const [copiedAt, setCopiedAt] = useState(0)
+  const copyOutput = useCallback(
+    (block: ResolvedBlock) => {
+      const text = shell.outputText(block)
+      if (!text) return false
+      void writeClipboard(text)
+      setCopiedAt(Date.now())
+      // The control is a real button outside the grid, so clicking it takes
+      // DOM focus off xterm's textarea and the session stops receiving
+      // typing. Every other control drawn over the grid hands focus back the
+      // same way.
+      terminal.current?.focus()
+      return true
+    },
+    [shell],
+  )
+  // Assigned while rendering, like every other handler the key route reads:
+  // that route is registered once, with the terminal, and must not be torn
+  // down and rebuilt as a completion appears and goes.
+  const shellKey = useRef<((event: KeyboardEvent) => boolean) | null>(null)
+  shellKey.current = (event) => {
+    // A modified chord belongs to the shell whatever the list is showing:
+    // `⌥→` is `forward-word`, `⇧Enter` is a newline in several CLIs, and a
+    // list that swallowed them would take a key the reader has always had.
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      return false
+    }
+    switch (event.key) {
+      // The rest of the line, the way every shell that draws a completion
+      // accepts one — at the end of the line, where the key had nothing else
+      // to do.
+      case 'ArrowRight':
+        return shell.accept()
+      // Down enters the list. It is the one arrow a prompt can spare: with a
+      // line typed, a shell's own Down is already at the newest entry and
+      // does nothing.
+      case 'ArrowDown':
+        return shell.move(1)
+      // Up only walks a list already entered, so recalling the previous
+      // command still reaches the shell.
+      case 'ArrowUp':
+        return shell.move(-1)
+      // Enter fills the chosen row in and leaves it there: running it is
+      // still a press the reader makes, having read the line.
+      case 'Enter':
+        return shell.selected >= 0 && shell.accept()
+      case 'Escape':
+        return shell.dismiss()
+      default:
+        return false
+    }
+  }
+  const copyLast = useRef<(() => boolean) | null>(null)
+  copyLast.current = () => {
+    const block = shell.lastFinished()
+    if (!block) return false
+    return copyOutput(block)
+  }
   /**
    * What this session's view supports — the rail's source, whether xterm
    * draws a scrollbar, and whether a width change has anything to repair.
@@ -225,6 +314,15 @@ export function TerminalView({
   const seeking = useRef(0)
   /** Which registration this view's session is, for the kill on the way out. */
   const epoch = useRef<number | null>(null)
+  /**
+   * Whether this session was started with Muster's own startup file, which is
+   * the only session whose reported boundaries are believed.
+   *
+   * The backend's answer rather than the same rule re-derived here — it is the
+   * side that knows whether the scripts could be written — and a ref because
+   * it is read inside the terminal's own parser.
+   */
+  const integrated = useRef(false)
   /**
    * Scrolls the agent's own view back to one of its messages.
    *
@@ -495,9 +593,29 @@ export function TerminalView({
     element.addEventListener('paste', onDomPaste, true)
 
     term.attachCustomKeyEventHandler((event) => {
+      // The suggestion list answers a few keys, and only while it has
+      // something to say — so every one of them still reaches the shell when
+      // it does not.
+      if (event.type === 'keydown' && shellKey.current?.(event)) {
+        event.preventDefault()
+        // Stopped as well as prevented: several surfaces close on Escape and
+        // `FileViewer` listens on `window`, which this event would reach on
+        // the way up — so dismissing the list would also close the file
+        // column behind it. Same rule as the Escape invariant in AGENTS.md,
+        // met from xterm's own handler on the textarea, which is below
+        // `window` in the bubble.
+        event.stopPropagation()
+        return false
+      }
       const intent = clipboardIntent(event, IS_MAC)
       if (!intent) return true
-      if (intent === 'copy') {
+      if (intent === 'copyOutput') {
+        // Only claimed when it copied something: a tab with no finished
+        // command has nothing to answer with, and the chord belongs to
+        // whatever is running there instead.
+        if (!copyLast.current?.()) return true
+        event.preventDefault()
+      } else if (intent === 'copy') {
         void writeClipboard(term.getSelection())
       } else {
         // Prevented as well as claimed: returning false stops xterm, not the
@@ -636,6 +754,28 @@ export function TerminalView({
       if (event) agentEvent.current(event)
       return true
     })
+    // Where the shell says its prompts end and its commands' output begins.
+    // The position is read here rather than in the hook: the parser is at the
+    // write that carried the sequence, so the cursor is where the boundary
+    // is, and a frame later it is wherever the session has printed to.
+    term.parser.registerOscHandler(133, (data) => {
+      // Only from a session Muster put its own startup file into. The
+      // sequences are ordinary bytes, so an agent CLI, a command's output, or
+      // a remote host printing into an `ssh` session can write them just as
+      // well as a shell can — and what they carry chooses a file to read and
+      // text to type back. Everything this feature draws is fed through this
+      // one call, so this is the whole gate.
+      if (!integrated.current) return true
+      const event = parseShellEvent(data)
+      if (event) {
+        const buffer = term.buffer.active
+        shellSink.current?.(event, {
+          row: buffer.baseY + buffer.cursorY,
+          col: buffer.cursorX,
+        })
+      }
+      return true
+    })
     terminal.current = term
     setMounted(term)
     if (paste) paste.current = (text: string) => term.paste(text)
@@ -674,6 +814,10 @@ export function TerminalView({
           // Fixed for the life of the session: the agent reads it once, at
           // start, so a tab changes mode by reopening the conversation.
           scrollback,
+          // Read through the ref for the same reason as the journal flag.
+          // Only a plain shell is affected — an agent session `exec`s over
+          // the shell before a startup file could run.
+          shellIntegration: latest.current.shellIntegration,
         },
         (bytes) => {
           markWorking()
@@ -681,7 +825,8 @@ export function TerminalView({
         },
       )
         .then((started) => {
-          epoch.current = started
+          epoch.current = started.epoch
+          integrated.current = started.shellIntegration
         })
         .catch((error) =>
           term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
@@ -846,6 +991,13 @@ export function TerminalView({
     releaseSelection.current?.()
   }, [ended])
 
+  // The confirmation is worth about as long as it takes to look away.
+  useEffect(() => {
+    if (copiedAt === 0) return
+    const timer = setTimeout(() => setCopiedAt(0), COPIED_MS)
+    return () => clearTimeout(timer)
+  }, [copiedAt])
+
   const closeFind = useCallback(() => {
     search.current?.clearDecorations()
     onCloseFind()
@@ -885,7 +1037,10 @@ export function TerminalView({
   // text sits inside it. The fit addon measures the inset host, so the column
   // count follows the padding rather than overflowing behind it.
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas">
+    <div
+      ref={pane}
+      className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas"
+    >
       {background && (
         <div
           aria-hidden="true"
@@ -958,6 +1113,18 @@ export function TerminalView({
             onReplay={surfaces.replay ? onReplay : undefined}
           />
         </>
+      )}
+      {mounted && !alternate && shell.reporting && (
+        <ShellOverlay
+          host={host}
+          surface={pane}
+          shell={shell}
+          viewportRow={viewportRow}
+          term={mounted}
+          settings={settings}
+          onCopy={copyOutput}
+          copied={copiedAt !== 0}
+        />
       )}
       {findOpen && search.current && (
         <FindBar search={search.current} onClose={closeFind} />
@@ -1196,6 +1363,9 @@ function MessageSteps({
     </div>
   )
 }
+
+/** How long the copy control says it copied something. */
+const COPIED_MS = 1500
 
 /** Search options shared by every call, so highlights stay consistent. */
 const SEARCH_OPTIONS = {

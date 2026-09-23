@@ -161,6 +161,12 @@ pub struct SpawnOptions {
     /// can offer that agent's own resume.
     #[serde(default)]
     pub agent_id: String,
+    /// Start a plain shell session with Muster's own startup file, so it
+    /// reports where each prompt ends and each command's output begins — see
+    /// `crate::shell`. Ignored for anything but a plain shell: an agent
+    /// session replaces the shell with `exec`, so the hooks would never run.
+    #[serde(default)]
+    pub shell_integration: bool,
     /// Keep this session out of the alternate buffer, trading the agent's
     /// mouse for a scrollback — see `SCROLLBACK_ENV`. The frontend always
     /// sends it, from the tab's mode; the serde default only covers a caller
@@ -234,6 +240,24 @@ fn apply_mode(cmd: &mut CommandBuilder, scrollback: bool) {
 const SESSION_ID_ATTEMPTS: u32 = 40;
 const SESSION_ID_INTERVAL: Duration = Duration::from_millis(500);
 
+/// What the caller learns about the session it just started.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Spawned {
+    /// Names this registration, quoted back by `pty_kill`.
+    pub epoch: u64,
+    /// Whether this session was actually started with Muster's own startup
+    /// file, which is the only session whose `OSC 133` reports mean anything.
+    ///
+    /// Answered here rather than worked out again in the frontend: the same
+    /// rule computed in two places drifts, and only this side knows whether
+    /// the scripts could be written at all. A session that was not injected
+    /// into can still be *printed* to — by the agent it runs, or by whatever
+    /// its commands output — so a boundary from one is another program's
+    /// claim about a shell that is not there.
+    pub shell_integration: bool,
+}
+
 /// Emitted once a session's process exits, so the tab can show its status.
 #[derive(Clone, serde::Serialize)]
 struct ExitPayload {
@@ -265,7 +289,7 @@ pub fn pty_spawn(
     sessions: tauri::State<'_, Sessions>,
     options: SpawnOptions,
     on_output: Channel<InvokeResponseBody>,
-) -> Result<u64, String> {
+) -> Result<Spawned, String> {
     let SpawnOptions {
         id,
         cwd,
@@ -279,6 +303,7 @@ pub fn pty_spawn(
         journal,
         agent_id,
         scrollback,
+        shell_integration,
     } = options;
 
     let pair = native_pty_system()
@@ -303,14 +328,33 @@ pub fn pty_spawn(
         via_shell: login_shell,
     });
 
+    // Only a plain shell, and only on the host: an agent session `exec`s over
+    // the shell before a hook can run, and a WSL session's shell reads the
+    // distro's filesystem, where a path written here names nothing.
+    let integration = (shell_integration && program.is_empty() && backend == Backend::Native)
+        .then(|| crate::shell::prepare(&app, &resolved.program))
+        .flatten();
+
     let mut cmd = CommandBuilder::new(&resolved.program);
-    cmd.args(&resolved.args);
+    match integration.as_ref().filter(|it| !it.args.is_empty()) {
+        // bash cannot be given both `-l` and an init file, so an integration
+        // that needs one replaces the arguments rather than adding to them.
+        Some(it) => cmd.args(&it.args),
+        None => cmd.args(&resolved.args),
+    }
     cmd.cwd(&resolved.cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     apply_mode(&mut cmd, scrollback);
     for marker in INHERITED_SESSION_MARKERS {
         cmd.env_remove(marker);
+    }
+    // After the marker strip, never before it: a variable set here that also
+    // appeared in that list would be removed by the line that had just set it.
+    if let Some(integration) = &integration {
+        for (key, value) in &integration.env {
+            cmd.env(key, value);
+        }
     }
 
     let mut child = pair.slave.spawn_command(cmd).map_err(|error| {
@@ -483,7 +527,10 @@ pub fn pty_spawn(
 
     // The epoch the caller quotes back when it kills this session — see
     // `EPOCHS`, and `pty_kill`, which refuses a kill that names an older one.
-    Ok(epoch)
+    Ok(Spawned {
+        epoch,
+        shell_integration: integration.is_some(),
+    })
 }
 
 /// Queues keystrokes for the session's writer thread.

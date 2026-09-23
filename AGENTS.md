@@ -94,12 +94,17 @@ session of that CLI in your own terminal and diff its environment against a
 plain shell's — `env | sort` in both, or `env | grep -i <agent>`. Do not guess
 variable names; a wrong guess strips nothing and looks exactly like success.
 
-**Sessions run through a login shell.** A GUI app inherits a bare `PATH` — from
-launchd on macOS, from the desktop session on Linux — so a CLI installed by the
-user's profile (`mise`, `nvm`, `~/.local/bin`) is invisible until the shell's rc
-files have run. On Windows the reason differs: PowerShell resolves the `.cmd`
-and `.ps1` shims npm-installed CLIs ship as, which `CreateProcess` alone will
-not find.
+**Sessions run through a login shell — and where they cannot, they imitate
+one.** A GUI app inherits a bare `PATH` — from launchd on macOS, from the
+desktop session on Linux — so a CLI installed by the user's profile (`mise`,
+`nvm`, `~/.local/bin`) is invisible until the shell's rc files have run. On
+Windows the reason differs: PowerShell resolves the `.cmd` and `.ps1` shims
+npm-installed CLIs ship as, which `CreateProcess` alone will not find.
+
+The one exception is a **bash** session with shell integration on, because
+bash ignores `--init-file` for a login shell: `-l` is dropped and the script
+sources `/etc/profile` and the first profile itself. What must stay true is
+the `PATH`, not the flag — see the shell-integration invariant below.
 
 **Paths are stored in the host's own form.** A WSL session keeps the Windows
 path the picker returned — a `\\wsl$\Ubuntu\...` share or a drive letter — and
@@ -409,6 +414,126 @@ dialog on screen at a moment the user did nothing to cause, where a reflexive
 exists to explain, so causing it would have been the feature defeating itself.
 Same shape and the same reason as `git_changes(counts)`.
 
+**A shell reports its own command boundaries, and nothing else can.** The
+prompt is just characters in the stream: no cell attribute marks it the way an
+agent's tinted block does — measured, no shell on this machine emits `OSC 133`
+on its own. So a **plain shell** session is started with a startup file of
+Muster's own (`src-tauri/shell/`), which sources the user's and then adds
+`precmd`/`preexec` hooks that print the standard marks. The copy control and
+the completion list both read them, and a session that reports none simply has
+neither surface.
+
+Three things about the injection break silently.
+
+**zsh moves `HISTFILE` when `ZDOTDIR` moves.** The injection is `ZDOTDIR`
+pointing at Muster's own directory, and zsh derives the default history file
+from it — so without the line that puts `HISTFILE` back, a Muster session
+writes its history where no other terminal reads it, and starts every first
+run with none. The four shims there (`.zshenv`, `.zprofile`, `.zshrc`,
+`.zlogin`) each hand `ZDOTDIR` back before sourcing the user's own file,
+because that file may look beside itself for the rest of their configuration
+— and the last one hands it back for good, so a shell started _inside_ the
+session is the user's own.
+
+**bash cannot be given both `-l` and `--init-file`.** It reads the init file
+only for an interactive **non**-login shell, so a login bash ignores it
+entirely — which is why `Integration::args` _replaces_ the session's arguments
+rather than adding to them, and why the script sources `/etc/profile` and the
+first of the three profiles itself. Drop that and a GUI-launched session is
+back to the bare `PATH` launchd gave it, with every CLI installed by the
+user's profile invisible. It is also why the DEBUG trap is chained rather than
+set: starship and bash-preexec both hold it already, and taking it would stop
+their prompt working.
+
+**A multi-line prompt reports its end twice.** The line editor redraws the
+prompt's last line after the first paint — measured against starship, `A B B
+C` for every command — so the **latest** `B` before a `C` is where typing
+actually starts, and treating the first as final puts the completion's
+anchor a row too high. `promptEnd` therefore replaces the open block rather
+than keeping the first one.
+
+**The command a block ran is the shell's answer, never the row it was drawn
+on.** zsh draws `RPROMPT` on the command's own row, so the rendered row is the
+command, then padding, then the right prompt — measured under a pty,
+`\x1b[70C[12:04]` on the same line. Built from that row, this session's own
+suggestions carried the right prompt with them, and accepting one typed all
+three back into the shell. Both scripts report `OSC 133;P;Cmd=<command>` from
+`preexec` instead, and the rendered row is only the fallback for a shell that
+reports none. bash's DEBUG trap fires for this file's own functions too, so
+the report skips anything named `__muster_*` — without that the session's
+first command was the terminal's own plumbing.
+
+**Only a session Muster injected into is believed, and the backend is what
+says so.** `OSC 133` is ordinary bytes: an agent CLI, a command's output, or a
+remote host printing into an `ssh` session can report a prompt boundary and a
+history file as easily as a shell can — and what it reports chooses a file for
+`shell_history` to open and text for `accept` to type back into that same
+session. So `pty_spawn` answers with `shellIntegration`, and the `OSC 133`
+handler drops everything until that is true. Every surface here is fed through
+that one call, which is what makes one check the whole gate.
+
+Answered by the backend rather than re-derived in the frontend for two
+reasons: the same rule computed in two places drifts, and only that side knows
+whether the scripts could be written at all. Re-deriving it from the tab's
+agent, backend and the _current_ setting would also be wrong after the setting
+is toggled — the session keeps whatever it was started with.
+
+**A block's rows are markers, never row numbers.** A row number is right until
+the scrollback is trimmed, at which point every row above shifts and the number
+names someone else's output — so the copy control would copy the wrong command,
+which looks exactly like it working. `useShellBlocks` holds xterm's own
+`IMarker`s and disposes them with the terminal; `MAX_BLOCKS` is what stops a
+day-long session carrying one per command it ever ran.
+
+`MAX_BLOCKS` only bounds the blocks that became commands, though, and a prompt
+that never does is the common case: a multi-line prompt reports its end twice
+per command, so the block the second report replaces has to be released where
+it is dropped. Every path that discards an open prompt calls `forget`.
+
+The rows a marker names can also leave the scrollback, and then it answers
+`-1`. That is not a row to read from: xterm's `getLine` has no bounds check,
+and its circular buffer resolves `-1` to a real stale row once it has wrapped
+— so `textBetween` refuses a negative row, and every caller that walks a
+block checks the same thing. Without it, `⌘⇧O` on a command whose start had
+been trimmed copied the entire session.
+
+**Accepting a completion types it into a live shell.** That is the whole
+reason for every refusal around it: `commands_in` drops a zsh history entry
+spanning lines and one carrying a control byte — bash marks no continuation,
+so its halves are offered as commands of their own — `matchesFor` drops a candidate
+whose remainder is not typeable, and a line starting with a space — which is how a shell is asked not to
+record one — is refused on both sides: in `commands_in`, which has to read the
+space before it trims it away, and in `matchesFor`, because a session reports
+its own commands verbatim and the file never sees them. A newline
+in accepted text is a command submitted by the keystroke that promised to
+complete one. The same hazard `drop_text` refuses a path for.
+
+Accepting also **fills the line in and stops**: running it is still a press of
+Enter the reader makes, having read it.
+
+**The completion keys are claimed only while there is something to claim.**
+`→` at the end of a line, `↓` into the list, `↑` back up it, Enter on a chosen
+row, Escape to dismiss — each answers `false` when no list is showing, and the
+key then reaches the shell untouched. A chord carrying **any** modifier answers
+`false` before that switch is reached: `⌥→` is `forward-word` and `⇧Enter` is a
+newline in several CLIs, and a list that took them would claim a key the reader
+has always had. `↑` out of the **first** row also answers
+`false`, which is what keeps the shell's own history recall on the key it has
+always been on: the list is an offer, never a mode to escape.
+
+**A control drawn over the grid must not sit on the grid's own listener.** The
+copy control is the overlay's child, so a pointer moving onto it _leaves_ the
+element xterm was opened in — and a `pointerleave` there took the control away
+as the pointer reached it, every time. The pointer is followed on the pane,
+which contains both.
+
+**The history file's path is the shell's answer, not a guess.** It is reported
+over `OSC 133;P;HistFile` once per session, after the user's startup files have
+had their say, because `~/.zsh_history` is wrong for anyone who moved it and
+for every session whose `ZDOTDIR` is not their home. It is read through
+`open_tail` — the same bounded, link-refusing read the transcript takes, and
+for the same reason: it happens on a keystroke with no click behind it.
+
 **A user's own messages are found by cell attribute, not by text.** A CLI
 draws the prompt you typed as a tinted block, and that tint is the only thing
 in the stream that marks it: the prompt characters differ per agent and change
@@ -717,9 +842,11 @@ signal, and `OSC 777`'s `prompt_submit` arrives for live turns alone. And what i
 tinted: `isTinted` reads a cell attribute, so a coloured diff gutter, a
 line-number column or an agent's own banner produces an entry indistinguishable
 from a message you typed — which is why the label is presented as what was
-found rather than as something you wrote. Measured across 91 recorded sessions on this
-machine, no shell emitted `OSC 133` semantic prompt markers, so there is no
-standard signal to fall back on.
+found rather than as something you wrote. Measured across 91 recorded sessions
+on this machine, no shell emitted `OSC 133` semantic prompt markers on its own,
+so there is no standard signal here to fall back on: what a **plain shell** tab
+has is the pair Muster injects for it (see the shell-integration invariant
+above), and no agent CLI emits them at all.
 
 `overviewRulerWidth` is still set on the terminal and is load-bearing there.
 Left unset it defaults to 0, and every decoration asking for a ruler mark is
@@ -1419,6 +1546,12 @@ These are the seams for common asks:
   (`agent_session_list`), not from the journal: the journal holds only what
   Muster recorded, with recording on, while the store is the same one the
   CLI's picker reads.
+- **Shell integration** is `src-tauri/src/shell.rs` and the scripts beside it
+  in `src-tauri/shell/`, with `src/features/terminal/model/blocks.ts` reading
+  what they report. A shell it has no script for is not a failure: the two
+  surfaces are absent and the session is otherwise untouched. Adding one means
+  a script, a `Shell` variant and the arguments or environment it needs — and
+  measuring what it emits under a pty, never reasoning about it.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
   fallback in `normalizeSettings` — plus one row in `SettingsPane`.
 - **A new font choice** is not a code change any more, and the monospace

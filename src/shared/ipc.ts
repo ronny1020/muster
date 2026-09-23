@@ -59,6 +59,12 @@ export interface SpawnOptions {
    * whole trade.
    */
   scrollback: boolean
+  /**
+   * Start a plain shell with Muster's own startup file, so it reports where
+   * each prompt ends and each command's output begins — see
+   * `src-tauri/src/shell.rs`. Nothing else in a session reports that.
+   */
+  shellIntegration: boolean
 }
 
 /** One recorded session, as the journal panel lists it. */
@@ -99,6 +105,22 @@ export interface Turn {
 export const agentTurns = (cwd: string, id: string) =>
   invoke<Turn[]>('agent_turns', { cwd, id })
 
+/** What the backend answers about a session it has just started. */
+export interface Spawned {
+  /**
+   * Names this registration, quoted back by `killPty` — a tab reopening its
+   * conversation respawns under the same id, so a kill has to say which
+   * session it meant.
+   */
+  epoch: number
+  /**
+   * Whether the session really was started with Muster's own startup file.
+   * Only such a session's `OSC 133` reports mean anything: anything else that
+   * prints them is another program's claim about a shell that is not there.
+   */
+  shellIntegration: boolean
+}
+
 export function spawnPty(
   options: SpawnOptions,
   onOutput: (bytes: Uint8Array) => void,
@@ -110,10 +132,7 @@ export function spawnPty(
         ? new Uint8Array(message)
         : new Uint8Array(message),
     )
-  // The epoch that names this registration, quoted back by `killPty` — a tab
-  // reopening its conversation respawns under the same id, so a kill has to
-  // say which session it meant.
-  return invoke<number>('pty_spawn', { options, onOutput: channel })
+  return invoke<Spawned>('pty_spawn', { options, onOutput: channel })
 }
 
 export const writePty = (id: string, data: string) =>
@@ -122,6 +141,15 @@ export const resizePty = (id: string, cols: number, rows: number) =>
   invoke<void>('pty_resize', { id, cols, rows })
 export const killPty = (id: string, epoch: number) =>
   invoke<void>('pty_kill', { id, epoch })
+
+/**
+ * The commands a shell's history file holds, newest first.
+ *
+ * `path` is the shell's own answer, reported over `OSC 133;P;HistFile` rather
+ * than guessed at.
+ */
+export const shellHistory = (path: string) =>
+  invoke<string[]>('shell_history', { path })
 
 export const journalSessions = (cwd: string) =>
   invoke<JournalEntry[]>('journal_sessions', { cwd })

@@ -269,6 +269,16 @@ export function SettingsPane() {
               label="Blinking cursor"
             />
           </Row>
+          <Row
+            label="Shell integration"
+            hint="Lets a zsh or bash tab offer a copy control per command and complete what you type from its history. Applies to the next shell tab."
+          >
+            <Toggle
+              checked={settings.shellIntegration}
+              onChange={(shellIntegration) => update({ shellIntegration })}
+              label="Shell integration"
+            />
+          </Row>
         </Group>
 
         <Group title="Background">

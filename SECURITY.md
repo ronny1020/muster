@@ -134,6 +134,46 @@ own — `typed`, or `queued` while the agent was still working — cut to 120
 characters and drawn as text; it is the agent's file, so it says what that file
 says.
 
+## Reading the shell's own history file
+
+A plain zsh or bash tab is started with a startup file of Muster's own, which
+sources the user's and then reports where each prompt ends and each command's
+output begins. It also reports **where that shell keeps its history**, and the
+app reads that file to offer a completion as you type.
+
+Three things bound it. The path is the shell's own answer rather than a guess,
+which is what keeps the read to a file the user's own shell already writes; it
+is refused if it is longer than any host accepts or carries a control byte,
+because anything that can print to the session can write that sequence. The
+read itself goes through the same `open_tail` the transcript takes — a link is
+refused, and only the last 512 KB is parsed, into at most 500 commands. And
+nothing leaves the machine: the list is held in the tab that asked for it and
+is dropped when the tab closes.
+
+What the list is used for is the part worth being exact about, because
+accepting a suggestion **types it into a live shell**. A history entry that
+spans lines is dropped rather than joined, and a candidate whose remainder
+carries a control byte is never offered — a newline in accepted text would be
+a command submitted by the keystroke that promised to complete one, and an
+`ESC` would reach the line editor as a keypress. A line the user hid from
+their history by starting it with a space is never completed either — the
+space is read before it is trimmed away, and a candidate carrying one is
+refused whichever side it came from. And accepting only ever fills the line
+in: running it is still a press of Enter the reader makes.
+
+**Only a session Muster started itself is believed.** The sequences are
+ordinary bytes, so an agent CLI, a command's output, or a remote host printing
+into an `ssh` session can write them as easily as a shell can — and what they
+carry chooses a file to read and text to type back. So the reader is gated on
+the backend's own answer about whether it really did inject its startup file
+into _that_ session, which is a plain zsh or bash tab on the host with the
+setting on. A boundary from anywhere else is dropped before it is parsed.
+
+The integration changes nothing about the user's own configuration. The
+startup file sources theirs first and hands `ZDOTDIR` back before it does, and
+the setting is read at spawn, so a tab already running is never altered under
+it.
+
 ## Four places an agent's own text is drawn outside the grid
 
 All four are display-only, and all four are worth knowing because the grid is
@@ -325,6 +365,15 @@ preview card a terminal URL uses, and mermaid runs at `securityLevel: strict`.
 ## Known gaps
 
 Named rather than hidden, because the code carries the same notes:
+
+- **The shell's reports escape only `\` and `;`.** A `HISTFILE` or a command
+  line carrying a BEL ends the sequence early, and whatever follows it is
+  parsed as terminal input of its own rather than as part of the value. Both
+  values come from inside a session Muster started itself — the variable is
+  set by the user's own startup files, the command is what they typed — so
+  reaching this needs either write access to those files or a paste carrying
+  a control byte, and neither buys more than what that access already gives.
+  The value is refused outright if a control byte survives into it.
 
 - **The journal's own reads and writes do not refuse a symlink.** `review.rs`
   and `image.rs` both check `symlink_metadata` before reading, because a

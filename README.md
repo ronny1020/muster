@@ -620,6 +620,31 @@ them — no flags, no modes, nothing to
 resume. Minimising the window on macOS and clicking the Dock icon brings it
 back; closing the window quits the app, as it always has.
 
+A **zsh or bash** tab gets two things an agent tab has no use for. Two
+characters in, the past commands that begin the same way appear under the
+cursor, newest first — the top one is also drawn ahead of the cursor in grey.
+`→` takes that one, `↓` walks the list and `↑` walks back up it, Enter fills
+the chosen line in without running it, and Escape puts the list away. `↑` at
+an untouched prompt is still the shell's own history, and a key with a
+modifier on it — `⌥→` to move a word, `⇧Enter` for a newline — always reaches
+the shell, so nothing you already do changes. They come from what this session has already run, newest first, and then from
+the shell's own history file — which it tells the app about, so a `HISTFILE`
+you moved is the one that is read. A command you ran a minute ago is suggested
+before anything in the file, which is where it would not appear until the
+shell exits.
+
+Hover a finished command and **Copy output** appears at the right of its first
+line: one click puts everything it printed on the clipboard, without selecting
+anything. `⌘⇧O` (`Ctrl+Shift+O`) does the same for the last command that
+finished.
+
+Both need the app to know where one command ends and the next begins, which is
+what **Shell integration** in Settings turns on: it starts the next shell tab
+with a startup file of Muster's own that reports those places. Only zsh and
+bash have one, and only on the host, so a PowerShell, fish or WSL tab reports
+nothing and gets neither surface. Nothing about your own configuration
+changes — the file sources yours first and then adds the marks.
+
 ## 🚫 When a folder cannot be read
 
 Start a session in a folder the app is not allowed to list and it says so,
@@ -661,10 +686,10 @@ with the exit code when they failed. All of it is adjustable, including off.
 
 Press the settings shortcut or click the gear at the right of the status bar.
 Settings open as a tab, and changes take effect immediately — including in
-terminals that are already running. Two are read when a session starts instead,
-so they reach the next session rather than the ones already going: **Record
-what sessions print**, and **Default terminal mode** — for which the status
-bar's
+terminals that are already running. Three are read when a session starts
+instead, so they reach the next session rather than the ones already going:
+**Record what sessions print**, **Shell integration**, and **Default terminal
+mode** — for which the status bar's
 Clicks / Scrollback control is the way to change a tab that is already open.
 
 - **New tabs** — which agent and directory to start on, and the **Terminal
@@ -674,7 +699,8 @@ Clicks / Scrollback control is the way to change a tab that is already open.
   width repair have something to work on. No session can have both. The status
   bar's control switches one tab without changing this.
 - **Terminal** — theme, font, size, line height, text width, scrollback,
-  blinking cursor. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
+  blinking cursor, and **Shell integration**, which is what gives a zsh or bash
+  tab its copy control and its completions. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
   single glyph will do so here. The font list is every family installed on the
   machine, narrowed to the ones that can hold a column; **Show all system fonts**
   widens it to the rest. The review panel's diffs and files are drawn in the
@@ -703,11 +729,16 @@ distro.
 | Toggle review panel | `⌘G`          | `Ctrl+Shift+G`                  |
 | Find in scrollback  | `⌘F`          | `Ctrl+Shift+F`                  |
 | Copy selection      | `⌘C`          | `Ctrl+Shift+C`                  |
+| Copy last output    | `⌘⇧O`         | `Ctrl+Shift+O`                  |
 | Paste               | `⌘V`          | `Ctrl+Shift+V`                  |
 | Settings            | `⌘,`          | `Ctrl+,`                        |
 | Jump to tab 1–8     | `⌘1`–`⌘8`     | `Ctrl+1`–`Ctrl+8`               |
 | Jump to last tab    | `⌘9`          | `Ctrl+9`                        |
 | Previous / next tab | `⌘⇧[` / `⌘⇧]` | `Ctrl+PageUp` / `Ctrl+PageDown` |
+
+At a shell prompt with a suggestion showing: `→` takes it, `↓`/`↑` walk the
+list, Enter fills the chosen line in, and Escape puts the list away. Every one
+of those keys reaches the shell untouched when there is no list.
 
 In the review drawer and the file column: Tab reaches every control, Escape
 closes the column, and a panel edge can be focused and then moved with `←`/`→`

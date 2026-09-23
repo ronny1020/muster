@@ -11,6 +11,7 @@ mod platform;
 mod pty;
 mod review;
 mod sessions;
+mod shell;
 mod store;
 mod transcript;
 mod workspace;
@@ -124,6 +125,7 @@ pub fn run() {
             link::link_preview,
             platform::platform_info,
             platform::drop_paths,
+            shell::shell_history,
         ])
         .on_window_event(|window, event| match event {
             // Quitting over a mid-turn agent throws away work that cannot be

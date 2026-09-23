@@ -49,6 +49,16 @@ export interface Settings {
   scrollback: number
   cursorBlink: boolean
   /**
+   * Whether a plain shell session starts with Muster's own startup file, which
+   * is what reports where each prompt ends and each command's output begins.
+   * Everything drawn around a command — the copy control, the completion as
+   * you type — needs it, and nothing else in a session reports it.
+   *
+   * Only zsh and bash have one to inject; every other shell is unaffected
+   * whatever this says.
+   */
+  shellIntegration: boolean
+  /**
    * Whether the font picker offers every installed family or only the
    * monospaced ones. Off by default, because a machine has hundreds of
    * families and almost none of them can draw a terminal — but a face this
@@ -99,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   letterSpacing: 0,
   scrollback: 20000,
   cursorBlink: true,
+  shellIntegration: true,
   allSystemFonts: false,
   gitPollSeconds: 4,
   historyLimit: 60,
@@ -178,6 +189,10 @@ export function normalizeSettings(input: unknown): Settings {
       LIMITS.scrollback,
     ),
     cursorBlink: flag(raw.cursorBlink, DEFAULT_SETTINGS.cursorBlink),
+    shellIntegration: flag(
+      raw.shellIntegration,
+      DEFAULT_SETTINGS.shellIntegration,
+    ),
     allSystemFonts: flag(raw.allSystemFonts, DEFAULT_SETTINGS.allSystemFonts),
     gitPollSeconds: number(
       raw.gitPollSeconds,

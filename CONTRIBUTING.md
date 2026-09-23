@@ -152,6 +152,12 @@ building.
 | Terminal colour schemes                            | `src/shared/lib/themes.ts`                             |
 | Font fallback list and CSS stacks                  | `src/shared/lib/fonts.ts`                              |
 | Clipboard key decisions                            | `src/features/terminal/model/clipboard.ts`             |
+| What a shell is started with, and its history      | `src-tauri/src/shell.rs`                               |
+| The scripts that report a shell's boundaries       | `src-tauri/shell/`                                     |
+| Reading a shell's `OSC 133` boundaries             | `src/features/terminal/model/blocks.ts`                |
+| Choosing what a prompt completes to                | `src/features/terminal/model/suggest.ts`               |
+| Tracking a shell's commands as it runs them        | `src/features/terminal/ui/useShellBlocks.ts`           |
+| The completion list and the copy control           | `src/features/terminal/ui/ShellOverlay.tsx`            |
 | Remembering tabs across a restart                  | `src/entities/tab/model/persist.ts`                    |
 | Branch filtering and switch warnings               | `src/features/workspace/model/branches.ts`             |
 | Git chips, and the revision everything re-reads on | `src/features/workspace/model/status.ts`               |

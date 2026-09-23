@@ -48,4 +48,23 @@ describe('clipboardIntent', () => {
     expect(clipboardIntent(chord({ key: 'a' }), false)).toBeNull()
     expect(clipboardIntent(chord({ key: 'x' }), false)).toBeNull()
   })
+
+  it('reads the copy-output chord on every platform, in its own idiom', () => {
+    expect(
+      clipboardIntent(chord({ key: 'o', ctrlKey: false, metaKey: true }), true),
+    ).toBe('copyOutput')
+    expect(clipboardIntent(chord({ key: 'o' }), false)).toBe('copyOutput')
+  })
+
+  it('leaves the copy-output chord to the program without Shift', () => {
+    expect(
+      clipboardIntent(
+        chord({ key: 'o', shiftKey: false, ctrlKey: false, metaKey: true }),
+        true,
+      ),
+    ).toBeNull()
+    expect(
+      clipboardIntent(chord({ key: 'o', shiftKey: false }), false),
+    ).toBeNull()
+  })
 })
