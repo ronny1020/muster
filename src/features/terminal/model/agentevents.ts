@@ -1,13 +1,17 @@
 /**
  * Turn-by-turn status an agent CLI broadcasts as an `OSC 777` sequence.
  *
- * Claude Code emits `OSC 777;notify;warp://cli-agent;<json>` at each turn
- * boundary and never rings the terminal bell, so this is the only signal that
- * a session has handed control back.
+ * A Claude Code session emits `OSC 777;notify;warp://cli-agent;<json>` at each
+ * turn boundary and never rings the terminal bell, so this is the only signal
+ * that it has handed control back. The sequence comes from a hook plugin, not
+ * the CLI, and the plugin emits it only when the session's environment carries
+ * `CLI_AGENT_ENV` from `pty.rs`.
  */
 export interface AgentEvent {
   name: EventName
-  /** The agent's reply, on `stop`. It becomes the notification body. */
+  /**
+   * The agent's last reply, on a turn's end. It becomes the notification body.
+   */
   response?: string
 }
 
@@ -16,6 +20,7 @@ const NAMES = [
   'prompt_submit',
   'tool_complete',
   'stop',
+  'stop_failure',
   'idle_prompt',
 ] as const
 
@@ -78,6 +83,14 @@ export function parseAgentEvent(data: string): AgentEvent | null {
   if (response) event.response = response
   return event
 }
+
+/**
+ * Whether the event hands control back to the user: a turn that finished, or
+ * one that ended in an API error — a rate limit, an overload — which is the
+ * same moment for someone who walked away, and reported as `stop_failure`.
+ */
+export const endsTurn = (event: AgentEvent) =>
+  event.name === 'stop' || event.name === 'stop_failure'
 
 /** The field as text the interface can carry, or `undefined` if it is not. */
 function capped(value: unknown): string | undefined {

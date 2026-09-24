@@ -33,7 +33,8 @@ years. The point is that Muster knows what is _in_ the tab:
 - 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
   session is still printing, solid once it goes quiet and wants you. It reads
   the output itself, so it works for every agent and for a plain shell.
-- 🔔 **A finished agent raises a dot on its tab and a desktop notification**,
+- 🔔 **A finished agent raises a dot on its tab, and a desktop notification**
+  where the turn is announced — for Claude Code, by a plugin you install —
   because the reason to run several is that you are not watching this one.
 - 🌿 **The footer follows the directory and its git state** as the agent changes
   it, and the drawer switches branches without leaving the tab.
@@ -721,8 +722,12 @@ hear about:
   words where the agent published them.
 
 Agents announce that moment two different ways — some ring the terminal bell,
-Claude Code broadcasts a structured event instead — and both are read, so this
-works without configuring anything.
+others broadcast a structured event instead — and both are read. The bell needs
+nothing. The structured event Claude Code sessions use comes from a hook plugin
+you install into that CLI, so a session without one still shows a solid
+"waiting" dot and the status bar, but no pulse and no notification. A turn that
+ends in an API error — a rate limit, an overload — is announced the same way as
+one that finished.
 
 Nothing fires while you are already looking at that tab, and a burst of signals
 becomes a single notification. Sessions that end are announced the same way,
@@ -836,7 +841,18 @@ installed, or is not on the `PATH` your login shell sets up. Check that the
 command from the table above runs in your own terminal.
 
 **No desktop notifications.** Grant the app notification permission when your OS
-asks, or later in system settings. The tab dot works either way.
+asks, or later in system settings. If a Claude Code tab stays silent while its
+tab dot turns solid, the CLI has no notification plugin installed — the dot is
+read from the session's own output and needs nothing; the notification needs
+the plugin.
+Install one from inside a Claude Code session with `/plugin marketplace add
+warpdotdev/claude-code-warp`, then `/plugin install warp@claude-code-warp`,
+then `/reload-plugins` — it does nothing until it is reloaded. It also needs
+`jq` on the `PATH` (`brew install jq`, or your system's package manager), which
+every one of its hooks pipes through. A **WSL** tab is not told unless your
+Windows `WSLENV` lists `WARP_CLI_AGENT_PROTOCOL_VERSION` and
+`WARP_CLIENT_VERSION` — it still announces a session that ends, and an agent
+that rings the bell, but not the end of a turn.
 
 **A tab says `exited 1` immediately.** The agent itself refused to start —
 scroll up in that tab, its own output says why.

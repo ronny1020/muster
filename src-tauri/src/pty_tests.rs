@@ -9,7 +9,10 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::{apply_mode, end, Session, Sessions, INHERITED_SESSION_MARKERS, SCROLLBACK_ENV};
+use super::{
+    advertise_protocol, apply_mode, end, Session, Sessions, CLI_AGENT_ENV,
+    INHERITED_SESSION_MARKERS, SCROLLBACK_ENV,
+};
 use std::sync::Weak;
 
 /// An output channel that goes nowhere, for a session under test.
@@ -344,15 +347,33 @@ fn re_pointing_an_unknown_session_fails() {
     assert!(sessions.get("no-such-tab").is_err());
 }
 
-/// The markers are stripped after the environment is set, so a variable named
-/// in both lists would be removed by the loop that follows it — setting it and
-/// stripping it reads as working and leaves the agent in the alternate buffer.
+/// A variable in both lists is set by one loop and removed by the other, and
+/// which wins depends on their order in `pty_spawn` — a trap that reads as
+/// working either way.
 #[test]
 fn nothing_the_session_needs_is_also_stripped_from_it() {
-    for (key, _) in SCROLLBACK_ENV {
+    for (key, _) in SCROLLBACK_ENV.iter().chain(CLI_AGENT_ENV) {
         assert!(
             !INHERITED_SESSION_MARKERS.contains(key),
             "{key} is both set and removed"
+        );
+    }
+}
+
+/// A pre-release suffix is how the version comes to name a release channel by
+/// accident — see `CLI_AGENT_ENV` for what a named channel costs.
+#[test]
+fn the_reported_version_names_no_release_channel_of_another_terminal() {
+    let version = CLI_AGENT_ENV
+        .iter()
+        .find(|(key, _)| *key == "WARP_CLIENT_VERSION")
+        .expect("a client version to report")
+        .1;
+
+    for channel in ["dev", "stable", "preview"] {
+        assert!(
+            !version.contains(channel),
+            "{version} reads as the {channel} channel of another terminal"
         );
     }
 }
@@ -373,6 +394,17 @@ fn a_clicks_session_strips_a_variable_it_inherited() {
             cmd.get_env(key).is_none(),
             "{key} survived a clicks session"
         );
+    }
+}
+
+/// The call in `pty_spawn` is not covered here: dropping it leaves this green
+/// and every tab silent.
+#[test]
+fn a_session_advertises_the_protocol_it_was_spawned_with() {
+    let mut cmd = CommandBuilder::new("true");
+    advertise_protocol(&mut cmd);
+    for (key, value) in CLI_AGENT_ENV {
+        assert_eq!(cmd.get_env(key).and_then(|set| set.to_str()), Some(*value));
     }
 }
 

@@ -214,6 +214,45 @@ const INHERITED_SESSION_MARKERS: &[&str] = &[
 /// ignores it, so a tab of anything else is unaffected either way.
 const SCROLLBACK_ENV: &[(&str, &str)] = &[("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", "1")];
 
+/// What a session needs in its environment for an agent CLI to broadcast its
+/// turn boundaries — the `OSC 777` events the tab notifies from.
+///
+/// That broadcast is a hook plugin's rather than the CLI's own, and it stays
+/// silent until the terminal says it can render the events. Muster parses
+/// them, so this says so. Both are wanted: a protocol version on its own
+/// leaves the plugin without the client version it also reads, and every hook
+/// then exits without printing.
+///
+/// The version is Muster's own, and it must name no release channel of the
+/// terminal the plugin was written for — a version naming its `stable` or
+/// `preview` channel is compared against that channel's releases, and a build
+/// it has never heard of loses; `dev` is refused too, for when it gains a
+/// threshold of its own. `pty_tests.rs` pins that.
+const CLI_AGENT_ENV: &[(&str, &str)] = &[
+    ("WARP_CLI_AGENT_PROTOCOL_VERSION", "1"),
+    (
+        "WARP_CLIENT_VERSION",
+        concat!("muster/", env!("CARGO_PKG_VERSION")),
+    ),
+];
+
+/// Advertises the protocol to the session being spawned.
+///
+/// Called after the `INHERITED_SESSION_MARKERS` strip, never before it: a
+/// variable this sets that also appeared in that list would be stripped
+/// straight back out again.
+///
+/// It reaches a WSL session only by accident. `cmd` there is `wsl.exe`, and
+/// only what `WSLENV` names crosses into the distro — which nothing in this
+/// app sets, so `TERM`, `COLORTERM` and `SCROLLBACK_ENV` do not cross either.
+/// A `WSLENV` the user's own Windows environment exports is inherited like
+/// any other variable, so what crosses is whatever they happened to list.
+fn advertise_protocol(cmd: &mut CommandBuilder) {
+    for (key, value) in CLI_AGENT_ENV {
+        cmd.env(key, value);
+    }
+}
+
 /// Puts the session's mode into the environment it is spawned with.
 ///
 /// Removing is as load-bearing as setting. `CommandBuilder` seeds itself from
@@ -349,8 +388,7 @@ pub fn pty_spawn(
     for marker in INHERITED_SESSION_MARKERS {
         cmd.env_remove(marker);
     }
-    // After the marker strip, never before it: a variable set here that also
-    // appeared in that list would be removed by the line that had just set it.
+    advertise_protocol(&mut cmd);
     if let Some(integration) = &integration {
         for (key, value) in &integration.env {
             cmd.env(key, value);

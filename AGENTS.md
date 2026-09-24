@@ -927,23 +927,46 @@ is why it returns immediately unless its pane is on screen.
 **A turn ending is announced two ways, and Claude Code never uses the bell.**
 `onBell` was the only signal wired to notifications, and measured across 24
 recorded sessions the bell fired **zero** times — every `0x07` in the stream
-was an `OSC` string terminator, not a bell. Claude Code broadcasts
+was an `OSC` string terminator, not a bell. A Claude Code session broadcasts
 `OSC 777;notify;warp://cli-agent;<json>` instead, carrying `session_start`,
-`prompt_submit`, `tool_complete` and `stop`; `stop` is the turn boundary, and
-its payload carries the agent's own closing words — which become the
-notification body — alongside fields `parseAgentEvent` deliberately drops,
-its transcript path among them.
+`prompt_submit`, `tool_complete`, `idle_prompt`, `stop` and `stop_failure` —
+and `permission_request`, which `NAMES` does not list, so it answers `null`
+and is dropped. `stop` is the turn boundary, and `stop_failure` is the same
+boundary reached through an API error; `endsTurn` treats them alike, because
+a rate limit is exactly when the person who walked away needs telling. Their
+payload carries the agent's own closing words — which become the notification
+body — alongside fields `parseAgentEvent` deliberately drops, its transcript
+path among them.
 `parseAgentEvent` reads it and `Pane`'s `signalAttention` is where both routes
 meet, so an agent that rings _and_ broadcasts notifies once — the cooldown in
 `decideBellResponse` is what makes that true.
 
-Nothing here is configured: the sequence is in the pty stream Muster already
-records, so no hook, plugin or transcript read is involved. The cost is that
-the payload is **agent-authored JSON arriving over a terminal escape
-sequence**, which is why `parseAgentEvent` answers `null` for anything
-unexpected rather than throwing inside xterm's parser, and why it caps the
-text it carries — an unbounded `response` becomes the body of a desktop
-notification. Treat the field checks as the feature, not as detail.
+The broadcast is not the CLI's own, and that is the part that breaks
+silently. It comes from a hook plugin the user installs, and the plugin stays
+quiet until the terminal advertises that it can render the events —
+`CLI_AGENT_ENV` in `pty.rs` is what advertises it, and `advertise_protocol`
+beside it carries the rest of the reasoning. Without it every hook exits
+without printing and no tab notifies. Before `advertise_protocol` existed
+that read as a release-only fault, because `CommandBuilder` seeds each child
+from this process's environment: only a Muster that had itself inherited the
+variables passed them on, so a build started from a terminal worked and the
+same build started from the Dock did not. Measured then, across one day's
+records here, 11 sessions under the installed app carried **zero** events
+against 8 under `bun run dev` that carried them.
+
+A **WSL** session gets none of it unless the user's own `WSLENV` lists both
+variables. `cmd` there is `wsl.exe`, and only what
+`WSLENV` names crosses into the distro — which nothing here sets, so `TERM`,
+`COLORTERM` and `SCROLLBACK_ENV` do not cross either, and what does cross is
+whatever a `WSLENV` inherited from the user's own environment happens to
+list. What a WSL tab loses is the turn boundary: the bell and `announceExit`
+are read from the session itself and still notify.
+
+The other cost is that the payload is **agent-authored JSON arriving over a
+terminal escape sequence**, which is why `parseAgentEvent` answers `null` for
+anything unexpected rather than throwing inside xterm's parser, and why it
+caps the text it carries — an unbounded `response` becomes the body of a
+desktop notification. Treat the field checks as the feature, not as detail.
 
 **A width change destroys a TUI's scrollback, so the scrollback is dropped
 rather than shown.** This is the price of scrollback mode above, and it has to

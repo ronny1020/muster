@@ -72,7 +72,8 @@ export interface TerminalViewProps {
   onBell(): void
   /**
    * Fired for each turn boundary the agent announces over `OSC 777`. Claude
-   * Code never rings the bell, so this is the only signal it hands back.
+   * Code never rings the bell, so this is the only signal it hands back — and
+   * only where a hook plugin is installed to broadcast it.
    */
   onAgentEvent(event: AgentEvent): void
   /** The session's live directory, for resolving a relative path in the output. */

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { parseAgentEvent } from './agentevents'
+import { endsTurn, parseAgentEvent } from './agentevents'
 
 /** The payload Claude Code actually emitted, minus the `777;` identifier. */
 const stop =
@@ -81,4 +81,24 @@ test('a field of the wrong type is dropped rather than carried', () => {
       'notify;warp://cli-agent;{"event":"stop","response":{"a":1}}',
     ),
   ).toEqual({ name: 'stop' })
+})
+
+test('a turn that ended in an API error hands control back like a finished one', () => {
+  const failed = parseAgentEvent(
+    'notify;warp://cli-agent;{"event":"stop_failure","response":"rate limited"}',
+  )
+  expect(failed).toEqual({ name: 'stop_failure', response: 'rate limited' })
+  expect(failed && endsTurn(failed)).toBe(true)
+})
+
+test('only the end of a turn hands control back', () => {
+  for (const name of [
+    'session_start',
+    'prompt_submit',
+    'tool_complete',
+    'idle_prompt',
+  ]) {
+    const event = parseAgentEvent(`notify;warp://cli-agent;{"event":"${name}"}`)
+    expect(event && endsTurn(event)).toBe(false)
+  }
 })

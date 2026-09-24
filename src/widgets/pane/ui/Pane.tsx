@@ -38,7 +38,10 @@ import type { Viewed } from '../../../features/review/model/viewed'
 import { FileViewer } from '../../../features/review/ui/FileViewer'
 import { ReviewPanel } from '../../../features/review/ui/ReviewPanel'
 import { decideBellResponse, notify } from '../../../shared/lib/notify'
-import type { AgentEvent } from '../../../features/terminal/model/agentevents'
+import {
+  type AgentEvent,
+  endsTurn,
+} from '../../../features/terminal/model/agentevents'
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { isUnder } from '../../../features/terminal/model/termlinks'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
@@ -464,7 +467,7 @@ export function Pane({
 
   const onAgentEvent = useCallback(
     (event: AgentEvent) => {
-      if (event.name === 'stop') signalAttention(event.response)
+      if (endsTurn(event)) signalAttention(event.response)
     },
     [signalAttention],
   )

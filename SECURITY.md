@@ -17,13 +17,13 @@ product, and `pty_spawn` grants it by design.
 What _is_ in scope is anything that gives one of these five a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the only request the app makes itself; Pull and Push run your own `git` against the repository's remote.                                       |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                         |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence.           |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                            |
-| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`. |
+| Actor                                      | Why it counts                                                                                                                                                                                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the only request the app makes itself; Pull and Push run your own `git` against the repository's remote.                                                                                                  |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                    |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                       |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                            |
 
 None of those five is you, and none of them should be able to reach the
 network on your behalf, read a file you did not choose, or put an argument in
@@ -116,11 +116,12 @@ development build and not something a user runs:
 
 ## What an agent may put in a desktop notification
 
-An agent CLI announces the end of a turn with
+A hook plugin installed into an agent CLI announces the end of a turn with
 `OSC 777;notify;warp://cli-agent;<json>`, and Muster reads it — that sequence
-is how Claude Code hands control back, since it never rings the terminal bell.
-The event's `response` field becomes the body of a desktop notification, so
-text the agent chose leaves the terminal and appears in the OS.
+is how a Claude Code session hands control back, since it never rings the
+terminal bell. The event's `response` field becomes the body of a desktop
+notification, so text the agent chose leaves the terminal and appears in the
+OS.
 
 What bounds it:
 
@@ -132,15 +133,36 @@ What bounds it:
   cap below is not the only bound on it.
 - The text it carries is capped, because an unbounded string in a notification
   body is a wall of text on your screen.
-- Only `stop` reaches the notification path. `session_start`,
-  `prompt_submit` and `tool_complete` are parsed and ignored.
+- Only `stop` and `stop_failure` reach the notification path.
+  `session_start`, `prompt_submit`, `tool_complete` and `idle_prompt` are
+  parsed and ignored.
 - The payload is never interpreted as anything but text: no path is resolved
   from it, no file read, nothing typed into a session. The "nothing an agent
   names may reach a session as keystrokes" rule in AGENTS.md applies here too.
 
-The channel itself is not a new capability. The bytes already arrived in the
-pty stream Muster reads and records, so nothing was opened to get them — no
-hook and no plugin.
+The sequence is not the CLI's own, and Muster is what switches it on: it comes
+from a hook plugin the user installs, gated behind the advertisement
+`CLI_AGENT_ENV` in `pty.rs` makes — see `advertise_protocol` there, including
+which sessions it does not reach. Two things follow that the bounds above do
+not cover:
+
+- **The plugin reads the session's transcript.** Its `stop` and
+  `stop_failure` hooks each read the whole file the CLI hands them and carry
+  an excerpt of the last prompt and the last reply. So a read of that file
+  happens at the end of every turn, caused by this app, in a session the user
+  started for something else.
+- **What the plugin emits is bounded on screen, not on disk.** The 8 KB
+  refusal above protects the frontend, and the journal is written from the pty
+  stream before the frontend sees any of it — so a hook that carries an
+  unbounded field, as the approval-request one does with the whole tool input,
+  puts it in the record at full length. A file an agent asked to write is the
+  case that matters: the frontend refuses that event unread past 8 KB, and the
+  record keeps it whole.
+
+The second is bounded by the recording setting, the 4 MB cap on one session
+and the retention sweep. The first is bounded by nothing here: it is the
+plugin's read, and it stops only when the plugin is uninstalled. Neither is
+reachable by anyone who could not already print into the pty.
 
 ## Reading the agent's own transcript
 
@@ -216,8 +238,8 @@ it.
 All four are display-only, and all four are worth knowing because the grid is
 where agent output is normally confined.
 
-**A desktop notification body**, from `OSC 777`'s `stop` event — bounded as the
-section above describes.
+**A desktop notification body**, from `OSC 777`'s `stop` and `stop_failure`
+events — bounded as the section above describes.
 
 **The message rail's tooltip and accessible name.** `findMessageRows` marks a
 row whose first columns carry a non-default background, and `labelled` reads
