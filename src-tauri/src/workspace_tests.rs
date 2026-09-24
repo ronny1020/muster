@@ -69,9 +69,9 @@ fn a_directory_that_is_not_a_repository_lists_no_branches() {
 #[test]
 fn a_branch_name_that_could_be_read_as_an_option_is_refused() {
     // `git checkout --orphan` would create a branch rather than switch.
-    assert!(checkout(".", "--orphan").is_err());
-    assert!(checkout(".", "-f").is_err());
-    assert!(checkout(".", "").is_err());
+    assert!(checkout(".", "--orphan", "test").is_err());
+    assert!(checkout(".", "-f", "test").is_err());
+    assert!(checkout(".", "", "test").is_err());
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn checking_out_a_missing_branch_reports_gits_own_words() {
         "the throwaway repository should initialise"
     );
 
-    let error = checkout(&repo.to_string_lossy(), "muster-no-such-branch")
+    let error = checkout(&repo.to_string_lossy(), "muster-no-such-branch", "test")
         .expect_err("a branch that does not exist cannot be checked out");
     let _ = std::fs::remove_dir_all(&repo);
 
@@ -513,4 +513,72 @@ fn an_unreadable_directory_is_told_apart_from_a_missing_one() {
 
     assert!(!is_unreadable(&dir), "a readable directory read as blocked");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn git_ignores_an_inherited_index_or_repository() {
+    // A pre-commit hook hands its children GIT_INDEX_FILE; without this the
+    // scratch repositories above would write over the commit being made.
+    let command = git_in(Path::new("."));
+    let removed: Vec<_> = command
+        .get_envs()
+        .filter(|(_, value)| value.is_none())
+        .map(|(name, _)| name.to_string_lossy().into_owned())
+        .collect();
+    for name in REPOSITORY_OVERRIDES {
+        assert!(removed.iter().any(|r| r == name), "{name} is inherited");
+    }
+}
+
+#[test]
+fn an_upstream_of_the_same_name_is_tracked_as_its_own() {
+    let mut status = parse(STATUS);
+    assert!(
+        tracks_own_name(&status),
+        "feature/tabs tracks origin/feature/tabs"
+    );
+
+    // `git checkout -b fix origin/main`.
+    status.branch = "fix".into();
+    status.upstream = Some("origin/main".into());
+    assert!(!tracks_own_name(&status));
+
+    // A name that merely ends the upstream's is another branch.
+    status.upstream = Some("origin/agent/fix".into());
+    assert!(!tracks_own_name(&status));
+
+    status.upstream = None;
+    assert!(!tracks_own_name(&status));
+}
+
+#[test]
+fn switching_to_a_name_that_is_a_directory_never_restores_it() {
+    let repo = std::env::temp_dir().join(format!(
+        "muster-switch-path-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(repo.join("docs")).expect("mkdir");
+    for args in [
+        &["init", "--quiet"][..],
+        &["config", "user.name", "Muster Test"],
+        &["config", "user.email", "test@example.invalid"],
+        &["config", "commit.gpgsign", "false"],
+        &["config", "core.hooksPath", ".git/hooks"],
+    ] {
+        git(&repo, args).expect("setup");
+    }
+    std::fs::write(repo.join("docs/a.md"), "committed\n").expect("write");
+    git(&repo, &["add", "--all"]).expect("add");
+    git(&repo, &["commit", "--quiet", "-m", "first"]).expect("commit");
+    // Unstaged work in a directory named like the branch that is gone.
+    std::fs::write(repo.join("docs/a.md"), "unsaved work\n").expect("edit");
+
+    let result = checkout(&repo.to_string_lossy(), "docs", "test");
+    let kept = std::fs::read_to_string(repo.join("docs/a.md")).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&repo);
+
+    assert!(result.is_err(), "there is no branch called docs");
+    assert_eq!(kept, "unsaved work\n");
 }

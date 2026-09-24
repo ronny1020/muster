@@ -128,6 +128,7 @@ building.
 | An agent's own transcript, read for the rail       | `src-tauri/src/transcript.rs`                          |
 | Shells, WSL and process inspection per host        | `src-tauri/src/platform.rs`                            |
 | Path, git status, log, branches and checkout       | `src-tauri/src/workspace.rs`                           |
+| Commit, pull, push, cancel, and how git writes run | `src-tauri/src/sync.rs`                                |
 | Commands exposed to the frontend                   | `src-tauri/src/lib.rs`                                 |
 | Typed wrappers over those commands                 | `src/shared/ipc.ts`                                    |
 | Tab state, as a pure reducer                       | `src/entities/tab/model/deck.ts`                       |
@@ -184,6 +185,9 @@ building.
 | What the file tree shows                           | `src/features/review/model/tree.ts`                    |
 | The review drawer: lists and navigation            | `src/features/review/ui/ReviewPanel.tsx`               |
 | The changed-file list                              | `src/features/review/ui/ChangedFiles.tsx`              |
+| Commit, pull and push, in both drawers             | `src/features/sync/ui/GitActions.tsx`                  |
+| What those buttons say, and when they can't        | `src/features/sync/model/sync.ts`                      |
+| One git write at a time per tab, and its Cancel    | `src/features/sync/model/useGitRun.ts`                 |
 | The file tree, a folder at a time                  | `src/features/review/ui/FileTree.tsx`                  |
 | One line of coloured code                          | `src/features/review/ui/TokenLine.tsx`                 |
 | Reading changes, diffs and directories             | `src/features/review/model/use*.ts`                    |

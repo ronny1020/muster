@@ -44,6 +44,8 @@ import { isUnder } from '../../../features/terminal/model/termlinks'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
 import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
+import { GitActions } from '../../../features/sync/ui/GitActions'
+import { useGitRun } from '../../../features/sync/model/useGitRun'
 import { type Agent, agentById } from '../../../entities/agent/model/agents'
 import { JournalPanel } from '../../../features/journal/ui/JournalPanel'
 import { collisionSummary } from '../../../features/fleet/model/collisions'
@@ -282,6 +284,7 @@ export function Pane({
   const [base, setBase] = useState('')
   /** Changes when the working tree does, which is what re-reads git. */
   const revision = treeRevision(cwd, git ?? null)
+  const gitRun = useGitRun(refresh)
 
   // A session that `cd`s elsewhere is looking at another tree: a file from the
   // last one, and a base branch that may not exist in this one, are both stale
@@ -558,6 +561,16 @@ export function Pane({
                 revision={revision}
                 base={base}
                 onBase={setBase}
+                footer={
+                  git?.repo && (
+                    <GitActions
+                      cwd={cwd}
+                      git={git}
+                      gitRun={gitRun}
+                      withCommit
+                    />
+                  )
+                }
                 view={tab.reviewView}
                 onView={(view) =>
                   dispatch({ type: 'setReviewView', id: tab.id, view })
@@ -600,6 +613,16 @@ export function Pane({
                 revision={revision}
                 onClose={toggleHistory}
                 onSwitched={refresh}
+                busy={gitRun.running !== null}
+                runGit={gitRun.run}
+                sync={
+                  <GitActions
+                    cwd={cwd}
+                    git={git}
+                    gitRun={gitRun}
+                    withCommit={false}
+                  />
+                }
               />
             )}
           </div>

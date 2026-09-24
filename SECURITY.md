@@ -19,7 +19,7 @@ should not have:
 
 | Actor                                      | Why it counts                                                                                                                                                                                  |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the app's only network egress.                                                                                                                 |
+| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the only request the app makes itself; Pull and Push run your own `git` against the repository's remote.                                       |
 | **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                         |
 | **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence.           |
 | **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                            |
@@ -36,6 +36,43 @@ launcher tab** — no spawn, no file written, no path but the one it named, and
 the agent and flags come from your own settings. What it does gain is that the
 window is raised and that tab made active, so a stray Return in the focused
 directory field would start a session in a directory the sender chose.
+
+## Commit, pull and push run your own git
+
+The review and history drawers' buttons run `git commit` — with `git add
+--all` before it when nothing is staged, and `git reset` after it if it fails —
+`git pull --ff-only`, `git push` and `git switch` in the tab's directory, on a
+click and never otherwise. They run the same `git` with the same hooks,
+credential helper, SSH agent and remote a terminal in that directory would use,
+and with the `PATH` your login shell sets up: read by starting that shell,
+interactively, on the first click that needs it, and given up on after five
+seconds; a success is kept, a failure retried a minute later. They run with
+your full rights, outside any sandbox an agent runs in. That is the reach to weigh: an
+unsandboxed agent could have run `git push` itself, but a sandboxed one allowed
+to write its workspace and not the network can plant a hook, set
+`core.hooksPath` or repoint `origin`, and your click runs it for them. Read
+`.git/hooks`, `git config core.hooksPath` and `git remote -v` before pressing
+them in a repository an agent has had unsupervised.
+
+`GIT_DIR`, `GIT_INDEX_FILE` and the other variables that point git at a
+repository are removed from every git the app runs, so none of them can be
+aimed at a repository other than the tab's by an environment the app inherited.
+
+On macOS and Linux git runs in a session of its own with no controlling
+terminal, and pull and push set `GIT_TERMINAL_PROMPT=0`, so a prompt that needs
+a terminal — a missing credential, an unknown host key, a key passphrase —
+fails with git's own message instead of waiting on a terminal nobody is
+watching. That does not reach gpg's pinentry, which gpg-agent starts rather
+than git: a graphical one asks in its own window, and a terminal one still
+draws on whatever terminal `GPG_TTY` names. **Cancel** is the way out of either,
+and of a hook or remote that never answers: it sends `SIGTERM` to git's whole
+process group, then `SIGKILL` after two seconds; on Windows `taskkill /T` ends
+the tree forcibly, which can leave git's `index.lock` behind. Only 64 KB of
+each stream is kept — the start of its output, where git's summary is, and the
+end of its errors, where its refusal is — so a hook cannot fill the app's
+memory, and a background job a hook leaves holding the output open is waited
+for half a second, not for as long as it runs. The commit message is passed as
+one argument after `-m`, so no message can be read as an option.
 
 ## The debugging socket, and why a release build has none
 

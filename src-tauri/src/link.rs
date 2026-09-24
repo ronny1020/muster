@@ -1,6 +1,7 @@
 //! Preview cards for URLs printed in terminal output.
 //!
-//! This is the one place Muster reaches the network, so the rules are strict.
+//! This is the one request Muster makes itself — pull and push run the user's
+//! own git — so the rules are strict.
 //! The fetch happens only when the user clicks a link — never as output
 //! scrolls past — because output is written by an agent, and a page fetched
 //! automatically would turn any printed URL into a tracking pixel. A private

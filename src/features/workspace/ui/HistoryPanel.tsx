@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
 import { matchBranches, switchWarning } from '../model/branches'
 import { branchLabel } from '../model/status'
@@ -22,6 +22,18 @@ export interface HistoryPanelProps {
   onClose(): void
   /** A checkout landed, so the working directory should be re-read now. */
   onSwitched(): void
+  /** Drawn under the header — pull and push. */
+  sync?: ReactNode
+  /** A git write is running, so a checkout would race it. */
+  busy: boolean
+  /**
+   * Runs a checkout as the tab's one git write at a time, so it and a commit
+   * or push lock each other out, and reports its result where theirs go.
+   */
+  runGit(
+    action: (op: string) => Promise<string>,
+    done: string,
+  ): Promise<boolean>
 }
 
 /** Enough for a commit subject without wrapping every one of them. */
@@ -35,6 +47,9 @@ export function HistoryPanel({
   revision,
   onClose,
   onSwitched,
+  sync,
+  busy,
+  runGit,
 }: HistoryPanelProps) {
   const [commits, setCommits] = useState<Commit[] | null>(null)
   const [switching, setSwitching] = useState(false)
@@ -107,10 +122,14 @@ export function HistoryPanel({
         </button>
       </header>
 
+      {sync && <div className="flex-none border-b border-line">{sync}</div>}
+
       {switching && (
         <BranchSwitcher
           cwd={cwd}
           git={git}
+          locked={busy}
+          runGit={runGit}
           onSwitched={() => {
             setSwitching(false)
             onSwitched()
@@ -140,6 +159,9 @@ export function HistoryPanel({
 interface BranchSwitcherProps {
   cwd: string
   git: GitStatus
+  /** Another git write is running; a checkout would race it for the index. */
+  locked: boolean
+  runGit: HistoryPanelProps['runGit']
   onSwitched(): void
 }
 
@@ -151,11 +173,16 @@ interface BranchSwitcherProps {
  * have touched. So the warning states what is at stake, the click is never
  * pre-emptively disabled, and a refusal is reported in git's own words.
  */
-function BranchSwitcher({ cwd, git, onSwitched }: BranchSwitcherProps) {
+function BranchSwitcher({
+  cwd,
+  git,
+  locked,
+  runGit,
+  onSwitched,
+}: BranchSwitcherProps) {
   const [branches, setBranches] = useState<Branch[] | null>(null)
   const [query, setQuery] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -170,16 +197,14 @@ function BranchSwitcher({ cwd, git, onSwitched }: BranchSwitcherProps) {
   }, [cwd])
 
   const checkout = async (branch: string) => {
-    setBusy(branch)
-    setError(null)
-    try {
-      await gitCheckout(cwd, branch)
-      onSwitched()
-    } catch (reason) {
-      setError(String(reason))
-    } finally {
-      setBusy(null)
-    }
+    setPicked(branch)
+    // A refusal lands in the drawer's sync line, as a push's would.
+    const switched = await runGit(async (op) => {
+      await gitCheckout(cwd, branch, op)
+      return ''
+    }, `Switched to ${branch}.`)
+    setPicked(null)
+    if (switched) onSwitched()
   }
 
   const warning = switchWarning(git)
@@ -203,11 +228,6 @@ function BranchSwitcher({ cwd, git, onSwitched }: BranchSwitcherProps) {
           {warning}
         </p>
       )}
-      {error && (
-        <p className="m-0 max-h-24 overflow-y-auto px-2.5 py-1.5 font-mono text-[10px] leading-snug whitespace-pre-wrap text-danger">
-          {error}
-        </p>
-      )}
 
       <div className="max-h-56 overflow-y-auto">
         {matches === null ? (
@@ -223,8 +243,8 @@ function BranchSwitcher({ cwd, git, onSwitched }: BranchSwitcherProps) {
             <BranchRow
               key={`${branch.remote ? 'r' : 'l'}:${branch.name}`}
               branch={branch}
-              busy={busy === branch.name}
-              disabled={busy !== null}
+              busy={picked === branch.name}
+              disabled={locked}
               onPick={() => void checkout(branch.name)}
             />
           ))

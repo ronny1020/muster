@@ -165,10 +165,12 @@ and Scoop routes additionally verify a checksum recorded in their manifests.
 
 ### 🕶️ Privacy
 
-Muster makes no network requests of its own. It has no telemetry, no update
-check, and no accounts — it reads your filesystem and git state, and runs the
-CLIs you point it at, locally. Those CLIs do talk to their own providers, on
-their own terms, exactly as they would in your usual terminal.
+Muster makes no network requests of its own beyond fetching a link you click
+for its preview card. It has no telemetry, no update check, and no accounts — it
+reads your filesystem and git state, and runs the CLIs you point it at, locally.
+Those CLIs do talk to their own providers, on their own terms, exactly as they
+would in your usual terminal. The drawers' **Pull** and **Push** run your own
+`git` against your own remote, and only when you press them.
 
 The agent CLIs are separate, and Muster deliberately does not bundle them.
 Install whichever you use — `claude`, `codex`, `agy` — and check each runs in
@@ -342,7 +344,8 @@ tab arrives as the path the distro can open — `/mnt/c/…`, not `C:\…`.
 ## 🔍 Reviewing what changed
 
 `⌘G`, or `Ctrl+Shift+G`, opens the review drawer on the right. It is a
-navigator, in two views over the same directory:
+navigator, in two views over the same directory, with commit, pull and push
+under the first:
 
 **Changes** lists every file that differs, with its status letter and line
 counts. The **vs** picker compares against a branch instead of your uncommitted
@@ -399,12 +402,49 @@ back, Escape mid-drag cancels, and the width is remembered for next time. The
 history drawer resizes the same way. All three can be open at once, and the
 terminal keeps a column of its own however wide you drag them.
 
-Nothing in the drawer or the column writes. There is no staging, no discarding
-and no editing: the agent in the tab is what edits files, and a second editable
-copy of a file being rewritten underneath you is a merge conflict waiting to
-happen. What it offers instead is a button to type the file's path into the
-session — the fastest way to say "look at this one again" — plus copy-path and
-open-in-editor.
+**Commit, pull and push** sit under the Changes list. Type a message and press
+the commit button — or `⌘Enter`, `Ctrl+Enter` elsewhere. With nothing staged it
+commits every uncommitted change, new files included, and reads **Commit all**;
+if you staged part of it in the terminal it commits only that, and says how
+many files. The **vs** picker changes only what the list compares against,
+never what a commit takes. If the commit fails — a hook refused it, say — what
+the button staged is unstaged again, so the next try picks up your fix. On a
+detached head it warns that the commit will belong to no branch, and lets you
+go ahead — a rebase stopped for an edit is detached too.
+
+**Pull** only fast-forwards, so it never leaves a half-finished merge in a tree
+an agent is working in, and shows how many commits you are behind; it is greyed
+out on a branch with no upstream. **Push** shows how many are waiting to go. It
+reads **Publish** instead on a branch with no upstream, or one tracking a branch
+of another name — which is what `git checkout -b fix origin/main` makes — and
+pushes it under its own name and tracks that, rather than onto `main`. It goes
+where `git push` itself would send it: your `pushRemote` or `remote.pushDefault`
+if you set one, otherwise the remote it tracks — or the repository's only
+remote, whatever it is called. A fork workflow publishes to your fork and leaves
+the branch tracking the repository you pull from, and from then on the button
+reads **Push**, counting what the fork has not got yet. Neither works on a
+detached head. The history drawer has the same Pull and Push.
+
+While git runs, **Cancel** stops it and whatever it started — a hook, `ssh` —
+including a branch switch from the history drawer. If git had already done its
+work — it commits before `post-commit` runs and switches before
+`post-checkout` does — the drawer says so instead of "Cancelled.". Stopping a
+switch or a pull while it is writing files can leave the tree half-updated,
+which then shows as changes; cancel those only when they are stuck. When git
+refuses — a hook failed, the remote moved, a credential is missing — the drawer
+shows git's own message. Hooks and credential helpers see the `PATH` your login
+shell sets up, as in a terminal; it is read the first time you press one of
+these, and read again a minute later if that failed. On macOS and Linux git is
+never given a terminal to prompt on, so a missing credential fails rather than
+waits — except gpg's pinentry, which gpg-agent opens itself and which waits for
+an answer as it would anywhere else. Cancel is the way out of that.
+
+Nothing else in the drawer or the column writes: nothing is staged except by
+**Commit all**, and there is no discarding and no editing — the agent in the tab is what edits files, and a
+second editable copy of a file being rewritten underneath you is a merge
+conflict waiting to happen. What it offers instead is a button to type the
+file's path into the session — the fastest way to say "look at this one again"
+— plus copy-path and open-in-editor.
 
 ## 🌿 History and branches
 
@@ -422,6 +462,12 @@ If the tree has uncommitted work the drawer says so before you pick, because a
 checkout can fail on it — though only when the two branches differ in the files
 you have touched, so it does not stop you trying. When git refuses, it names the
 files in the way and the drawer shows that as it came.
+
+**Pull** and **Push** sit under the drawer's header, the same two buttons the
+review drawer has — which is where the status bar's `↑` and `↓` counts lead.
+Switching runs `git switch`, which needs git 2.23 or later: given a name that
+is no longer a branch, it refuses, where `git checkout` would take the name for
+a folder and restore it over your unsaved work.
 
 ## 📍 Jumping back to what you asked
 

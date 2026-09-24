@@ -13,6 +13,7 @@ mod review;
 mod sessions;
 mod shell;
 mod store;
+mod sync;
 mod transcript;
 mod workspace;
 
@@ -104,6 +105,10 @@ pub fn run() {
             workspace::git_log,
             workspace::git_branches,
             workspace::git_checkout,
+            sync::git_commit,
+            sync::git_pull,
+            sync::git_push,
+            sync::git_cancel,
             workspace::path_kind,
             review::git_changes,
             review::git_file_diff,

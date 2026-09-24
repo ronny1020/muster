@@ -1,7 +1,7 @@
 {
   "name": "muster",
   "private": true,
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "description": "A terminal built for AI agent CLIs: tabs that know which agent they run, and a review panel for what it changed.",
   "license": "Apache-2.0",

@@ -106,6 +106,38 @@ bash ignores `--init-file` for a login shell: `-l` is dropped and the script
 sources `/etc/profile` and the first profile itself. What must stay true is
 the `PATH`, not the flag — see the shell-integration invariant below.
 
+The git writes the drawers make — commit, pull, push, checkout — are not
+sessions, but they run the user's programs too: a husky hook calling `bunx`, a
+git-lfs `pre-push`, `gh` as a credential helper. So `sync::login_path` borrows
+the login shell's `PATH`, read on the first click that needs it and bounded by
+a deadline, because it runs the user's startup files; a success is kept and a
+failure retried after a minute. Without it the same commit
+passes under `bun run dev`, which inherits a terminal's `PATH`, and fails from
+the Dock.
+
+**A git write is stopped by the thread that waits for it.** `finish` polls its
+own child rather than handing a pid to `git_cancel`, because a pid another
+thread signals may have been reaped and reused. The child leads a process group
+of its own (`without_terminal`'s `setsid`), and `terminate` sends that group
+`SIGTERM` before `SIGKILL`: the hook or `ssh` git is waiting on is what has to
+stop, and git removes its `index.lock` on `SIGTERM` but not on `SIGKILL`, which
+would leave every later command in the tree refused. Windows has no group
+signal, so `taskkill /T` there is forcible, and a lock can be left.
+
+The output is drained on threads that `Drain::finish` waits for only briefly,
+and that is load-bearing: a hook's background job inherits the pipe, and
+joining the reader until it closes would hold every later git write in the app
+— the login-`PATH` read sits in front of all of them — behind a
+process that may run for hours.
+
+**No git the app runs may take its repository from the environment.**
+`workspace::git_in` removes `REPOSITORY_OVERRIDES` from every git child, and the
+login shell above loses them too, since its prompt runs git. Git exports
+`GIT_INDEX_FILE` to its hooks and this repository's pre-commit hook runs the
+Rust tests — so a test's `git add --all` in a scratch repository would have
+written the scratch tree over the commit being made, and nothing would have
+failed until that commit landed.
+
 **Paths are stored in the host's own form.** A WSL session keeps the Windows
 path the picker returned — a `\\wsl$\Ubuntu\...` share or a drive letter — and
 translates to `/home/...` or `/mnt/c/...` only at launch, for `wsl.exe --cd`.

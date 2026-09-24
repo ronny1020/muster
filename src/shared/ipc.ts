@@ -16,6 +16,8 @@ export interface GitStatus {
   modified: number
   untracked: number
   conflicted: number
+  /** Push sends this branch under its own name for the first time. */
+  publishes: boolean
 }
 
 export interface Workspace {
@@ -282,9 +284,10 @@ export interface LinkMeta {
 }
 
 /**
- * Reads a page's Open Graph metadata. The only call in Muster that touches the
- * network, so it runs on an explicit click rather than on hover — terminal
- * output is written by an agent, and a URL it prints must not fetch itself.
+ * Reads a page's Open Graph metadata. The only request Muster makes itself
+ * (pull and push run the user's own git), so it runs on an explicit click
+ * rather than on hover — terminal output is written by an agent, and a URL it
+ * prints must not fetch itself.
  */
 export const linkPreview = (url: string) =>
   invoke<LinkMeta>('link_preview', { url })
@@ -302,8 +305,30 @@ export const gitBranches = (cwd: string) =>
   invoke<Branch[]>('git_branches', { cwd })
 
 /** Rejects with git's own message, which names the files in the way. */
-export const gitCheckout = (cwd: string, branch: string) =>
-  invoke<void>('git_checkout', { cwd, branch })
+export const gitCheckout = (cwd: string, branch: string, op: string) =>
+  invoke<void>('git_checkout', { cwd, branch, op })
+
+/**
+ * Commits what is staged, or every change when nothing is. Resolves with
+ * git's one-line summary; rejects with git's own message, or `Cancelled.`
+ * once `gitCancel(op)` stopped it — as do the two below.
+ */
+export const gitCommit = (cwd: string, message: string, op: string) =>
+  invoke<string>('git_commit', { cwd, message, op })
+
+/** Fast-forward only. */
+export const gitPull = (cwd: string, op: string) =>
+  invoke<string>('git_pull', { cwd, op })
+
+/**
+ * Pushes the current branch where `git push` would send it, publishing one
+ * with no upstream or an upstream of another name.
+ */
+export const gitPush = (cwd: string, op: string) =>
+  invoke<string>('git_push', { cwd, op })
+
+/** Stops the command running under `op`; `false` when none is. */
+export const gitCancel = (op: string) => invoke<boolean>('git_cancel', { op })
 
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
