@@ -1,7 +1,11 @@
 import { stackFor } from '../../../shared/lib/fonts'
 import type { Backend } from '../../../shared/lib/platform'
 import { DEFAULT_THEME_ID, THEMES } from '../../../shared/lib/themes'
-import { appState, setAppState } from '../../../shared/lib/appstate'
+import {
+  appState,
+  setAppState,
+  watchAppState,
+} from '../../../shared/lib/appstate'
 
 /**
  * User settings, persisted by the backend. Loading is total: anything
@@ -242,6 +246,10 @@ export function loadSettings(): Settings {
     return DEFAULT_SETTINGS
   }
 }
+
+/** Calls `watcher` when another window changes the settings. */
+export const watchSettings = (watcher: () => void) =>
+  watchAppState(STORAGE_KEY, watcher)
 
 export function saveSettings(settings: Settings) {
   setAppState(STORAGE_KEY, JSON.stringify(settings))

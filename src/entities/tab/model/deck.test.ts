@@ -582,3 +582,49 @@ test('a new session in the tab is the agent again', () => {
   })
   expect(deck.tabs[0].handedBack).toBe(false)
 })
+
+test('moving a tab reorders the strip and keeps the active tab', () => {
+  const deck = deckReducer(deckOf(4), { type: 'move', id: 'tab-1', index: 2 })
+  expect(deck.tabs.map((tab) => tab.id)).toEqual([
+    'tab-2',
+    'tab-3',
+    'tab-1',
+    'tab-4',
+  ])
+  expect(deck.activeId).toBe('tab-1')
+})
+
+test('moving a tab past either end clamps it there', () => {
+  const ids = (deck: Deck) => deck.tabs.map((tab) => tab.id)
+  expect(
+    ids(deckReducer(deckOf(3), { type: 'move', id: 'tab-1', index: 9 })),
+  ).toEqual(['tab-2', 'tab-3', 'tab-1'])
+  expect(
+    ids(deckReducer(deckOf(3), { type: 'move', id: 'tab-3', index: -4 })),
+  ).toEqual(['tab-3', 'tab-1', 'tab-2'])
+})
+
+test('moving a tab onto its own place, or an unknown tab, changes nothing', () => {
+  const deck = deckOf(3)
+  expect(deckReducer(deck, { type: 'move', id: 'tab-2', index: 1 })).toBe(deck)
+  expect(deckReducer(deck, { type: 'move', id: 'nope', index: 0 })).toBe(deck)
+})
+
+test('a tab moved in from another window joins the strip and comes forward', () => {
+  const moved = { ...deckOf(1).tabs[0]!, id: 'moved', title: 'from afar' }
+  const deck = deckReducer(deckOf(2), { type: 'adopt', tab: moved })
+  expect(deck.tabs.map((tab) => tab.id)).toEqual(['tab-1', 'tab-2', 'moved'])
+  expect(deck.activeId).toBe('moved')
+  expect(deckReducer(deck, { type: 'adopt', tab: moved })).toBe(deck)
+})
+
+test('a tab dropped onto the strip joins where it was dropped', () => {
+  const moved = { ...deckOf(1).tabs[0]!, id: 'moved' }
+  const deck = deckReducer(deckOf(3), { type: 'adopt', tab: moved, index: 1 })
+  expect(deck.tabs.map((tab) => tab.id)).toEqual([
+    'tab-1',
+    'moved',
+    'tab-2',
+    'tab-3',
+  ])
+})

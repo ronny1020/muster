@@ -14,6 +14,7 @@ export interface TabShortcuts {
   find(): void
   closeActive(): void
   cycle(step: number): void
+  moveActive(step: number): void
   activateIndex(index: number): void
 }
 
@@ -26,6 +27,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     open,
     closeActive,
     cycle,
+    moveActive,
     activateIndex,
     toggleHistory,
     toggleReview,
@@ -42,6 +44,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
         open,
         closeActive,
         cycle,
+        moveActive,
         activateIndex,
         toggleHistory,
         toggleReview,
@@ -56,6 +59,7 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     open,
     closeActive,
     cycle,
+    moveActive,
     activateIndex,
     toggleHistory,
     toggleReview,
@@ -80,6 +84,8 @@ function run(action: ShortcutAction, handlers: TabShortcuts) {
       return handlers.closeActive()
     case 'cycle':
       return handlers.cycle(action.step)
+    case 'moveActive':
+      return handlers.moveActive(action.step)
     case 'activateIndex':
       return handlers.activateIndex(action.index)
   }

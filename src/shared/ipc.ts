@@ -2,6 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import type { Backend } from './lib/platform'
 
@@ -131,10 +132,29 @@ export interface Spawned {
   handbackToken: string | null
 }
 
-export function spawnPty(
+export const spawnPty = (
   options: SpawnOptions,
   onOutput: (bytes: Uint8Array) => void,
-) {
+) =>
+  invoke<Spawned>('pty_spawn', { options, onOutput: outputChannel(onOutput) })
+
+/**
+ * Points a running session's output at this window, replaying what it sent
+ * after byte `from` — the count a moved tab's snapshot already shows — and
+ * answering the offset that replay actually starts at.
+ */
+export const reattachPty = (
+  id: string,
+  from: number,
+  onOutput: (bytes: Uint8Array) => void,
+) =>
+  invoke<number>('pty_reattach', {
+    id,
+    from,
+    onOutput: outputChannel(onOutput),
+  })
+
+function outputChannel(onOutput: (bytes: Uint8Array) => void) {
   const channel = new Channel<ArrayBuffer | number[]>()
   channel.onmessage = (message) =>
     onOutput(
@@ -142,7 +162,7 @@ export function spawnPty(
         ? new Uint8Array(message)
         : new Uint8Array(message),
     )
-  return invoke<Spawned>('pty_spawn', { options, onOutput: channel })
+  return channel
 }
 
 export const writePty = (id: string, data: string) =>
@@ -354,7 +374,125 @@ export const onPtyExit = (
  * what the second one was asked for.
  */
 export const onOpenDirectory = (handler: (cwd: string) => void) =>
-  listen<string>('muster://open-directory', (event) => handler(event.payload))
+  windowListen<string>('muster://open-directory', handler)
+
+/**
+ * Listens for an event sent to this window alone. The module-level `listen`
+ * hears an event sent to *any* window, so every window would answer it.
+ */
+async function windowListen<T>(event: string, handler: (payload: T) => void) {
+  return getCurrentWebviewWindow().listen<T>(event, (message) =>
+    handler(message.payload),
+  )
+}
+
+/** A point or a box in CSS pixels. */
+export interface Point {
+  x: number
+  y: number
+}
+export interface Rect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface OpenRequest {
+  /** The tab the new window opens with, as `app/handoff.ts` writes it. */
+  handoff?: string
+  /**
+   * The tab whose running session moves with it. The new window owns that
+   * session from this call on, so this one may close as soon as it answers.
+   */
+  session?: string | null
+  /** Where the pointer holds the tab, to open the window under the cursor. */
+  grab?: Point
+}
+
+/** Opens a window the size of this one, carrying a tab if given one. */
+export const openWindow = (request: OpenRequest = {}) =>
+  invoke<string>('window_open', {
+    request: {
+      handoff: request.handoff ?? null,
+      session: request.session ?? null,
+      grab: request.grab ?? null,
+    },
+  })
+
+/** Sends a tab to an open window, which owns its session from this call on. */
+export const sendToWindow = (
+  label: string,
+  handoff: string,
+  session: string | null,
+) => invoke<void>('window_send', { label, handoff, session })
+
+/** Where this window's tab strip is, for drops from other windows. */
+export const reportStrip = (rect: Rect) =>
+  invoke<void>('window_strip', { rect })
+
+/** What a tab dragged out of this window would land on, if dropped now. */
+export type DropTarget =
+  | { kind: 'strip'; label: string; x: number }
+  | { kind: 'source' }
+  | { kind: 'outside' }
+
+/** `carrying` for a window's only tab, which has been moving its window. */
+export const dropTarget = (carrying: boolean) =>
+  invoke<DropTarget>('window_drop_target', { carrying })
+
+/** The drag label's window, which `ghost.rs` names the same way. */
+export const GHOST_LABEL = 'ghost'
+
+/** What the label following a torn-off tab shows. */
+export interface GhostRequest {
+  title: string
+  accent: string
+  /** The window's only tab, which carries its window rather than opening one. */
+  lone: boolean
+  /** Where the pointer holds a lone tab, which its window follows by. */
+  grab: Point | null
+  /** Which tear-off this is, so a hide can say which one it ends. */
+  drag: number
+}
+
+/** What the label says a release would do, as the backend works it out. */
+export interface GhostState {
+  title: string
+  accent: string
+  over: 'strip' | 'window' | 'new'
+}
+
+/** Shows the label beside the cursor until `hideGhost`. */
+export const showGhost = (request: GhostRequest) =>
+  invoke<void>('ghost_show', { request })
+export const hideGhost = (drag: number) => invoke<void>('ghost_hide', { drag })
+/** Still dragging: the label hides itself once these stop. */
+export const ghostBeat = () => invoke<void>('ghost_beat')
+/** What the label says now — read once by its page, which may load late. */
+export const ghostState = () => invoke<GhostState | null>('ghost_state')
+
+/** The label's own window hears what to show here. */
+export const onGhost = (handler: (state: GhostState) => void) =>
+  windowListen('muster://ghost', handler)
+
+/**
+ * A tab dragged from another window is over this one's strip, at `x` CSS
+ * pixels — or `null` once it has left — with the colour of its agent.
+ */
+export interface DropHover {
+  x: number | null
+  accent: string
+}
+export const onDropHover = (handler: (hover: DropHover) => void) =>
+  windowListen('muster://drop-hover', handler)
+
+/** The tabs other windows have sent this one and it has not taken yet. */
+export const takeHandoffs = () => invoke<string[]>('window_take')
+
+/** Another window sent this one a tab; `takeHandoffs` collects it. */
+export const onHandoff = (handler: () => void) =>
+  windowListen<null>('muster://handoff', handler)
 
 export async function pickDirectory(defaultPath?: string) {
   const picked = await open({
@@ -553,6 +691,11 @@ export const windowLabel = () => {
 
 /** The whole backend-held store, read once at startup. */
 export const readAppState = () => invoke<Record<string, string>>('state_read')
+
+/** Another window changed an entry of the store. */
+export const onStateChange = (
+  handler: (change: { key: string; value: string | null }) => void,
+) => windowListen('muster://state', handler)
 
 /** Stores one entry, or forgets it when `value` is `null`. */
 export const writeAppState = (key: string, value: string | null) =>

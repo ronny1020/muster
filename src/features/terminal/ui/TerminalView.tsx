@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -8,6 +9,7 @@ import {
 } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
@@ -25,6 +27,7 @@ import {
   attachText,
   dropPaths,
   killPty,
+  reattachPty,
   report,
   resizePty,
   spawnPty,
@@ -48,6 +51,13 @@ import {
   type Place,
 } from '../../../entities/transcript/model/turns'
 import { QUIET_MS } from '../model/working'
+import {
+  CARRIED_MODES,
+  modeSequences,
+  offerHandoff,
+  takeAdoption,
+  type TerminalHandoff,
+} from '../model/handoff'
 import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { fileAbove, type NamedFile } from '../model/codeblocks'
 import { currentMessage, nextMessage, previousMessage } from '../model/messages'
@@ -63,7 +73,7 @@ import { type ResolvedBlock, useShellBlocks } from './useShellBlocks'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
 import { useViewportRow } from './useViewportRow'
-import { FILE_MARK, MESSAGE_MARK, useRulerMarks } from './useRulerMarks'
+import { FILE_MARK, messageMark, useRulerMarks } from './useRulerMarks'
 
 export interface TerminalViewProps {
   sessionId: string
@@ -82,6 +92,16 @@ export interface TerminalViewProps {
    * agent's exit status. From then on the tab's terminal is a shell's.
    */
   onHandback(code: number): void
+  /**
+   * A moved-in tab whose session had exited by the time this window took it
+   * over, before this window was listening for the exit.
+   */
+  onAdoptedExit(code: number): void
+  /**
+   * The colour of what the tab is running — its agent's, or a shell's once
+   * the agent has handed back — for everything drawn over its output.
+   */
+  accent: string
   /** The session's live directory, for resolving a relative path in the output. */
   cwd: string
   home: string
@@ -130,6 +150,17 @@ export interface TerminalViewProps {
  */
 const bestEffort = (call: Promise<unknown>) => void call.catch(() => {})
 
+/** Sets the `agent` colour token for everything inside the terminal. */
+const agentColour = (accent: string): CSSProperties =>
+  Object.fromEntries([['--color-agent', accent]])
+
+/** The code in `pty_reattach`'s `exited:<code>`, or 1 for a session that is
+ *  simply gone. */
+const exitCodeOf = (error: unknown) => {
+  const code = /^exited:(\d+)$/.exec(String(error))?.[1]
+  return code === undefined ? 1 : Number(code)
+}
+
 /**
  * An xterm view bound to a backend PTY. Mounted once per tab and kept alive
  * while hidden, so switching tabs never restarts the agent.
@@ -141,6 +172,8 @@ export function TerminalView({
   onBell,
   onAgentEvent,
   onHandback,
+  onAdoptedExit,
+  accent,
   cwd,
   home,
   onPath,
@@ -436,7 +469,8 @@ export function TerminalView({
     [said, seekTo],
   )
 
-  useRulerMarks(mounted, messages, MESSAGE_MARK)
+  const messageStyle = useMemo(() => messageMark(accent), [accent])
+  useRulerMarks(mounted, messages, messageStyle)
   const fileMarks = useFileMarks(mounted, active)
   useRulerMarks(mounted, fileMarks, FILE_MARK)
   const viewportRow = useViewportRow(mounted, active)
@@ -469,6 +503,8 @@ export function TerminalView({
   agentEvent.current = onAgentEvent
   const handback = useRef(onHandback)
   handback.current = onHandback
+  const adoptedExit = useRef(onAdoptedExit)
+  adoptedExit.current = onAdoptedExit
   /** The token this session's hand-back announcement carries, if any. */
   const handbackToken = useRef<string | null>(null)
   /**
@@ -592,6 +628,9 @@ export function TerminalView({
       storageLimit: 32,
     })
     term.loadAddon(imageAddon)
+    // What a tab moving to another window carries its screen in.
+    const serializeAddon = new SerializeAddon()
+    term.loadAddon(serializeAddon)
     term.registerLinkProvider(
       gateLinks({ provideLinks: pathLinks(term, link) }),
     )
@@ -825,6 +864,26 @@ export function TerminalView({
       if (event) agentEvent.current(event)
       return true
     })
+    // The modes a move has to carry itself — see `CARRIED_MODES`. Watched,
+    // never claimed: xterm still applies every one of them.
+    const carriedModes = new Map<number, boolean>()
+    for (const final of ['h', 'l'] as const) {
+      term.parser.registerCsiHandler({ prefix: '?', final }, (params) => {
+        for (const mode of params) {
+          if (typeof mode === 'number' && CARRIED_MODES.has(mode)) {
+            carriedModes.set(mode, final === 'h')
+          }
+        }
+        return false
+      })
+    }
+    // A reset puts every mode back, so none of them is carried any more.
+    term.parser.registerEscHandler({ final: 'c' }, () => {
+      carriedModes.clear()
+      return false
+    })
+    /** The history file the shell reported, which it reports only once. */
+    let historyFile: string | null = null
     // Where the shell says its prompts end and its commands' output begins.
     // The position is read here rather than in the hook: the parser is at the
     // write that carried the sequence, so the cursor is where the boundary
@@ -838,6 +897,7 @@ export function TerminalView({
       // one call, so this is the whole gate.
       if (!integrated.current) return true
       const event = parseShellEvent(data)
+      if (event?.kind === 'historyFile') historyFile = event.path
       if (event) {
         const buffer = term.buffer.active
         shellSink.current?.(event, {
@@ -851,11 +911,39 @@ export function TerminalView({
     setMounted(term)
     if (paste) paste.current = (text: string) => term.paste(text)
 
+    /**
+     * How many bytes of output this terminal has been sent — the backend's
+     * own count, so a move can say exactly how much its snapshot shows.
+     */
+    let received = 0
+    /** Set once the tab has handed its session to another window. */
+    let detached = false
+    /** Which output channel is this view's: only the latest one counts. */
+    let channel = 0
+    /**
+     * A handler for a new output channel. Chunks still in flight on an older
+     * one — a move that failed and was resumed from the backlog — would show
+     * twice and push the count past what the backend sent.
+     */
+    const receiver = () => {
+      const mine = ++channel
+      return (bytes: Uint8Array) => {
+        if (mine !== channel || detached) return
+        received += bytes.length
+        markWorking()
+        term.write(bytes)
+      }
+    }
+
     // The PTY is spawned only once the pane has real dimensions, so the
     // agent's TUI draws at the right size from its first frame.
     let started = false
+    /** Set while a moved-in snapshot is still being parsed at its own size. */
+    let adopting = false
+    /** Set once this view is torn down, for work still awaiting when it is. */
+    let disposed = false
     const sync = () => {
-      if (element.clientHeight === 0) return
+      if (element.clientHeight === 0 || adopting) return
       fitAddon.fit()
       settleCols(term)
       if (started) {
@@ -889,10 +977,7 @@ export function TerminalView({
           // A plain shell, or the shell an agent hands its tab back to.
           shellIntegration: latest.current.shellIntegration,
         },
-        (bytes) => {
-          markWorking()
-          term.write(bytes)
-        },
+        receiver(),
       )
         .then((started) => {
           epoch.current = started.epoch
@@ -912,18 +997,114 @@ export function TerminalView({
         )
     }
 
+    /**
+     * Takes over a session another window was showing: its screen as that
+     * window last drew it, then everything the session printed after.
+     */
+    const adopt = async (handoff: TerminalHandoff) => {
+      epoch.current = handoff.epoch
+      integrated.current = handoff.integrated
+      integratedAfterHandback.current = handoff.integratedAfterHandback
+      handbackToken.current = handoff.handbackToken
+      handedBack.current = handoff.handedBack
+      earlyHandbacks.current = null
+      received = handoff.offset
+      // Held at the size it was drawn at until it has all been parsed — a fit
+      // in the middle would lay the rest out at another width.
+      adopting = true
+      term.resize(handoff.cols, handoff.rows)
+      await new Promise<void>((resolve) =>
+        term.write(handoff.snapshot + handoff.modes, resolve),
+      )
+      adopting = false
+      // A tab closed while its snapshot was parsing has no terminal left to
+      // fit, and its kill on the way out already ended the session.
+      if (disposed) return
+      // Then fitted like any resize, so a width change that would ruin an
+      // agent's scrollback clears it, as `settleCols` does everywhere else.
+      lastCols.current = handoff.cols
+      fitAddon.fit()
+      settleCols(term)
+      // Only where it was believed: the report that named it passed the same
+      // gate in the window it came from.
+      if (handoff.historyFile && handoff.integrated) {
+        historyFile = handoff.historyFile
+        shellSink.current?.(
+          { kind: 'historyFile', path: handoff.historyFile },
+          { row: term.buffer.active.baseY, col: 0 },
+        )
+      }
+      try {
+        const start = await reattachPty(sessionId, handoff.offset, receiver())
+        if (disposed) return
+        // The backlog may not reach back to the snapshot's offset, and the
+        // count has to be the backend's for a second move to be exact.
+        received += start - handoff.offset
+        bestEffort(resizePty(sessionId, term.cols, term.rows))
+      } catch (error) {
+        // The session ended on the way here, before this window was listening
+        // for its exit: the snapshot is all there is, and the tab says so.
+        if (!disposed) adoptedExit.current(exitCodeOf(error))
+      }
+    }
+
+    const withdraw = offerHandoff(sessionId, {
+      detach: async () => {
+        if (epoch.current === null || detached) return null
+        detached = true
+        const offset = received
+        // Lets xterm parse what it has queued, so the snapshot shows every
+        // byte the offset counts.
+        await new Promise<void>((resolve) => term.write('', resolve))
+        return {
+          snapshot: serializeAddon.serialize(),
+          offset,
+          cols: term.cols,
+          rows: term.rows,
+          epoch: epoch.current,
+          integrated: integrated.current,
+          integratedAfterHandback: integratedAfterHandback.current,
+          handbackToken: handbackToken.current,
+          handedBack: handedBack.current,
+          modes: modeSequences(carriedModes),
+          historyFile,
+        }
+      },
+      // The output dropped while detached is still in the backend's backlog.
+      resume: () => {
+        if (!detached) return
+        detached = false
+        bestEffort(reattachPty(sessionId, received, receiver()))
+      },
+    })
+
+    // A moved-in session attaches at once, visible or not. It brings its
+    // own grid size, and a hidden pane never syncs: left for the first
+    // `sync`, it would stay detached until shown while its output piled up
+    // past what the backlog keeps.
+    const adoption = takeAdoption(sessionId)
+    if (adoption) {
+      started = true
+      void adopt(adoption)
+    }
+
     const observer = new ResizeObserver(sync)
     observer.observe(element)
     sync()
 
     return () => {
+      disposed = true
+      withdraw()
       observer.disconnect()
       clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
       // Named by epoch, never by id alone: this tab may already be respawning
       // under the same id, and a kill that arrives after would otherwise end
       // the session that replaced this one.
-      if (epoch.current !== null) bestEffort(killPty(sessionId, epoch.current))
+      // A tab that moved to another window leaves its session running there.
+      if (epoch.current !== null && !detached) {
+        bestEffort(killPty(sessionId, epoch.current))
+      }
       // Every addon before the terminal, not just the renderer. `dispose` on
       // the Terminal tears `_core` down and only then lets its addon manager
       // dispose what is still registered — and an addon that reaches through
@@ -935,6 +1116,7 @@ export function TerminalView({
       for (const addon of [
         webgl,
         ligaturesAddon,
+        serializeAddon,
         imageAddon,
         linksAddon,
         searchAddon,
@@ -1119,6 +1301,7 @@ export function TerminalView({
     <div
       ref={pane}
       className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas"
+      style={agentColour(accent)}
     >
       {background && (
         <div
@@ -1156,7 +1339,7 @@ export function TerminalView({
               // anything here knows.
               current={walkedKey(stepped, said.length)}
               label="Your messages in this conversation"
-              className="right-[18px] text-brand"
+              className="right-[18px] text-agent"
             />
           )}
           <MessageSteps
@@ -1182,7 +1365,7 @@ export function TerminalView({
                 currentMessage(messages, viewportBottom)?.row.toString() ?? null
               }
               label="Your messages in the scrollback"
-              className="right-[18px] text-brand"
+              className="right-[18px] text-agent"
             />
           )}
           <MessageSteps
@@ -1210,12 +1393,12 @@ export function TerminalView({
         />
       )}
       {findOpen && search.current && (
-        <FindBar search={search.current} onClose={closeFind} />
+        <FindBar search={search.current} accent={accent} onClose={closeFind} />
       )}
       {dropping && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-brand/70 p-4"
+          className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-agent/70 p-4"
         >
           <span className="rounded bg-chrome/95 px-2 py-1 text-[11px] text-muted">
             Drop to type the path
@@ -1334,7 +1517,7 @@ function ScrollPath({
       type="button"
       onClick={onOpen}
       title={`Open ${file.path}`}
-      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-brand hover:text-ink"
+      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
       style={{
         top: `calc(0.75rem + ${fraction} * (100% - ${STEPS_RESERVE}))`,
       }}
@@ -1450,17 +1633,21 @@ function MessageSteps({
 /** How long the copy control says it copied something. */
 const COPIED_MS = 1500
 
-/** Search options shared by every call, so highlights stay consistent. */
-const SEARCH_OPTIONS = {
-  decorations: {
-    matchBackground: '#4a4632',
-    matchBorder: '#6b6440',
-    matchOverviewRuler: '#d8b165',
-    activeMatchBackground: '#d97757',
-    activeMatchBorder: '#f0906f',
-    activeMatchColorOverviewRuler: '#d97757',
-  },
-} as const
+/**
+ * Search options shared by every call, so highlights stay consistent. The
+ * current match takes the tab's agent colour; every other match is amber.
+ */
+const searchOptions = (accent: string) =>
+  ({
+    decorations: {
+      matchBackground: '#4a4632',
+      matchBorder: '#6b6440',
+      matchOverviewRuler: '#d8b165',
+      activeMatchBackground: accent,
+      activeMatchBorder: accent,
+      activeMatchColorOverviewRuler: accent,
+    },
+  }) as const
 
 /**
  * Scrollback search, floating over the grid.
@@ -1471,11 +1658,15 @@ const SEARCH_OPTIONS = {
  */
 function FindBar({
   search,
+  accent,
   onClose,
 }: {
   search: SearchAddon
+  /** The tab's agent colour, for the current match. */
+  accent: string
   onClose(): void
 }) {
+  const options = useMemo(() => searchOptions(accent), [accent])
   const [query, setQuery] = useState('')
   const [found, setFound] = useState({ index: -1, count: 0 })
   const input = useRef<HTMLInputElement>(null)
@@ -1499,13 +1690,13 @@ function FindBar({
       setFound({ index: -1, count: 0 })
       return
     }
-    search.findNext(query, { ...SEARCH_OPTIONS, incremental: true })
-  }, [search, query])
+    search.findNext(query, { ...options, incremental: true })
+  }, [search, query, options])
 
   const step = (forward: boolean) => {
     if (!query) return
-    if (forward) search.findNext(query, SEARCH_OPTIONS)
-    else search.findPrevious(query, SEARCH_OPTIONS)
+    if (forward) search.findNext(query, options)
+    else search.findPrevious(query, options)
   }
 
   return (

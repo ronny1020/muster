@@ -86,3 +86,29 @@ fn a_second_save_replaces_the_first() {
     assert!(save_to(&scratch.0, &entry("k", "two")).is_some());
     assert_eq!(load_from(&scratch.0), entry("k", "two"));
 }
+
+#[test]
+fn only_generated_window_labels_are_restored() {
+    let entries = BTreeMap::from([
+        ("muster.deck:main".to_string(), "{}".to_string()),
+        ("muster.deck:w-00ab".to_string(), "{}".to_string()),
+        ("muster.deck:../../etc".to_string(), "{}".to_string()),
+        ("muster.settings".to_string(), "{}".to_string()),
+    ]);
+    assert_eq!(windows_in(&entries), vec!["w-00ab".to_string()]);
+}
+
+#[test]
+fn a_closed_main_hands_its_place_to_a_stored_window() {
+    let mut entries = BTreeMap::from([
+        ("muster.deck:w-0a".to_string(), "tabs".to_string()),
+        ("muster.settings".to_string(), "{}".to_string()),
+    ]);
+    assert!(promote_to_main(&mut entries));
+    assert_eq!(
+        entries.get("muster.deck:main").map(String::as_str),
+        Some("tabs")
+    );
+    assert!(windows_in(&entries).is_empty());
+    assert!(!promote_to_main(&mut entries), "a stored main is kept");
+}

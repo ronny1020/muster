@@ -210,6 +210,12 @@ button agreeing with each other.
 inactive ones with `hidden`. Unmounting would kill the PTY and the scrollback,
 which is the opposite of the product. Never key a pane on the active tab.
 
+Nor render them in tab order. Dragging a tab reorders `deck.tabs`, and React
+answers a reordered keyed list by moving DOM nodes — a moved node loses its
+focus and its scroll position, in terminals nobody touched. `App` renders the
+panes sorted by id, which no drag changes; they are stacked, so the order
+shows nowhere.
+
 The consequence, which is easy to miss: a timer or subscription in a pane runs
 in _every_ tab, forever, visible or not. `useWorkspace` already git-polls on
 that basis, at a user-set interval. Anything ticking faster — a per-second
@@ -304,8 +310,9 @@ resolving it while everything that _displays_ a selection goes through
 settings pane read `defaultAgentId`, so both need it; guarding only one leaves a
 `<select>` on a value no option carries, which renders blank.
 
-**Closing the last window exits the app; minimizing it does not.**
-`tauri-runtime-wry` emits `ExitRequested` when the window list empties and
+**Closing the last window exits the app; minimizing it does not.** Closing
+the last _tab_ closes its window, as in Chrome, through the same close prompt
+— so on the last window it quits. `tauri-runtime-wry` emits `ExitRequested` when the window list empties and
 nothing here calls `prevent_exit`, so there is no window-less state to rebuild
 from — anything written against one is unreachable. `RunEvent::Reopen` is still
 worth handling, because a _minimized_ window keeps the app alive and the Dock
@@ -371,8 +378,7 @@ window to wherever it was two quits ago, silently. `save_window_state` is
 called beside `end_all` for that reason. The flags are explicit rather than
 `all()`: `DECORATIONS` would let a saved state fight
 `tauri.windows.conf.json`, which turns the frame off on purpose, and `VISIBLE`
-could restore a hidden window, which on a single-window app leaves no way to
-get it back.
+could restore a hidden window, which leaves no way to get it back.
 
 **A reload is the one browser shortcut this app cannot survive.** `Ctrl+R` or
 `F5` reaching WebView2 reloads the page, which remounts every pane and discards
@@ -393,13 +399,121 @@ them, and record into and sweep the same per-directory journal folders as the
 first. Its callback also carries the second launch's `argv`, which is how
 `muster ~/proj` reaches an app that is already open — and that only ever opens
 a **pre-filled launcher**, never a spawned session, because the gesture asked
-for a place to work rather than for an agent to be running in it.
+for a place to work rather than for an agent to be running in it. It answers in
+the focused window (`window::front`), and only there.
 
 **Cleanup runs on `RunEvent::Exit`, not on a window event.** `Cmd+Q` and the
 app menu's Quit reach tao as `terminate:`, which emits only `LoopDestroyed` — so
 no window ever sees `CloseRequested` or `Destroyed`, and anything hung off those
 is skipped on the most common quit gesture on macOS. The confirmation prompt can
 live on `CloseRequested`; ending the sessions cannot.
+
+`Destroyed` still ends sessions, but only the closing window's:
+`Sessions::end_window`, by the label each session records at spawn and
+re-records when it is adopted. Ending them all there killed every other
+window's agents whenever one window closed. A window closed while others stay
+open also forgets its stored tab list, as Chrome forgets a closed window's
+tabs; the last one keeps it, which is what makes a relaunch restore it.
+
+**A tab moves between windows; its process does not.** Rust owns the PTY, so
+the move re-points the session's output (`pty_reattach`) instead of spawning
+— `pty_spawn` on a live id ends what was there. The screen cannot move that
+way, because xterm's buffer lives in the old webview, so it travels as an
+`@xterm/addon-serialize` snapshot. Three things keep the seam exact:
+
+- The snapshot carries `offset`, the bytes of output it already shows, and
+  every terminal counts what it was sent. `output.rs` numbers the stream the
+  same way and keeps a bounded backlog, and `redirect` swaps the channel and
+  replays everything after `offset` that it still holds **under the lock the
+  reader thread sends under** — so no chunk falls between the swap and the
+  replay, or arrives twice. The backlog keeps the last 512 KB of every live
+  session, so a burst larger than that during a move is lost from the screen.
+- The old view stops drawing at the moment it takes `offset`, and its unmount
+  then skips `pty_kill`: a detached tab leaves its session running. A move
+  that fails calls `resume`, which reattaches to itself from the same offset.
+- A session tab that arrives without its terminal is refused (`readHandoff`),
+  never repaired. Adopted without one, it would spawn the agent a second time
+  in the new window while the original kept running.
+
+The window a session moves to owns it from the moment the move is asked for —
+`window_open` and `window_send` re-record the label before the target has even
+loaded — because the old window may close at once, and its `Destroyed` ends
+what it owns. For the same reason a failed send does not end the reader
+loop: the window it failed to is either closing, which ends the session
+anyway, or handing it over, and the session must stay drained and its backlog
+filling until the new window attaches. A session that ends during the move is
+remembered in `Exits`, so the adopting tab shows how it ended.
+
+**A tab dragged off the strip lands where the backend says the cursor is.**
+While the button is held no other window receives a single event, and the
+page itself stops hearing `pointermove` once the pointer leaves it under
+WebKitGTK (the release still arrives) — so the drop is decided at release, by
+`window_drop_target`, from `cursor_position()` against the strip each window
+reported (`window_strip`). Another window's strip merges the tab there, by
+`insertionIndex`'s half-width rule; anywhere else — its own window included,
+as in Chrome — gets a new window with the grabbed point under the cursor. A
+point inside the dragging window's own frame is over that window whatever
+strip lies behind it, since the dragging window is the one in front. A
+window's only tab carries its whole window from the first move (`Carry`, moved
+by the label's thread each frame), so for it only another strip changes
+anything. Escape, or bringing the tab back onto the strip, is how to keep it.
+Pointer events, never HTML drag and drop: the native file drop this app relies
+on keeps WebView2 from ever seeing `dragover`.
+
+The units are the trap. macOS scales the cursor by the **primary** display's
+factor but each window's position by **its own**, so on a Retina laptop beside
+a 1x display a comparison in physical pixels misses by a factor of two;
+`desktop_per_physical` compares in points there and in physical pixels on
+Windows and X11, where both are already physical. A window is placed by its
+frame while the grab is measured in its client area, so `Carry` subtracts the
+frame between them — a title bar on Linux, nothing on macOS or frameless
+Windows. Wayland reports the cursor and every window's position as `(0, 0)`,
+which would put every strip under the cursor, so `on_wayland` withholds the
+cursor altogether: a drag there still opens a new window, but shows no label,
+carries no lone tab's window and merges nowhere. A tab is torn off past `TEAR_PX` above or below the strip and comes back
+only within `RETURN_PX`, closer, so a hand wavering at the threshold does not
+toggle it every move. Windows have no z-order API, so of overlapping strips the
+most recently focused window's wins.
+
+**The label that follows a torn-off tab is a window, and it must never count as
+one.** A page cannot draw outside itself, so `ghost.rs` keeps a borderless,
+transparent, click-through window labelled `ghost`, built on the first drag and
+reused. While a tab is torn off a thread moves it to the cursor every frame
+and asks `target_under_cursor` what a release would do, which is also how the
+hovered window gets its landing mark (`muster://drop-hover`) — that window
+hears nothing of the drag itself. Five things keep it out of the way: every
+list of real windows skips the label (`has_other_windows`, `front`, the drop's
+own hit-test), or closing the last real window would neither quit nor keep its
+tabs; the last window's `Destroyed` closes it, because a hidden window still
+keeps the app running; window-state's denylist names it, or it would be
+restored wherever a drag last left it; it has a capability of its own
+(`capabilities/ghost.json`) granting the event API alone among the core and
+plugin APIs, since it draws a title an agent chose — the app's own commands
+are not capability-gated (there is no app manifest), so that is where the
+narrowing stops; and it hides itself a second after the
+dragging page's heartbeat stops, because a page that reloads or dies mid-drag
+never sends the hide and the label would follow the pointer for the rest of
+the run. Its page asks for the current state on mount as well as listening,
+since the first drag's first word is sent while that page is still loading,
+and the thread checks the drag is still on after showing it, because a hide
+can run while a frame is working out its target. Each tear-off is numbered by
+the page and a hide quotes the number: `ghost_show` is async and `ghost_hide`
+is not, so a quick tear-and-release can deliver the hide first, and the show
+that follows must not bring the label back. The landing mark is in the
+dragged tab's agent colour; the label's own "Add to this window" in `primary`.
+
+The serialize addon is pinned at `0.13.0`, the last on the xterm 5 line, for
+the reason the ligatures invariant below gives: `0.14.0` declares no peer.
+
+What the snapshot cannot hold is carried beside it. xterm keeps mouse
+encoding (`?1006`) and cursor visibility (`?25`) out of the state the
+serializer reads, so a clicks tab would arrive reporting the wheel in an
+encoding the agent does not parse; `CARRIED_MODES` watches them and the
+handoff writes them back. The shell reports its history file once, so that is
+carried too. Prompt boundaries before the move are not: the snapshot has no
+`OSC 133` marks, so the copy control and `⌘⇧O` reach only commands run after
+it. And a move cut mid-escape-sequence prints the sequence's tail once, since
+the offset is a chunk boundary and xterm does not expose its parser state.
 
 **A kill names a registration, not a tab.** `pty_kill` and `pty_spawn` are
 separate async commands with no ordering between them, and a tab reopening
@@ -466,7 +580,8 @@ its GPU context first, and `onContextLoss` must null the handle so cleanup
 cannot double-dispose. A lost context with no fallback stops the terminal
 painting entirely rather than dropping back to the DOM renderer.
 
-**`@xterm/addon-webgl` is pinned exactly, and nothing else pins the rest.** The same reach through `terminal._core` is why: the addons ship on their
+**Three addons are pinned exactly — webgl, ligatures and serialize — and the
+rest keep ranges.** The same reach through `terminal._core` is why: the addons ship on their
 own version lines, none declares a peer range tight enough to catch a
 mismatch, and a field renamed upstream reads as `undefined` rather than
 failing. `@xterm/addon-webgl@0.19.0` is built for xterm 6, where `Disposable`
@@ -474,8 +589,9 @@ holds a `_store`; beside xterm 5.5.0, which still calls it `_disposables`, the
 only line that reads it is the addon's own dispose callback — so every
 terminal rendered correctly and closing a tab threw, on every close, whatever
 the dispose order. So the pin is `0.18.0` — the build that pairs with xterm
-5.5.0 — exactly rather than ranged;
-the other five addons and the core keep `^` ranges, and `test/xterm.test.ts`
+5.5.0 — exactly rather than ranged; ligatures and serialize are pinned for
+the peer-range trap the ligatures invariant below describes. The other four
+addons and the core keep `^` ranges, and `test/xterm.test.ts`
 is what stands behind them — it fails when an addon names a core field this
 xterm does not have. Read its doc comment before trusting a green run: the
 bundles are minified, so it sees only the literal `_core.x` spelling and not
@@ -1078,7 +1194,22 @@ history is gone.
 `state.json` beside the journal, written by `store.rs`, because `localStorage`
 is per-origin: every window of the app shares one copy, so two windows editing
 tabs would overwrite each other, and anything that clears site data takes the
-tab list with it.
+tab list with it. Each window's tab list is its own key,
+`muster.deck:<label>`, and the labels other than `main` are what
+`window::restore` reopens on launch — `w-<hex>`, which is also the pattern the
+capability file grants, so a window under any other label would have no core
+or plugin permissions (the app's own commands are not capability-gated).
+
+Each window reads the store into its own cache, so `state_write` tells the
+other windows what changed (`muster://state`) and `appstate.ts` applies it.
+Without that, a settings change in one window is undone by the next write from
+another, since settings are written whole. For the same reason the journal
+sweep, which a window runs with only its own tabs as `live`, also spares every
+session the backend has registered: another window's agent is recording too.
+
+An event meant for one window goes through `getCurrentWebviewWindow().listen`
+and `emit_to`. The module-level `listen` hears an event sent to _any_ window,
+so `muster ~/proj` would open a launcher in every one.
 
 The whole store is read once, before the first render — `main.tsx` awaits
 `loadAppState`, and a component that read state earlier would see an empty
@@ -1540,7 +1671,11 @@ the signal to move it into a `model` segment first.
   which is Prettier's own default and reads as the HTML it resembles.
 - **Tailwind classes inline**, no `@apply` outside `src/app/index.css`'s base layer.
   Reach for the `@theme` tokens first (`canvas`, `chrome`, `surface`, `line`,
-  `ink`, `muted`, `faint`, `brand`, `danger`). Raw hex is still in use where no
+  `ink`, `muted`, `faint`, `primary`, `danger`, `agent`). Claude Code's
+  orange is that agent's colour, never the app's: `primary` is the app's own
+  accent, for chrome that belongs to no agent, and `agent` is whatever the tab
+  is running — set per terminal from that agent's `accent`, a shell's once it
+  has handed back — for everything drawn over a session's output. Raw hex is still in use where no
   token fits — the git-status chip colours, the palettes in `src/shared/lib/themes.ts`, an
   agent's `accent` — so prefer promoting a repeated hex to a token over adding
   another one-off.

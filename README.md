@@ -574,8 +574,9 @@ are looking at. It steps aside near the bottom, where the `↑`/`↓` buttons ar
 
 Click the label to open that file in the reader beside the terminal.
 
-Every file the session named is also marked on the scrollbar itself, in blue,
-beside the orange marks for your own messages — so one glance says where the
+Every file the session named is also marked on the scrollbar itself, in grey,
+beside the marks for your own messages, which are in the colour of the agent
+you sent them to — so one glance says where the
 work happened. Each mark is as tall as the output that touched the file, and
 takes only the left edge of the bar, so the two kinds stay apart by shape as
 well as by colour.
@@ -656,10 +657,26 @@ kept, and records are deleted after the retention period you set. Nothing is
 ever sent anywhere, and nothing currently displays a record's contents — the
 list is built from each file's size and age.
 
-## 🪟 One window, where you left it
+## 🪟 Windows, where you left them
 
-Muster remembers its size, position and whether it was maximised, so a restart
-reopens the window you were using rather than the default one.
+Muster remembers each window's size, position and whether it was maximised,
+and the tabs in it, so a restart reopens the windows you were using rather
+than one default one.
+
+Drag a tab off the strip and let go anywhere but another window's tabs to give
+it a window of its own — over its own window too, as in Chrome — or over
+another window's tabs to move it there; right-click a tab and
+choose **Move to new window** for the same without the drag. A label follows
+the pointer saying where the tab will go, and the window it will join marks
+the spot in its tab strip. Dragging a window's only tab moves the whole
+window. On Wayland, which does not tell an app where the cursor or its windows
+are, a dragged tab can still get a window of its own, but there is no label,
+a lone tab does not carry its window, and a tab cannot be dropped onto another
+window's tabs. A running agent or shell moves with everything on its screen
+and keeps running — nothing restarts. Closing a tab that is a window's last closes the
+window, as in Chrome; closing the last window quits. Either asks first if a
+session in that window is still running. A window closed while others stay open takes its
+tabs with it.
 
 Launching it twice focuses the window you already have instead of opening a
 second copy — which matters because two copies would restore the same tabs,
@@ -674,7 +691,7 @@ The start screen lists the agents; below that list, and above the mode
 buttons, sits **Open a plain shell instead**, because the shell is not one of
 them — no flags, no modes, nothing to
 resume. Minimising the window on macOS and clicking the Dock icon brings it
-back; closing the window quits the app, as it always has.
+back; closing the last window quits the app.
 
 A **zsh or bash** tab gets two things an agent tab has no use for. Two
 characters in, the past commands that begin the same way appear under the
@@ -785,20 +802,21 @@ distro.
 
 ## ⌨️ Shortcuts
 
-| Action              | macOS         | Windows / Linux                 |
-| ------------------- | ------------- | ------------------------------- |
-| New tab             | `⌘T`          | `Ctrl+Shift+T`                  |
-| Close tab           | `⌘W`          | `Ctrl+Shift+W`                  |
-| Toggle git history  | `⌘Y`          | `Ctrl+Shift+Y`                  |
-| Toggle review panel | `⌘G`          | `Ctrl+Shift+G`                  |
-| Find in scrollback  | `⌘F`          | `Ctrl+Shift+F`                  |
-| Copy selection      | `⌘C`          | `Ctrl+Shift+C`                  |
-| Copy last output    | `⌘⇧O`         | `Ctrl+Shift+O`                  |
-| Paste               | `⌘V`          | `Ctrl+Shift+V`                  |
-| Settings            | `⌘,`          | `Ctrl+,`                        |
-| Jump to tab 1–8     | `⌘1`–`⌘8`     | `Ctrl+1`–`Ctrl+8`               |
-| Jump to last tab    | `⌘9`          | `Ctrl+9`                        |
-| Previous / next tab | `⌘⇧[` / `⌘⇧]` | `Ctrl+PageUp` / `Ctrl+PageDown` |
+| Action                | macOS                     | Windows / Linux                             |
+| --------------------- | ------------------------- | ------------------------------------------- |
+| New tab               | `⌘T`                      | `Ctrl+Shift+T`                              |
+| Close tab             | `⌘W`                      | `Ctrl+Shift+W`                              |
+| Toggle git history    | `⌘Y`                      | `Ctrl+Shift+Y`                              |
+| Toggle review panel   | `⌘G`                      | `Ctrl+Shift+G`                              |
+| Find in scrollback    | `⌘F`                      | `Ctrl+Shift+F`                              |
+| Copy selection        | `⌘C`                      | `Ctrl+Shift+C`                              |
+| Copy last output      | `⌘⇧O`                     | `Ctrl+Shift+O`                              |
+| Paste                 | `⌘V`                      | `Ctrl+Shift+V`                              |
+| Settings              | `⌘,`                      | `Ctrl+,`                                    |
+| Jump to tab 1–8       | `⌘1`–`⌘8`                 | `Ctrl+1`–`Ctrl+8`                           |
+| Jump to last tab      | `⌘9`                      | `Ctrl+9`                                    |
+| Previous / next tab   | `⌘⇧[` / `⌘⇧]`             | `Ctrl+PageUp` / `Ctrl+PageDown`             |
+| Move tab left / right | `⌘⇧PageUp` / `⌘⇧PageDown` | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` |
 
 At a shell prompt with a suggestion showing: `→` takes it, `↓`/`↑` walk the
 list, Enter fills the chosen line in, and Escape puts the list away. Every one
@@ -810,7 +828,10 @@ closes the column, and a panel edge can be focused and then moved with `←`/`�
 number in a diff or a file is a link into your editor at that line, and `⇧F10`
 on a row in the Files tab opens its menu.
 
-Middle-click a tab to close it. Every other key goes to the agent untouched —
+Drag a tab to reorder the strip, as in Chrome — Escape mid-drag puts it back.
+Drag a tab off the strip to move it to another window or a new one; right-click
+it, or press the Menu key with it focused, for its menu. Middle-click a tab to
+close it. Every other key goes to the agent untouched —
 which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
 SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 

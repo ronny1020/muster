@@ -67,7 +67,7 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
           placeholder="Commit message"
           aria-label="Commit message"
           spellCheck={false}
-          className="w-full resize-y rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none placeholder:text-faint focus:border-brand"
+          className="w-full resize-y rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none placeholder:text-faint focus:border-primary"
         />
       )}
       {warning && <p className="m-0 text-[10px] text-danger">{warning}</p>}
@@ -126,7 +126,7 @@ const Action = ({ control, disabled, primary, onClick }: ActionProps) => (
     onClick={onClick}
     className={`rounded px-2 py-0.5 text-[11px] disabled:cursor-default disabled:opacity-40 ${
       primary
-        ? 'bg-brand text-canvas enabled:hover:opacity-90'
+        ? 'bg-primary text-canvas enabled:hover:opacity-90'
         : 'border border-line text-ink enabled:hover:bg-surface-hover'
     }`}
   >

@@ -106,7 +106,7 @@ const PROSE = [
   '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5',
   '[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5',
   '[&_li]:my-0.5',
-  '[&_.md-link]:cursor-pointer [&_.md-link]:text-brand [&_.md-link]:underline',
+  '[&_.md-link]:cursor-pointer [&_.md-link]:text-primary [&_.md-link]:underline',
   '[&_.md-refused]:text-faint [&_.md-refused]:italic',
   '[&_code]:rounded [&_code]:bg-surface [&_code]:px-1 [&_code]:py-0.5',
   // `[font-family:…]` spelled out: `font-[…]` is ambiguous in Tailwind and

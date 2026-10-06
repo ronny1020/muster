@@ -499,7 +499,7 @@ export function Launcher({
                   value={distro}
                   aria-label="WSL distro"
                   onChange={(event) => setDistro(event.target.value)}
-                  className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+                  className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
                 >
                   <option value="">Default distro</option>
                   {distros.map((name) => (
@@ -771,7 +771,7 @@ function TextInput({
       autoComplete="off"
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKeyDown}
-      className="h-8 w-full min-w-0 rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-brand focus:outline-none"
+      className="h-8 w-full min-w-0 rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-primary focus:outline-none"
     />
   )
 }

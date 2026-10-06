@@ -277,7 +277,10 @@ pub async fn journal_read(app: AppHandle, cwd: String, id: String) -> Result<Str
 /// read them — which is also the only place that knows which tabs are running,
 /// hence `live`.
 #[tauri::command]
-pub async fn journal_sweep(app: AppHandle, days: u32, live: Vec<String>) {
+pub async fn journal_sweep(app: AppHandle, days: u32, mut live: Vec<String>) {
+    // The caller's window knows only its own tabs, and another window's
+    // running sessions are recording too.
+    live.extend(app.state::<crate::pty::Sessions>().ids());
     let _ = tauri::async_runtime::spawn_blocking(move || {
         if let Some(root) = root(&app) {
             sweep(

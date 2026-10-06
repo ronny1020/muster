@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ghost",
+  "description": "The drag label window: of the core and plugin APIs it needs only events, so it gets nothing else",
+  "windows": ["ghost"],
+  "permissions": ["core:event:default"]
+}

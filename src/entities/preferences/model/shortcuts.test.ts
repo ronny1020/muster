@@ -86,6 +86,21 @@ test('page keys cycle tabs on every platform', () => {
   ).toEqual({ type: 'cycle', step: 1 })
 })
 
+test('shifted page keys move the active tab, as in Chrome', () => {
+  expect(
+    matchShortcut(
+      press({ key: 'PageUp', ctrlKey: true, shiftKey: true }),
+      false,
+    ),
+  ).toEqual({ type: 'moveActive', step: -1 })
+  expect(
+    matchShortcut(
+      press({ key: 'PageDown', metaKey: true, shiftKey: true }),
+      true,
+    ),
+  ).toEqual({ type: 'moveActive', step: 1 })
+})
+
 test('the comma opens settings without a shift anywhere', () => {
   expect(matchShortcut(press({ key: ',', metaKey: true }), true)).toEqual({
     type: 'openSettings',

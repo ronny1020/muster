@@ -99,7 +99,7 @@ export function SettingsPane() {
               onChange={(event) =>
                 update({ defaultAgentId: event.target.value })
               }
-              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
             >
               {AGENTS.map((agent) => (
                 <option key={agent.id} value={agent.id}>
@@ -122,7 +122,7 @@ export function SettingsPane() {
                     event.target.value === 'clicks' ? 'clicks' : 'scrollback',
                 })
               }
-              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
             >
               <option value="scrollback">Scrollback</option>
               <option value="clicks">Clicks</option>
@@ -141,7 +141,7 @@ export function SettingsPane() {
                 onChange={(event) =>
                   update({ defaultDirectory: event.target.value })
                 }
-                className="h-8 w-[240px] rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-brand focus:outline-none"
+                className="h-8 w-[240px] rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-primary focus:outline-none"
               />
               <button
                 type="button"
@@ -171,7 +171,7 @@ export function SettingsPane() {
                         event.target.value === 'wsl' ? 'wsl' : 'native',
                     })
                   }
-                  className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+                  className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
                 >
                   <option value="native">Windows</option>
                   <option value="wsl">WSL</option>
@@ -183,7 +183,7 @@ export function SettingsPane() {
                     onChange={(event) =>
                       update({ defaultDistro: event.target.value })
                     }
-                    className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+                    className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
                   >
                     <option value="">Default distro</option>
                     {distros.map((name) => (
@@ -206,7 +206,7 @@ export function SettingsPane() {
                 value={settings.themeId}
                 onChange={(event) => update({ themeId: event.target.value })}
                 aria-label="Theme"
-                className="h-8 w-[180px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+                className="h-8 w-[180px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
               >
                 {themeChoices().map((choice) => (
                   <option key={choice.id} value={choice.id}>
@@ -233,7 +233,7 @@ export function SettingsPane() {
               aria-label="Font family"
               value={settings.fontFamily}
               onChange={(event) => update({ fontFamily: event.target.value })}
-              className="h-8 w-[300px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+              className="h-8 w-[300px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
             >
               {fontChoices(settings.fontFamily, fonts).map((font) => (
                 <option
@@ -459,7 +459,7 @@ function NumberRow({
           onChange={(event) =>
             update({ [field]: Number(event.target.value) } as Partial<Settings>)
           }
-          className="w-[180px] accent-brand"
+          className="w-[180px] accent-primary"
         />
         <span className="w-[92px] text-right font-mono text-[11px] text-muted">
           {value}
@@ -485,7 +485,7 @@ function Toggle({
       checked={checked}
       aria-label={label}
       onChange={(event) => onChange(event.target.checked)}
-      className="h-4 w-4 accent-brand"
+      className="h-4 w-4 accent-primary"
     />
   )
 }
@@ -512,7 +512,7 @@ function EditorRow() {
         value={settings.editorCommand}
         aria-label="Editor"
         onChange={(event) => update({ editorCommand: event.target.value })}
-        className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-brand focus:outline-none"
+        className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
       >
         <option value="">{available[0].name} (first found)</option>
         {available.map((editor) => (
@@ -555,7 +555,7 @@ function BackgroundRow() {
         <button
           type="button"
           onClick={() => void choose()}
-          className="h-8 rounded-lg border border-line px-2.5 text-xs text-ink hover:border-brand"
+          className="h-8 rounded-lg border border-line px-2.5 text-xs text-ink hover:border-primary"
         >
           {chosen ? 'Change…' : 'Choose…'}
         </button>

@@ -66,6 +66,30 @@ Useful commands: `execute_js`, `get_dom`, `dispatch_pointer`, `press_key`,
 **cannot** separate two mark colours in a 10px strip: it corroborates, it never
 proves. The full list is the match in the plugin's `src/tools/mod.rs`.
 
+**There may be more than one window.** `js` runs in `main`; any other window
+— `w-<hex>` for one a tab was moved to, `ghost` for the drag label — takes
+`execute_js` with a `window_label`. List them first:
+`window.__TAURI_INTERNALS__.invoke('plugin:window|get_all_windows')`. A
+synthetic pointer drag needs `Element.prototype.setPointerCapture` stubbed (a
+synthetic pointer id is not one WebKit knows) and a pointer id no real device
+uses, or the user's own mouse moves arrive in the middle of it. And
+`window_drop_target` reads the **real** cursor, so a synthetic tear-off lands
+wherever the mouse happens to be.
+
+**A rejected call leaves the window unusable.** Any IPC call the
+capabilities refuse — `plugin:window|set_focus` from the page, say — is an
+unhandled rejection, and Bun's dev overlay (`<bun-hmr>`) answers it with a
+full-window layer at the top z-index that stays after its message is
+dismissed, eating every click and drag. Catch what a probe invokes, and if the
+app stops taking the pointer, check `document.elementFromPoint` before
+suspecting the code; `document.querySelector('bun-hmr').remove()` clears it.
+
+Colours depend on the tab: the message marks on the ruler, the find bar's
+current match, the rails, the drop outline and the path and copy controls'
+hover take the agent's own accent — the step buttons stay neutral
+(`--color-agent` on the terminal's root), so compare against the agent the tab
+runs, never a fixed hex.
+
 Before measuring anything, check you are measuring the build you edited. A
 socket that answers may belong to an app you did not start, and `tauri dev`
 rebuilds on save, so `stat -f "%Sm %N" src-tauri/target/debug/muster <the file

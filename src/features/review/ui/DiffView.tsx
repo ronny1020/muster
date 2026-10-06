@@ -263,7 +263,7 @@ function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
         row.kind === 'add' || row.kind === 'del' ? row.kind : undefined
       }
       className={`flex ${ROW_TONE[row.kind]} ${
-        wanted ? 'outline outline-brand' : ''
+        wanted ? 'outline outline-primary' : ''
       }`}
     >
       {/* The old side is never a link: that number names a line in the file as
@@ -319,7 +319,7 @@ const Gutter = ({
       aria-label={`Open line ${value} in ${opener.editor}`}
       onClick={() => opener.open(value)}
       style={GUTTER_WIDTH}
-      className={`${GUTTER} cursor-pointer text-faint hover:text-brand hover:underline`}
+      className={`${GUTTER} cursor-pointer text-faint hover:text-primary hover:underline`}
     >
       {value}
     </button>

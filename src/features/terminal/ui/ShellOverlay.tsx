@@ -111,7 +111,7 @@ export function ShellOverlay({
           onClick={() => onCopy(hovered.block)}
           title={hovered.label}
           aria-label={hovered.label}
-          className="pointer-events-auto absolute right-5 z-10 rounded border border-line bg-chrome/95 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-brand hover:text-ink"
+          className="pointer-events-auto absolute right-5 z-10 rounded border border-line bg-chrome/95 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
           style={{
             top: Math.max(
               0,

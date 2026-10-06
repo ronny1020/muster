@@ -304,7 +304,9 @@ function CommitRow({ commit }: { commit: Commit }) {
         <span
           className="h-1.5 w-1.5 flex-none rounded-full"
           style={{
-            background: commit.unpushed ? 'var(--color-brand)' : 'transparent',
+            background: commit.unpushed
+              ? 'var(--color-primary)'
+              : 'transparent',
           }}
           title={commit.unpushed ? 'not pushed yet' : undefined}
         />

@@ -90,6 +90,8 @@ export type DeckAction =
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
   | { type: 'activate'; id: string }
+  | { type: 'move'; id: string; index: number }
+  | { type: 'adopt'; tab: Tab; index?: number }
   | { type: 'activateIndex'; index: number }
   | { type: 'cycle'; step: number }
   | { type: 'start'; id: string; session: Session; title: string }
@@ -212,6 +214,14 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       if (!deck.tabs.some((tab) => tab.id === action.id)) return deck
       // Looking at a tab is how its notice gets acknowledged.
       return { ...clearAttention(deck, action.id), activeId: action.id }
+
+    case 'move':
+      return moveTab(deck, action.id, action.index)
+
+    // A tab moved here from another window, which comes forward as it would
+    // in the window it left.
+    case 'adopt':
+      return adoptTab(deck, action.tab, action.index)
 
     case 'activateIndex': {
       const tab =
@@ -354,8 +364,9 @@ function openSettings(deck: Deck, id: string): Deck {
 }
 
 /**
- * Closing focuses the tab that slid into its place, like Chrome. The last tab
- * is replaced by a fresh one rather than leaving an empty window.
+ * Closing focuses the tab that slid into its place, like Chrome. A last tab
+ * closed through the reducer is replaced by a fresh one; `App` closes the
+ * window instead of reaching this path.
  */
 function closeTab(deck: Deck, id: string, replacementId: string): Deck {
   const index = deck.tabs.findIndex((tab) => tab.id === id)
@@ -368,6 +379,26 @@ function closeTab(deck: Deck, id: string, replacementId: string): Deck {
       ? tabs[Math.min(index, tabs.length - 1)].id
       : deck.activeId
   return { tabs, activeId }
+}
+
+/** Takes in a tab from another window, at `index` or else at the end. */
+function adoptTab(deck: Deck, tab: Tab, index = deck.tabs.length): Deck {
+  if (deck.tabs.some((held) => held.id === tab.id)) return deck
+  const tabs = [...deck.tabs]
+  tabs.splice(index, 0, tab)
+  return { tabs, activeId: tab.id }
+}
+
+/** Puts a tab at `index` of the strip, clamped to its ends. */
+function moveTab(deck: Deck, id: string, index: number): Deck {
+  const from = deck.tabs.findIndex((tab) => tab.id === id)
+  const to = Math.max(0, Math.min(index, deck.tabs.length - 1))
+  if (from < 0 || from === to) return deck
+
+  const tabs = [...deck.tabs]
+  const [tab] = tabs.splice(from, 1)
+  tabs.splice(to, 0, tab!)
+  return { ...deck, tabs }
 }
 
 const clearAttention = (deck: Deck, id: string): Deck =>

@@ -147,6 +147,13 @@ What bounds it:
   process read another's starting environment — Linux's
   `/proc/<pid>/environ` does; forged, the announcement ends the tab's agent
   phase early and raises a false notification, and reaches nothing else.
+  A tab moved to another window carries the token with it, inside the app —
+  through Rust, never through the terminal stream — and its screen travels
+  as a serialized snapshot: the characters on screen and the colour and
+  cursor sequences that redraw them, but no OSC sequence — so no report or
+  announcement the agent printed is re-parsed in the window it lands in. Every live session keeps its
+  last 512 KB of output in memory for exactly this, and that is what carries
+  a session across until the new window attaches.
 
 The sequence is not the CLI's own, and Muster is what switches it on: it comes
 from a hook plugin the user installs, gated behind the advertisement

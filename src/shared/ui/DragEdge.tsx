@@ -40,8 +40,8 @@ export function DragEdge({ size, label }: DragEdgeProps) {
           size.nudge(step * (event.shiftKey ? 4 : 1))
         }}
         className={`absolute top-0 -left-1 z-10 h-full w-2 cursor-col-resize ${
-          size.dragging ? 'bg-brand/60' : 'hover:bg-brand/40'
-        } focus-visible:bg-brand/60 focus-visible:outline-none`}
+          size.dragging ? 'bg-primary/60' : 'hover:bg-primary/40'
+        } focus-visible:bg-primary/60 focus-visible:outline-none`}
       />
       {size.dragging && (
         <div

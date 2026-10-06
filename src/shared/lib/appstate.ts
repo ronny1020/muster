@@ -5,9 +5,10 @@
  * webview; see AGENTS.md's "Tabs and settings belong to the app" invariant for
  * why they are not in `localStorage`, and for what does stay there.
  */
-import { readAppState, windowLabel, writeAppState } from '../ipc'
+import { onStateChange, readAppState, windowLabel, writeAppState } from '../ipc'
 
 const entries = new Map<string, string>()
+const watchers = new Map<string, Set<() => void>>()
 
 /** Keys that used to live in `localStorage`, migrated once on first load. */
 const MIGRATED = ['muster.settings', 'muster.recent-dirs']
@@ -25,6 +26,32 @@ export async function loadAppState() {
     /* an unreadable store is an empty one; the run still works */
   }
   migrate()
+  void followOtherWindows()
+}
+
+/**
+ * Keeps the cache in step with writes made by other windows, which share the
+ * store but not this cache — a stale entry here would undo their change on
+ * this window's next write.
+ */
+async function followOtherWindows() {
+  try {
+    await onStateChange(({ key, value }) => {
+      if (value === null) entries.delete(key)
+      else entries.set(key, value)
+      watchers.get(key)?.forEach((watcher) => watcher())
+    })
+  } catch {
+    /* no backend, so no other windows */
+  }
+}
+
+/** Calls `watcher` when another window changes `key`; answers the unsubscribe. */
+export function watchAppState(key: string, watcher: () => void) {
+  const set = watchers.get(key) ?? new Set()
+  set.add(watcher)
+  watchers.set(key, set)
+  return () => void set.delete(watcher)
 }
 
 /** Moves anything an older version left in `localStorage`, once. */

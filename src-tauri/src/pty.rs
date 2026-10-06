@@ -19,6 +19,7 @@ use tauri::{
 };
 
 use crate::journal::{Journal, JournalMeta};
+use crate::output::Output;
 use crate::platform::{self, Backend, Launch};
 
 /// Live handles for one tab.
@@ -52,7 +53,10 @@ struct Session {
     /// thread starts before `pty_spawn` has finished registering the session,
     /// so a lookup would miss on the first chunk and end the thread before a
     /// single byte reached the window.
-    output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+    output: Arc<Mutex<Output<Channel<InvokeResponseBody>>>>,
+    /// The label of the window showing this session, so closing one window
+    /// ends its own sessions and leaves every other window's running.
+    window: Mutex<String>,
 }
 
 /// Counts every session ever registered, so one can be told apart from
@@ -70,6 +74,12 @@ static EPOCHS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
 
+/// How each session that has exited ended, by tab id, for a window that
+/// adopts a tab whose session ended on the way — its exit event arrived
+/// before that window was listening. Cleared when the id spawns again.
+#[derive(Default)]
+pub struct Exits(Mutex<HashMap<String, u32>>);
+
 impl Sessions {
     fn get(&self, id: &str) -> Result<Arc<Session>, String> {
         self.0
@@ -82,6 +92,48 @@ impl Sessions {
     /// How many sessions are still running, for a close prompt.
     pub fn live(&self) -> usize {
         self.0.lock().len()
+    }
+
+    /// The tab ids of every running session, in any window.
+    pub fn ids(&self) -> Vec<String> {
+        self.0.lock().keys().cloned().collect()
+    }
+
+    /// Hands a session to another window before that window has attached,
+    /// so the window it is leaving can close without ending it.
+    ///
+    /// A session that has already ended has nothing to move.
+    pub fn move_to(&self, id: &str, window: &str) {
+        if let Ok(session) = self.get(id) {
+            *session.window.lock() = window.to_string();
+        }
+    }
+
+    /// How many of them one window is showing.
+    pub fn live_in(&self, window: &str) -> usize {
+        self.0
+            .lock()
+            .values()
+            .filter(|session| *session.window.lock() == window)
+            .count()
+    }
+
+    /// Ends the sessions one window is showing, when that window closes and
+    /// others stay open.
+    pub fn end_window(&self, window: &str) {
+        // Taken out under the guard and ended after it, for the reason
+        // `end_all` gives.
+        let mut map = self.0.lock();
+        let ids: Vec<String> = map
+            .iter()
+            .filter(|(_, session)| *session.window.lock() == window)
+            .map(|(id, _)| id.clone())
+            .collect();
+        let ended: Vec<Arc<Session>> = ids.iter().filter_map(|id| map.remove(id)).collect();
+        drop(map);
+        for session in ended {
+            end(&session);
+        }
     }
 
     /// Forgets a session whose child has exited, if it is still the one
@@ -99,7 +151,10 @@ impl Sessions {
     /// `no session <id>`: the terminal goes on drawing, because the reader
     /// thread holds the output channel rather than the map, so the tab looks
     /// healthy and only typing is dead.
-    fn forget(&self, id: &str, session: &Weak<Session>) {
+    ///
+    /// `retiring` runs only when it is, and under the registry's lock, so
+    /// nothing can register a new session under the id in between.
+    fn forget(&self, id: &str, session: &Weak<Session>, retiring: impl FnOnce()) {
         // A `Weak` that cannot be upgraded is a session nothing holds, and the
         // map holds a strong reference to everything in it — so there is
         // nothing of this session left to remove.
@@ -111,7 +166,17 @@ impl Sessions {
             .get(id)
             .is_some_and(|current| Arc::ptr_eq(current, &mine))
         {
+            retiring();
             sessions.remove(id);
+        }
+    }
+
+    /// Lets go of every output channel window `closed` owned — a session it
+    /// handed to another window that has not attached yet is still writing
+    /// to it, and a closed window's channel never says so itself.
+    pub fn park_window(&self, closed: &str) {
+        for session in self.0.lock().values() {
+            session.output.lock().park(closed);
         }
     }
 
@@ -315,7 +380,9 @@ struct ExitPayload {
     code: u32,
 }
 
-/// Points a running session's output at a different window.
+/// Points a running session's output at a different window, replaying what
+/// was sent after byte `from` — the count the old window's screen already
+/// shows — and answering the offset that replay starts at.
 ///
 /// This is how a tab moves between windows: `pty_spawn` on a live id ends the
 /// child that was there, so it cannot be used to adopt one. Swap **before**
@@ -324,18 +391,33 @@ struct ExitPayload {
 /// a thread forever.
 #[tauri::command]
 pub fn pty_reattach(
+    window: tauri::Window,
     sessions: tauri::State<'_, Sessions>,
+    exits: tauri::State<'_, Exits>,
     id: String,
+    from: u64,
     on_output: Channel<InvokeResponseBody>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
+    // A session that ended on the way says how, so the tab can show it ended
+    // rather than sit there taking keystrokes for nothing — asked first, since
+    // a session that has exited can still be registered for a moment. An exit
+    // never outlives a respawn under the same id, which clears it.
+    if let Some(code) = exits.0.lock().get(&id) {
+        return Err(format!("exited:{code}"));
+    }
     let session = sessions.get(&id)?;
-    *session.output.lock() = on_output;
-    Ok(())
+    *session.window.lock() = window.label().to_string();
+    let start = session
+        .output
+        .lock()
+        .redirect(on_output, window.label(), from);
+    Ok(start)
 }
 
 #[tauri::command(async)]
 pub fn pty_spawn(
     app: AppHandle,
+    window: tauri::Window,
     sessions: tauri::State<'_, Sessions>,
     options: SpawnOptions,
     on_output: Channel<InvokeResponseBody>,
@@ -472,7 +554,7 @@ pub fn pty_spawn(
         );
     }
 
-    let output = Arc::new(Mutex::new(on_output));
+    let output = Arc::new(Mutex::new(Output::new(on_output, window.label())));
     let (stdin, queued) = mpsc::channel::<Vec<u8>>();
     let killed = Arc::new(AtomicBool::new(false));
 
@@ -496,11 +578,19 @@ pub fn pty_spawn(
         killer: Mutex::new(killer),
         killed: killed.clone(),
         output: output.clone(),
+        window: Mutex::new(window.label().to_string()),
     });
     // Held weakly by the reader thread, so it can tell "my child exited" from
     // "a newer session has taken this id" — see `Sessions::forget`.
     let registered = Arc::downgrade(&session);
-    let previous = sessions.0.lock().insert(id.clone(), session);
+    // A tab started again after its session ended is live again — cleared
+    // under the registry's lock, the one `forget` records an exit under, so
+    // a dying session cannot record its exit between the two.
+    let previous = {
+        let mut registry = sessions.0.lock();
+        app.state::<Exits>().0.lock().remove(&id);
+        registry.insert(id.clone(), session)
+    };
     // Re-using a live id would otherwise drop the old session's killer and
     // leave its child running.
     if let Some(previous) = previous {
@@ -576,29 +666,35 @@ pub fn pty_spawn(
                 break;
             }
             // Recorded before it is sent, so a chunk is never dropped from
-            // the record because the send failed. Note the loop still ends on
-            // a failed send: the frontend going away means the window is
-            // closing, and reading a pty nobody is displaying is not worth a
-            // parked thread.
+            // the record because the send failed.
             if let Some(journal) = journal.as_mut() {
                 journal.write(&buf[..len]);
             }
             // Through the shared handle, so a window that adopts this tab
             // receives the next chunk. The lock covers the enqueue alone.
-            if reader_output
-                .lock()
-                .send(InvokeResponseBody::Raw(buf[..len].to_vec()))
-                .is_err()
-            {
-                break;
-            }
+            //
+            // A failed send does not end the loop. The window it failed to is
+            // either closing — and `Destroyed` ends its sessions, which ends
+            // this loop at EOF — or handing the session to another window,
+            // which must find the session still drained and the backlog
+            // still filling when it attaches.
+            reader_output.lock().send(&buf[..len]);
         }
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
         // The child is gone, so the registry must let go of it: the pane stays
         // mounted behind the "session ended" overlay, so nothing else will.
-        app.state::<Sessions>().forget(&id, &registered);
         // A deliberate close needs no banner; the tab is already a launcher.
         let deliberate = killed.load(Ordering::SeqCst);
+        // Recorded as the registry lets go, so a window adopting the tab finds
+        // how it ended rather than nothing at all. Only an exit of its own,
+        // and only while it is still the session under that id: one ended to
+        // make way for a respawn, or racing one, must not report the new
+        // session as over.
+        app.state::<Sessions>().forget(&id, &registered, || {
+            if !deliberate {
+                app.state::<Exits>().0.lock().insert(id.clone(), code);
+            }
+        });
         // Set after that read, never before: this flag is also how anything
         // watching the session learns it is over, and the most common way a
         // session ends is the child exiting on its own — which nothing else

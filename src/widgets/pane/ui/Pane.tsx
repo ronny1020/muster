@@ -555,10 +555,14 @@ export function Pane({
               <TerminalView
                 sessionId={tab.id}
                 session={session}
+                accent={(running ?? SHELL_AGENT).accent}
                 active={active}
                 onBell={onBell}
                 onAgentEvent={onAgentEvent}
                 onHandback={onHandback}
+                onAdoptedExit={(code) =>
+                  dispatch({ type: 'exited', id: tab.id, code })
+                }
                 onWorking={onWorking}
                 ended={tab.exitCode !== null}
                 turns={turns}

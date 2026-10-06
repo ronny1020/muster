@@ -1,6 +1,9 @@
 use std::{
     io::Write,
-    sync::{atomic::AtomicBool, mpsc, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -8,6 +11,8 @@ use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use tauri::ipc::{Channel, InvokeResponseBody};
+
+use crate::output::Output;
 
 use super::{
     advertise_protocol, apply_mode, end, Session, Sessions, CLI_AGENT_ENV,
@@ -87,7 +92,8 @@ fn quitting_ends_every_session_and_empties_the_registry() {
                 group,
                 killer: Mutex::new(killer),
                 killed: Arc::new(AtomicBool::new(false)),
-                output: Arc::new(Mutex::new(discard())),
+                output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
+                window: Mutex::new("main".to_string()),
             }),
         );
 
@@ -170,7 +176,8 @@ fn ending_a_session_reaches_the_children_the_agent_started() {
         group,
         killer: Mutex::new(killer),
         killed: Arc::new(AtomicBool::new(false)),
-        output: Arc::new(Mutex::new(discard())),
+        output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
+        window: Mutex::new("main".to_string()),
     });
 
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -322,12 +329,13 @@ fn re_pointing_a_session_leaves_its_child_running() {
             group,
             killer: Mutex::new(killer),
             killed: Arc::new(AtomicBool::new(false)),
-            output: Arc::new(Mutex::new(discard())),
+            output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
+            window: Mutex::new("main".to_string()),
         }),
     );
 
     let session = sessions.get("tab-move").expect("session");
-    *session.output.lock() = discard();
+    session.output.lock().redirect(discard(), "main", 0);
 
     assert!(
         alive(group.expect("group")),
@@ -436,7 +444,8 @@ fn parked_session() -> (Arc<Session>, i32) {
         group,
         killer: Mutex::new(killer),
         killed: Arc::new(AtomicBool::new(false)),
-        output: Arc::new(Mutex::new(discard())),
+        output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
+        window: Mutex::new("main".to_string()),
     });
     (session, group.expect("group"))
 }
@@ -460,7 +469,12 @@ fn a_dying_session_does_not_forget_the_one_that_replaced_it() {
     assert!(replaced.is_some(), "the respawn took the id");
 
     // What the old child's reader thread does once `child.wait()` returns.
-    sessions.forget("tab", &old_identity);
+    let mut retired = false;
+    sessions.forget("tab", &old_identity, || retired = true);
+    assert!(
+        !retired,
+        "an exit racing a respawn must not be recorded against the new session"
+    );
 
     let still_there = sessions
         .get("tab")
@@ -484,7 +498,7 @@ fn a_session_that_is_still_the_current_one_is_forgotten_on_exit() {
     let identity = Arc::downgrade(&only);
     sessions.0.lock().insert("tab".to_string(), only.clone());
 
-    sessions.forget("tab", &identity);
+    sessions.forget("tab", &identity, || {});
 
     assert!(sessions.get("tab").is_err(), "the registry let go of it");
     assert_eq!(sessions.live(), 0);
@@ -504,7 +518,7 @@ fn forgetting_a_session_already_gone_leaves_the_registry_alone() {
         end(&gone);
         weak
     };
-    sessions.forget("tab", &stale);
+    sessions.forget("tab", &stale, || {});
 
     assert!(
         sessions.get("tab").is_ok(),
@@ -554,4 +568,33 @@ fn pty_kill_for_test(sessions: &Sessions, id: &str, epoch: u64) {
     };
     drop(map);
     end(&session);
+}
+
+/// Closing one of several windows ends the sessions it was showing and no
+/// others — a tab that moved in from it belongs to the window it moved to.
+#[test]
+fn closing_a_window_ends_only_the_sessions_it_shows() {
+    let sessions = Sessions::default();
+    let (closing, _) = parked_session();
+    let (staying, _) = parked_session();
+    let (moved, _) = parked_session();
+    *staying.window.lock() = "w-2".to_string();
+    // Spawned in `main`, then adopted by `w-2`.
+    *moved.window.lock() = "w-2".to_string();
+    sessions.0.lock().insert("a".to_string(), closing.clone());
+    sessions.0.lock().insert("b".to_string(), staying.clone());
+    sessions.0.lock().insert("c".to_string(), moved.clone());
+
+    assert_eq!(sessions.live_in("main"), 1);
+    assert_eq!(sessions.live_in("w-2"), 2);
+    sessions.end_window("main");
+
+    let ended = closing.killed.load(Ordering::SeqCst);
+    let spared = !staying.killed.load(Ordering::SeqCst) && !moved.killed.load(Ordering::SeqCst);
+    let remaining = sessions.live();
+    end(&staying);
+    end(&moved);
+    assert!(ended, "the closed window's session must be ended");
+    assert!(spared, "another window's sessions must keep running");
+    assert_eq!(remaining, 2, "the other window's sessions stay registered");
 }
