@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { type Tab, tabSession } from '../../../entities/tab/model/deck'
+import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
 import { WindowControls } from '../../../shared/ui/WindowControls'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
@@ -93,7 +94,10 @@ interface TabButtonProps {
 }
 
 function TabButton({ tab, active, onSelect, onClose }: TabButtonProps) {
-  const accent = tabSession(tab)?.accent ?? '#63636d'
+  // A tab its agent handed back is a shell's, so it takes a shell's colour.
+  const accent = tab.handedBack
+    ? SHELL_AGENT.accent
+    : (tabSession(tab)?.accent ?? '#63636d')
 
   return (
     <div

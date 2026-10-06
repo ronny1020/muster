@@ -544,3 +544,41 @@ test('relaunching forgets what the previous session was doing', () => {
   const relaunched = deckReducer(working, { type: 'relaunch', id: 'tab-1' })
   expect(relaunched.tabs[0].status).toBe('unknown')
 })
+
+test('a tab whose agent handed back stops claiming the agent is doing anything', () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  deck = deckReducer(deck, { type: 'status', id: 'tab-1', status: 'working' })
+  deck = deckReducer(deck, { type: 'handedBack', id: 'tab-1' })
+
+  expect(deck.tabs[0].handedBack).toBe(true)
+  expect(deck.tabs[0].status).toBe('unknown')
+  // The session is still the agent's, and still running: a hand-back is not
+  // an exit.
+  expect(deck.tabs[0].exitCode).toBeNull()
+})
+
+test('a new session in the tab is the agent again', () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  deck = deckReducer(deck, { type: 'handedBack', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'relaunch', id: 'tab-1' })
+  expect(deck.tabs[0].handedBack).toBe(false)
+
+  deck = deckReducer(deck, { type: 'handedBack', id: 'tab-1' })
+  deck = deckReducer(deck, {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  expect(deck.tabs[0].handedBack).toBe(false)
+})

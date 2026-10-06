@@ -52,6 +52,7 @@ import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { fileAbove, type NamedFile } from '../model/codeblocks'
 import { currentMessage, nextMessage, previousMessage } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
+import { HANDBACK_VERB, parseHandback } from '../model/handback'
 import {
   parseShellEvent,
   type Position,
@@ -76,6 +77,11 @@ export interface TerminalViewProps {
    * only where a hook plugin is installed to broadcast it.
    */
   onAgentEvent(event: AgentEvent): void
+  /**
+   * The agent has exited and the terminal now runs the user's shell, with the
+   * agent's exit status. From then on the tab's terminal is a shell's.
+   */
+  onHandback(code: number): void
   /** The session's live directory, for resolving a relative path in the output. */
   cwd: string
   home: string
@@ -134,6 +140,7 @@ export function TerminalView({
   active,
   onBell,
   onAgentEvent,
+  onHandback,
   cwd,
   home,
   onPath,
@@ -315,6 +322,8 @@ export function TerminalView({
    * it is read inside the terminal's own parser.
    */
   const integrated = useRef(false)
+  /** Whether it is believed once the agent has handed back, and not before. */
+  const integratedAfterHandback = useRef(false)
   /**
    * Sets up a run of the wheel over the agent's own view, or answers null
    * when nothing may be sent.
@@ -458,6 +467,17 @@ export function TerminalView({
   bell.current = onBell
   const agentEvent = useRef(onAgentEvent)
   agentEvent.current = onAgentEvent
+  const handback = useRef(onHandback)
+  handback.current = onHandback
+  /** The token this session's hand-back announcement carries, if any. */
+  const handbackToken = useRef<string | null>(null)
+  /**
+   * Announcements that arrived before `pty_spawn` answered with the token —
+   * an agent that fails at once can hand back first — held until it does.
+   */
+  const earlyHandbacks = useRef<string[] | null>([])
+  /** Whether it has, so the terminal is a shell's from here on. */
+  const handedBack = useRef(false)
   const working = useRef(onWorking)
   working.current = onWorking
   /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
@@ -496,8 +516,9 @@ export function TerminalView({
    */
   const settleCols = useCallback((term: Terminal) => {
     if (term.cols === lastCols.current) return
-    if (lastCols.current !== 0 && reflowRuins(term, launch.current.agentId))
-      term.clear()
+    // A tab its agent handed back is a shell's, whose wraps reflow correctly.
+    const agentId = handedBack.current ? SHELL_AGENT.id : launch.current.agentId
+    if (lastCols.current !== 0 && reflowRuins(term, agentId)) term.clear()
     lastCols.current = term.cols
   }, [])
 
@@ -779,10 +800,27 @@ export function TerminalView({
     )
     // Read through a ref so a new handler identity never re-runs the spawn.
     term.onBell(() => bell.current())
+    // The session's own hand-back, believed only with its token.
+    const acceptHandback = (data: string) => {
+      const token = handbackToken.current
+      const code = token === null ? null : parseHandback(data, token)
+      if (code === null || handedBack.current) return false
+      handedBack.current = true
+      integrated.current = integratedAfterHandback.current
+      handback.current(code)
+      return true
+    }
     // The other half of "the session wants you": an agent CLI announces its
     // turn boundaries here instead of ringing the bell. Claimed rather than
     // passed on, since nothing else in the app reads `OSC 777`.
     term.parser.registerOscHandler(777, (data) => {
+      if (earlyHandbacks.current && data.startsWith(HANDBACK_VERB)) {
+        // The newest handful: the real one is the session's last word, so
+        // whatever the agent printed before it is what gets dropped.
+        earlyHandbacks.current = [...earlyHandbacks.current, data].slice(-4)
+        return true
+      }
+      if (acceptHandback(data)) return true
       const event = parseAgentEvent(data)
       if (event) agentEvent.current(event)
       return true
@@ -848,8 +886,7 @@ export function TerminalView({
           // start, so a tab changes mode by reopening the conversation.
           scrollback,
           // Read through the ref for the same reason as the journal flag.
-          // Only a plain shell is affected — an agent session `exec`s over
-          // the shell before a startup file could run.
+          // A plain shell, or the shell an agent hands its tab back to.
           shellIntegration: latest.current.shellIntegration,
         },
         (bytes) => {
@@ -859,7 +896,16 @@ export function TerminalView({
       )
         .then((started) => {
           epoch.current = started.epoch
-          integrated.current = started.shellIntegration
+          // Until a hand-back the terminal is the agent's, whose output can
+          // say anything a shell can.
+          const handsBack = started.handbackToken !== null
+          integrated.current = started.shellIntegration && !handsBack
+          integratedAfterHandback.current =
+            started.shellIntegration && handsBack
+          handbackToken.current = started.handbackToken
+          const early = earlyHandbacks.current ?? []
+          earlyHandbacks.current = null
+          early.forEach(acceptHandback)
         })
         .catch((error) =>
           term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
@@ -1578,10 +1624,11 @@ const SEEK_SETTLE_MS = 40
  * ended-session bar, and without this every path and URL in it would be dead
  * until the tab closed.
  *
- * It answers for the **session's** process, which is the agent, because the
- * session is an `exec` and the login shell goes with it. A TUI killed inside a
- * still-running shell — `vim` with `set mouse=a` — leaves that tab's links off
- * until something resets the terminal, and nothing here can see that it died.
+ * An agent that hands its tab back to a shell never ends the session, so
+ * `live` cannot catch that one — the hand-back resets the modes itself before
+ * the shell starts (`platform::handback_line`). A TUI killed inside a shell the
+ * user started — `vim` with `set mouse=a` — gets no such reset, and leaves that
+ * tab's links off until something resets the terminal.
  */
 const agentReadsMouse = (term: Terminal, live: boolean) =>
   live && term.modes.mouseTrackingMode !== 'none'

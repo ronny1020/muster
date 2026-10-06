@@ -62,9 +62,10 @@ export interface SpawnOptions {
    */
   scrollback: boolean
   /**
-   * Start a plain shell with Muster's own startup file, so it reports where
-   * each prompt ends and each command's output begins — see
-   * `src-tauri/src/shell.rs`. Nothing else in a session reports that.
+   * Start a plain shell — or the shell an agent hands its tab back to — with
+   * Muster's own startup file, so it reports where each prompt ends and each
+   * command's output begins — see `src-tauri/src/shell.rs`. Nothing else in a
+   * session reports that.
    */
   shellIntegration: boolean
 }
@@ -119,8 +120,15 @@ export interface Spawned {
    * Whether the session really was started with Muster's own startup file.
    * Only such a session's `OSC 133` reports mean anything: anything else that
    * prints them is another program's claim about a shell that is not there.
+   * In a session with a `handbackToken`, only once it has handed back.
    */
   shellIntegration: boolean
+  /**
+   * The token the session's hand-back announcement carries, or `null` for a
+   * session that announces none. An announcement without it is someone
+   * else's bytes — the agent's own, or a file it printed.
+   */
+  handbackToken: string | null
 }
 
 export function spawnPty(

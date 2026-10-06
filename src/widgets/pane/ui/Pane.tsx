@@ -49,7 +49,11 @@ import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
 import { GitActions } from '../../../features/sync/ui/GitActions'
 import { useGitRun } from '../../../features/sync/model/useGitRun'
-import { type Agent, agentById } from '../../../entities/agent/model/agents'
+import {
+  type Agent,
+  agentById,
+  SHELL_AGENT,
+} from '../../../entities/agent/model/agents'
 import { JournalPanel } from '../../../features/journal/ui/JournalPanel'
 import { collisionSummary } from '../../../features/fleet/model/collisions'
 import { useCollisions } from '../../../features/fleet/model/useCollisions'
@@ -58,6 +62,7 @@ import {
   type LaunchRequest,
 } from '../../../features/launch/ui/Launcher'
 import { SessionEnded } from '../../../features/terminal/ui/SessionEnded'
+import { handbackNotice } from '../../../features/terminal/model/handback'
 import { SettingsPane } from '../../../features/settings/ui/SettingsPane'
 import { StatusBar } from '../../../features/workspace/ui/StatusBar'
 import { TerminalView } from '../../../features/terminal/ui/TerminalView'
@@ -95,6 +100,19 @@ export function Pane({
 }: PaneProps) {
   const { settings } = useSettings()
   const session = tabSession(tab)
+  /**
+   * What the tab is running: its agent, or the user's shell once the agent has
+   * handed the terminal back. From then on there is no conversation here to
+   * reopen, switch mode on or read a transcript of — the mode control and the
+   * ⟳, which would end the shell on the tab's own behalf, are withdrawn — and
+   * the name on the tab is a shell's. Resuming a record from the journal drawer
+   * still ends it, because that is a conversation the user picked by name.
+   */
+  const running = session
+    ? tab.handedBack
+      ? SHELL_AGENT
+      : agentById(session.agentId)
+    : null
   const { cwd, workspace, tracked, refresh } = useWorkspace(
     session && tab.id,
     session?.cwd ?? null,
@@ -144,7 +162,7 @@ export function Pane({
    * expensive half.
    */
   const readsTranscript = Boolean(
-    session && !session.scrollback && agentById(session.agentId).scrollbackMode,
+    session && !session.scrollback && running?.scrollbackMode,
   )
   const turns = useTurns(readsTranscript ? journalCwd : '', tab.id, tab.status)
   /**
@@ -155,7 +173,7 @@ export function Pane({
    * listing per tab per idle edge.
    */
   const past = usePastSessions(
-    session && agentById(session.agentId).scrollbackMode ? session.agentId : '',
+    running?.scrollbackMode ? running.id : '',
     journalCwd,
     session?.backend ?? 'native',
     tab.status,
@@ -222,17 +240,14 @@ export function Pane({
    * the only repair for the history a resize forces `TerminalView` to drop.
    * Through `resumeHere`, for the reason that function's own comment gives.
    */
-  const again = session
-    ? agentById(session.agentId).modes.find((mode) => mode.id === 'continue')
-    : undefined
+  const again = running?.modes.find((mode) => mode.id === 'continue')
   // Passed whenever there is a conversation to reopen — a shell has none, so
   // it is not offered a control whose click would do nothing. Whether there
   // is also a scrollback worth repairing is the terminal's to answer, from
   // the live buffer, because that is what `reflowRuins` clears on.
   const replayHere =
-    again && session && canReopen(past)
-      ? () =>
-          resumeHere({ agent: agentById(session.agentId), args: again.args })
+    again && running && canReopen(past)
+      ? () => resumeHere({ agent: running, args: again.args })
       : undefined
 
   /**
@@ -245,18 +260,16 @@ export function Pane({
    *
    * Having a `continue` mode is not the same as having something to continue,
    * and that gap ends sessions: a tab whose first turn has not been written
-   * yet reopens onto `No conversation found to continue`, the child exits, and
-   * the tab that was working is left at `exited 1`. `past` is what closes it —
-   * `null` while unknown, so the control is hidden only on a real zero.
+   * yet reopens onto `No conversation found to continue`, the agent exits at
+   * once, and the tab that was working is dropped to a shell prompt — or, under
+   * PowerShell, left at `exited 1`. `past` is what closes it — `null` while
+   * unknown, so the control is hidden only on a real zero.
    */
   const switchMode =
-    session &&
-    again &&
-    agentById(session.agentId).scrollbackMode &&
-    canReopen(past)
+    session && again && running?.scrollbackMode && canReopen(past)
       ? () =>
           resumeHere({
-            agent: agentById(session.agentId),
+            agent: running,
             args: again.args,
             scrollback: !session.scrollback,
           })
@@ -432,13 +445,15 @@ export function Pane({
    * what keeps an agent that does both from notifying twice.
    */
   const signalAttention = useCallback(
-    (body?: string) => {
+    (body?: string, { fresh = false }: { fresh?: boolean } = {}) => {
       const { attention, notify: shouldNotify } = decideBellResponse({
         enabled: settings.notifyOnDone,
         onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
         tabActive: active,
         windowFocused: document.hasFocus(),
-        lastNotifiedAt: notifiedAt.current,
+        // A fresh signal ignores the cooldown, which exists to merge one
+        // moment announced two ways — never to swallow a second moment.
+        lastNotifiedAt: fresh ? null : notifiedAt.current,
         now: Date.now(),
       })
 
@@ -446,7 +461,7 @@ export function Pane({
       if (!shouldNotify) return
       notifiedAt.current = Date.now()
       void notify(
-        `${session?.agentName ?? 'Session'} · ${tab.title}`,
+        `${running?.name ?? 'Session'} · ${tab.title}`,
         body ?? 'Waiting for you.',
         settings.notifySound,
       )
@@ -454,7 +469,7 @@ export function Pane({
     [
       active,
       dispatch,
-      session?.agentName,
+      running?.name,
       settings.notifyOnDone,
       settings.notifyOnlyWhenUnfocused,
       settings.notifySound,
@@ -470,6 +485,16 @@ export function Pane({
       if (endsTurn(event)) signalAttention(event.response)
     },
     [signalAttention],
+  )
+
+  // A separate moment from a turn ending, so it is never merged into one:
+  // an agent that hits a rate limit and exits seconds later must say both.
+  const onHandback = useCallback(
+    (code: number) => {
+      dispatch({ type: 'handedBack', id: tab.id })
+      signalAttention(handbackNotice(code), { fresh: true })
+    },
+    [dispatch, signalAttention, tab.id],
   )
 
   const onWorking = useCallback(
@@ -533,6 +558,7 @@ export function Pane({
                 active={active}
                 onBell={onBell}
                 onAgentEvent={onAgentEvent}
+                onHandback={onHandback}
                 onWorking={onWorking}
                 ended={tab.exitCode !== null}
                 turns={turns}
@@ -597,10 +623,13 @@ export function Pane({
             {journalOpen && (
               <JournalPanel
                 cwd={journalCwd}
-                // Only while the process is alive. Once it has exited its
-                // record is the most useful one in the list — it is the run
-                // the user just watched fail — so it stops being excluded.
-                liveId={tab.exitCode === null ? tab.id : null}
+                // Only while the agent is alive. Once it has exited — or
+                // handed the tab to a shell — its record is the most useful
+                // one in the list, the run the user just left, so it stops
+                // being excluded.
+                liveId={
+                  tab.exitCode === null && !tab.handedBack ? tab.id : null
+                }
                 recording={settings.journalEnabled}
                 busy={tab.exitCode === null}
                 onResume={resumeFromJournal}
@@ -643,7 +672,7 @@ export function Pane({
           {tab.exitCode !== null && (
             <SessionEnded
               code={tab.exitCode}
-              agentName={session.agentName}
+              agentName={running?.name ?? session.agentName}
               onRelaunch={() => dispatch({ type: 'relaunch', id: tab.id })}
             />
           )}
@@ -660,7 +689,7 @@ export function Pane({
         cwd={session ? cwd : ''}
         workspace={session ? workspace : null}
         tracked={session ? tracked : false}
-        agentName={session?.agentName ?? ''}
+        agentName={running?.name ?? ''}
         state={tab.exitCode === null ? '' : tab.detail}
         exited={tab.exitCode !== null && tab.exitCode !== 0}
         historyOpen={historyOpen}

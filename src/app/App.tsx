@@ -24,6 +24,7 @@ import {
 import { loadDeck, saveDeck } from '../entities/tab/model/persist'
 import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
+import { SHELL_AGENT } from '../entities/agent/model/agents'
 
 /**
  * Tab ids, which also key the backend's PTY map.
@@ -58,7 +59,9 @@ function announceExit(
 
   if (attention) dispatch({ type: 'attention', id })
   if (!shouldNotify) return
-  const agent = tabSession(tab)?.agentName ?? 'Session'
+  const agent = tab.handedBack
+    ? SHELL_AGENT.name
+    : (tabSession(tab)?.agentName ?? 'Session')
   const body =
     code === 0 ? 'Session ended.' : `Session ended with code ${code}.`
   void notify(`${agent} · ${tab.title}`, body, settings.notifySound)

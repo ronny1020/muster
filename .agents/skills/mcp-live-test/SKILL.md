@@ -73,6 +73,18 @@ you changed>` and the tab list are both worth a look. When you are done, leave
 the app running only if you started it — and close the tabs you opened, because
 the tab list is persisted in `state.json` and outlives the run.
 
+Stopping the app does not stop the frontend server `tauri dev` started for it —
+`bun --port 1420 ./index.html`, from `bun run serve` — so when you stop an app
+you started, stop that too. Left
+running, it keeps 1420, and the next run's server cannot have it and falls back
+to Bun's default, 3000, without saying so. The app still loads from 1420, from
+the old server, which makes that easy to miss:
+
+```bash
+pkill -f 'bun --port 1420 ./index.html'
+lsof -nP -iTCP:1420 -iTCP:3000 -sTCP:LISTEN   # nothing, once it is stopped
+```
+
 ## The traps
 
 Each of these produced a wrong measurement that read as a bug in the app.

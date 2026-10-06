@@ -126,7 +126,7 @@ building.
 | -------------------------------------------------- | ------------------------------------------------------ |
 | PTY sessions, one per tab                          | `src-tauri/src/pty.rs`                                 |
 | An agent's own transcript, read for the rail       | `src-tauri/src/transcript.rs`                          |
-| Shells, WSL and process inspection per host        | `src-tauri/src/platform.rs`                            |
+| Shells, WSL, hand-back and process inspection      | `src-tauri/src/platform.rs`                            |
 | Path, git status, log, branches and checkout       | `src-tauri/src/workspace.rs`                           |
 | Commit, pull, push, cancel, and how git writes run | `src-tauri/src/sync.rs`                                |
 | Commands exposed to the frontend                   | `src-tauri/src/lib.rs`                                 |
@@ -144,6 +144,7 @@ building.
 | Scrolling an agent's own view back to a message    | `src/features/terminal/model/seek.ts`                  |
 | Which surfaces a session's buffer supports         | `src/features/terminal/model/surfaces.ts`              |
 | Turn-end events an agent broadcasts                | `src/features/terminal/model/agentevents.ts`           |
+| An agent handing its tab back to a shell           | `src/features/terminal/model/handback.ts`              |
 | Whether a session is still working                 | `src/features/terminal/model/working.ts`               |
 | Which file the output is about                     | `src/features/terminal/model/codeblocks.ts`            |
 | Where tabs and settings are kept                   | `src/shared/lib/appstate.ts`, `src-tauri/src/store.rs` |

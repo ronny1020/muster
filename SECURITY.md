@@ -139,6 +139,14 @@ What bounds it:
 - The payload is never interpreted as anything but text: no path is resolved
   from it, no file read, nothing typed into a session. The "nothing an agent
   names may reach a session as keystrokes" rule in AGENTS.md applies here too.
+- `OSC 777;muster-handback` — an agent session's own announcement that the
+  agent has exited — is believed only with the token `pty_spawn` handed the
+  `sh` that sends it, which unsets it before the agent starts. Output that
+  merely carries the sequence — a file the agent prints — is ignored. An agent
+  that goes looking can still find the token wherever the OS lets a same-user
+  process read another's starting environment — Linux's
+  `/proc/<pid>/environ` does; forged, the announcement ends the tab's agent
+  phase early and raises a false notification, and reaches nothing else.
 
 The sequence is not the CLI's own, and Muster is what switches it on: it comes
 from a hook plugin the user installs, gated behind the advertisement
@@ -226,7 +234,12 @@ into an `ssh` session can write them as easily as a shell can — and what they
 carry chooses a file to read and text to type back. So the reader is gated on
 the backend's own answer about whether it really did inject its startup file
 into _that_ session, which is a plain zsh or bash tab on the host with the
-setting on. A boundary from anywhere else is dropped before it is parsed.
+setting on — or the shell an agent tab on the host hands back to, and only from
+the believed hand-back on. A boundary from anywhere else is dropped before it
+is parsed. An agent that reads the hand-back token where the OS shows it (see
+`OSC 777;muster-handback` above) can forge that moment and be believed; what it
+reaches then is what any program run in a shell tab reaches — a history file to
+draw suggestions from, which only the reader's own keystroke accepts.
 
 The integration changes nothing about the user's own configuration. The
 startup file sources theirs first and hands `ZDOTDIR` back before it does, and

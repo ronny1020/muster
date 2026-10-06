@@ -163,8 +163,9 @@ pub struct SpawnOptions {
     pub agent_id: String,
     /// Start a plain shell session with Muster's own startup file, so it
     /// reports where each prompt ends and each command's output begins — see
-    /// `crate::shell`. Ignored for anything but a plain shell: an agent
-    /// session replaces the shell with `exec`, so the hooks would never run.
+    /// `crate::shell`. An agent session that hands back starts the shell after
+    /// the agent that way instead; the agent's own shell `exec`s it before a
+    /// hook could run.
     #[serde(default)]
     pub shell_integration: bool,
     /// Keep this session out of the alternate buffer, trading the agent's
@@ -243,8 +244,9 @@ const CLI_AGENT_ENV: &[(&str, &str)] = &[
 /// straight back out again.
 ///
 /// It reaches a WSL session only by accident. `cmd` there is `wsl.exe`, and
-/// only what `WSLENV` names crosses into the distro — which nothing in this
-/// app sets, so `TERM`, `COLORTERM` and `SCROLLBACK_ENV` do not cross either.
+/// only what `WSLENV` names crosses into the distro — which this app sets only
+/// for the hand-back token, so `TERM`, `COLORTERM` and `SCROLLBACK_ENV` do not
+/// cross either.
 /// A `WSLENV` the user's own Windows environment exports is inherited like
 /// any other variable, so what crosses is whatever they happened to list.
 fn advertise_protocol(cmd: &mut CommandBuilder) {
@@ -274,8 +276,10 @@ fn apply_mode(cmd: &mut CommandBuilder, scrollback: bool) {
 }
 
 /// How long to watch for the agent to publish its session id. Generous, since
-/// a cold start behind a login shell can take seconds, and cheap: one stat per
-/// tick against one file.
+/// a cold start behind a login shell can take seconds, and cheap: a stat per
+/// tick, and under a hand-back's `sh` a `ps` and a `pgrep` until the agent is
+/// found and one `pgrep` after — and only for an agent that publishes one at
+/// all.
 const SESSION_ID_ATTEMPTS: u32 = 40;
 const SESSION_ID_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -286,7 +290,9 @@ pub struct Spawned {
     /// Names this registration, quoted back by `pty_kill`.
     pub epoch: u64,
     /// Whether this session was actually started with Muster's own startup
-    /// file, which is the only session whose `OSC 133` reports mean anything.
+    /// file, which is the only session whose `OSC 133` reports mean anything —
+    /// in a session with a `handback_token`, only once it has handed back,
+    /// since until then the terminal is the agent's.
     ///
     /// Answered here rather than worked out again in the frontend: the same
     /// rule computed in two places drifts, and only this side knows whether
@@ -295,6 +301,11 @@ pub struct Spawned {
     /// its commands output — so a boundary from one is another program's
     /// claim about a shell that is not there.
     pub shell_integration: bool,
+    /// The token this session's hand-back announcement carries, or `None` for
+    /// a session that announces none — `platform::hands_back`. The frontend
+    /// believes an announcement only with this token, since anything the
+    /// agent prints can say `OSC 777;muster-handback` too.
+    pub handback_token: Option<String>,
 }
 
 /// Emitted once a session's process exits, so the tab can show its status.
@@ -358,24 +369,31 @@ pub fn pty_spawn(
     // recents list. Without expanding it the directory check passes and the
     // spawn then fails on a directory literally named `~`.
     let cwd = crate::workspace::expand_home(&cwd);
-    let resolved = platform::argv(&Launch {
+    let launch = Launch {
         backend,
         distro: Some(distro.as_str()),
         cwd: &cwd,
         program: &program,
         args: &args,
         via_shell: login_shell,
-    });
+    };
+    let hands_back = platform::hands_back(&launch);
+    let handback_token = hands_back.then(new_token);
 
-    // Only a plain shell, and only on the host: an agent session `exec`s over
-    // the shell before a hook can run, and a WSL session's shell reads the
-    // distro's filesystem, where a path written here names nothing.
-    let integration = (shell_integration && program.is_empty() && backend == Backend::Native)
-        .then(|| crate::shell::prepare(&app, &resolved.program))
-        .flatten();
+    // A plain shell, or the one an agent hands back to, and only on the host:
+    // a WSL session's shell reads the distro's filesystem, where a path
+    // written here names nothing.
+    let integration =
+        (shell_integration && (program.is_empty() || hands_back) && backend == Backend::Native)
+            .then(|| crate::shell::prepare(&app, &platform::default_shell()))
+            .flatten();
+    let resolved = platform::integrated_argv(&launch, integration.as_ref());
+    // A hand-back carries its integration on its own command line, for the
+    // reason `platform::shell_after` gives.
+    let plain_integration = integration.as_ref().filter(|_| !hands_back);
 
     let mut cmd = CommandBuilder::new(&resolved.program);
-    match integration.as_ref().filter(|it| !it.args.is_empty()) {
+    match plain_integration.filter(|it| !it.args.is_empty()) {
         // bash cannot be given both `-l` and an init file, so an integration
         // that needs one replaces the arguments rather than adding to them.
         Some(it) => cmd.args(&it.args),
@@ -389,10 +407,13 @@ pub fn pty_spawn(
         cmd.env_remove(marker);
     }
     advertise_protocol(&mut cmd);
-    if let Some(integration) = &integration {
+    if let Some(integration) = plain_integration {
         for (key, value) in &integration.env {
             cmd.env(key, value);
         }
+    }
+    if let Some(token) = &handback_token {
+        pass_token(&mut cmd, token, backend);
     }
 
     let mut child = pair.slave.spawn_command(cmd).map_err(|error| {
@@ -490,7 +511,8 @@ pub fn pty_spawn(
     // can reopen it later. It is published shortly *after* the CLI starts, so
     // this watches for it rather than asking once, and gives up rather than
     // waiting on an agent that never publishes one.
-    if let (Some(record), Some(pid)) = (record.clone(), group) {
+    let publishes = crate::sessions::publishes_session_id(&agent_id);
+    if let (Some(record), Some(pid), true) = (record.clone(), group, publishes) {
         let app = app.clone();
         let cwd = cwd.clone();
         let agent_id = agent_id.clone();
@@ -499,12 +521,37 @@ pub fn pty_spawn(
         // some unrelated conversation's id against this tab's record.
         let ended = killed.clone();
         std::thread::spawn(move || {
+            let mut agent: Option<u32> = None;
             for _ in 0..SESSION_ID_ATTEMPTS {
                 std::thread::sleep(SESSION_ID_INTERVAL);
                 if ended.load(Ordering::SeqCst) {
                     return;
                 }
-                let found = crate::sessions::published_session_id(&agent_id, pid as u32);
+                // The agent is the pty's child, or — in a session that hands
+                // back — the child of the `sh` holding the terminal for it.
+                // That child is followed, not re-found: once it has gone, the
+                // `sh` is the user's shell, and a `claude` started in it is a
+                // different conversation from the one this record holds.
+                let pid = pid as u32;
+                let mut found = crate::sessions::published_session_id(&agent_id, pid);
+                if found.is_none() {
+                    // Adopted only while the `sh` still holds the terminal for
+                    // it: an agent that exits before the first tick leaves a
+                    // shell whose next child is something the user started.
+                    if agent.is_none() && !platform::is_wrapper(pid) {
+                        continue;
+                    }
+                    let children = platform::children_of(pid);
+                    agent = agent.or(children.first().copied());
+                    match agent {
+                        Some(child) if children.contains(&child) => {
+                            found = crate::sessions::published_session_id(&agent_id, child);
+                        }
+                        // The agent has gone without publishing one.
+                        Some(_) => return,
+                        None => {}
+                    }
+                }
                 if let Some(session_id) = found {
                     crate::journal::remember(
                         &app,
@@ -568,7 +615,44 @@ pub fn pty_spawn(
     Ok(Spawned {
         epoch,
         shell_integration: integration.is_some(),
+        handback_token,
     })
+}
+
+/// A fresh, unguessable token for one session's hand-back announcement.
+///
+/// From the standard library's randomly keyed hasher: it needs to be
+/// unpredictable to a program in the session, not cryptographically strong,
+/// and the hasher's keys are secret — seeded from the OS once per thread and
+/// stepped for every `RandomState`.
+fn new_token() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default(),
+    );
+    format!("{:016x}", hasher.finish())
+}
+
+/// Hands the token to the `sh` that announces the hand-back — see
+/// `platform::HANDBACK_TOKEN_ENV`. A WSL session's environment reaches the
+/// distro only through what `WSLENV` names, so the variable is added there
+/// too, to whatever the user's own `WSLENV` already carries.
+fn pass_token(cmd: &mut CommandBuilder, token: &str, backend: Backend) {
+    cmd.env(platform::HANDBACK_TOKEN_ENV, token);
+    if backend == Backend::Wsl {
+        let inherited = std::env::var("WSLENV").unwrap_or_default();
+        let named = format!("{}/u", platform::HANDBACK_TOKEN_ENV);
+        let joined = if inherited.is_empty() {
+            named
+        } else {
+            format!("{inherited}:{named}")
+        };
+        cmd.env("WSLENV", joined);
+    }
 }
 
 /// Queues keystrokes for the session's writer thread.
@@ -618,7 +702,11 @@ pub async fn pty_cwd(
 ) -> Result<Option<String>, String> {
     // An async command holding a `State` reference has to return `Result`, so
     // "no directory to report" is `Ok(None)` rather than an error.
-    let Some(leader) = sessions.get(&id).ok().and_then(foreground_group) else {
+    let Some(leader) = sessions
+        .get(&id)
+        .ok()
+        .and_then(|session| foreground_of(&session))
+    else {
         return Ok(None);
     };
     // Reading it costs a subprocess on macOS, once per tab per poll, so it
@@ -646,15 +734,23 @@ pub fn pty_kill(sessions: tauri::State<'_, Sessions>, id: String, epoch: u64) {
     end(&session);
 }
 
-/// Signals a session's process group and lets its reader thread wind down.
+/// Signals a session's process groups and lets its reader thread wind down.
 ///
 /// The group, not the process: the child is a session leader, so an agent's own
 /// subprocesses — a dev server, an MCP server — survive a signal sent only to
 /// the leader. And `SIGHUP` alone is a request; anything ignoring it needs
 /// `SIGKILL`, or the tab closes while the work keeps running.
+///
+/// Two groups, because an interactive shell runs each command as a job in a
+/// group of its own — the one holding the terminal — and a tab's shell is
+/// interactive, whether it was a shell tab from the start or the one an agent
+/// handed back to. The group recorded at spawn is the shell's, so on its own
+/// it would reach everything but the command running in it. An agent before
+/// its hand-back needs no second group: it shares the `sh` holding its
+/// terminal, which the spawn group is.
 fn end(session: &Session) {
     session.killed.store(true, Ordering::SeqCst);
-    signal_group(session.group);
+    signal_groups(&[session.group, foreground_of(session)]);
     // Whatever the group signal reached, the leader still gets the library's
     // own hangup — this is the only path on hosts with no process groups.
     let _ = session.killer.lock().kill();
@@ -664,34 +760,58 @@ fn end(session: &Session) {
 ///
 /// `MasterPty::process_group_leader` is itself `#[cfg(unix)]` in portable-pty,
 /// so this cannot merely return `None` on Windows — the call has to be absent.
+///
+/// Only a group in this session's own terminal session counts. Linux keeps
+/// reporting a foreground group's id after its last member has gone, until
+/// something reclaims the terminal — and an id that has since been reused by
+/// an unrelated process group would otherwise take `end`'s `SIGKILL`.
+///
+/// The session is asked of a member, not of the id: a pipeline's leader can
+/// exit before the rest of it — `cat f | less` — and the id then names no
+/// process for `getsid` to answer about.
 #[cfg(unix)]
-fn foreground_group(session: Arc<Session>) -> Option<i32> {
-    session.master.lock().process_group_leader()
+fn foreground_of(session: &Session) -> Option<i32> {
+    let group = session.master.lock().process_group_leader()?;
+    let leader = session.group?;
+    // SAFETY: a plain query of another process's session id.
+    let in_session = |pid: i32| unsafe { libc::getsid(pid) } == leader;
+    let owned = in_session(group)
+        || platform::group_members(group)
+            .into_iter()
+            .any(|pid| in_session(pid as i32));
+    owned.then_some(group)
 }
 
 #[cfg(not(unix))]
-fn foreground_group(_session: Arc<Session>) -> Option<i32> {
+fn foreground_of(_session: &Session) -> Option<i32> {
     None
 }
 
 #[cfg(unix)]
-fn signal_group(group: Option<i32>) {
-    let Some(group) = group.filter(|group| *group > 1) else {
+fn signal_groups(groups: &[Option<i32>]) {
+    let mut targets: Vec<i32> = groups
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|group| *group > 1)
+        .collect();
+    targets.dedup();
+    if targets.is_empty() {
         return;
-    };
-    unsafe {
-        libc::killpg(group, libc::SIGHUP);
+    }
+    for group in &targets {
+        unsafe { libc::killpg(*group, libc::SIGHUP) };
     }
     // A short grace period so a well-behaved process can save and exit before
     // it is killed outright.
     std::thread::sleep(Duration::from_millis(150));
-    unsafe {
-        libc::killpg(group, libc::SIGKILL);
+    for group in &targets {
+        unsafe { libc::killpg(*group, libc::SIGKILL) };
     }
 }
 
 #[cfg(not(unix))]
-fn signal_group(_group: Option<i32>) {}
+fn signal_groups(_groups: &[Option<i32>]) {}
 
 /// Exercises the real chain behind the status bar's directory: a PTY, a shell
 /// that changes directory, and reading that directory back out. Unit tests

@@ -68,6 +68,12 @@ export interface Tab {
   attention: boolean
   /** What the agent is doing, as it last announced it. */
   status: AgentStatus
+  /**
+   * The session's agent has exited and its terminal runs the user's shell —
+   * `platform::hands_back`. The session is the agent's still, so this is what
+   * tells the tab to stop offering the agent's controls.
+   */
+  handedBack: boolean
   content: TabContent
 }
 
@@ -106,6 +112,7 @@ export type DeckAction =
   | { type: 'status'; id: string; status: AgentStatus }
   | { type: 'relaunch'; id: string }
   | { type: 'exited'; id: string; code: number }
+  | { type: 'handedBack'; id: string }
 
 /**
  * What the agent in a tab is doing, from the events it broadcasts.
@@ -132,6 +139,7 @@ export const newTab = (
   findOpen: false,
   attention: false,
   status: 'unknown',
+  handedBack: false,
   content,
 })
 
@@ -224,6 +232,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         content: { type: 'session', session: action.session },
         title: action.title,
         exitCode: null,
+        handedBack: false,
         detail: '',
         // The find bar only exists once a terminal does, so a search opened on
         // the launcher would otherwise appear unbidden over the new session.
@@ -254,6 +263,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         exitCode: null,
         attention: false,
         status: 'unknown',
+        handedBack: false,
         historyOpen: false,
         reviewOpen: false,
         journalOpen: false,
@@ -321,6 +331,14 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return patch(deck, action.id, () => ({
         exitCode: action.code,
         detail: action.code === 0 ? 'exited' : `exited ${action.code}`,
+      }))
+
+    case 'handedBack':
+      // A shell has no announced turns, so the agent's last status would
+      // otherwise stay on the tab for the rest of its life.
+      return patch(deck, action.id, () => ({
+        handedBack: true,
+        status: 'unknown',
       }))
   }
 }

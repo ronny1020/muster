@@ -106,6 +106,68 @@ bash ignores `--init-file` for a login shell: `-l` is dropped and the script
 sources `/etc/profile` and the first profile itself. What must stay true is
 the `PATH`, not the flag — see the shell-integration invariant below.
 
+**An agent tab hands its terminal to a shell, and the agent never learns.**
+Quitting an agent lands on a prompt in the same terminal and directory, as
+quitting it anywhere else does. The agent runs `exec`ed over the login shell,
+as every agent session does, and a small `/bin/sh` above it holds the
+terminal: when the agent exits, that `sh` resets the modes and the tty settings a
+crashed TUI leaves armed, announces `OSC 777;muster-handback;<token>;<status>`,
+and `exec`s the login shell in place (`platform::hands_back`, `handback_line`).
+Six things about that shape break silently.
+
+The pty's child has to outlive the agent. Spawning a second child on the same
+pty does not work — when the first child, the terminal's session leader,
+exits, the kernel hangs the terminal up and portable-pty's slave descriptor
+answers `EBADF` to the next spawn. The `sh` is what keeps a session leader
+there throughout.
+
+The agent is the `sh`'s child, not the pty's, so anything that looks an agent
+up by pid looks one level down: the session-id watcher asks
+`platform::children_of` as well, because Claude Code publishes its session
+under its own pid — without that the id is never found, and Resume and the
+transcript rail silently lose the conversation.
+
+The agent shares the `sh`'s process group, so the terminal's Ctrl+C and
+Ctrl+\ reach both — and dash, `/bin/sh` on Debian, Ubuntu and most WSL
+distros, dies of one even when the agent catches it, ending the session
+instead of handing it back. `trap : INT QUIT` is what keeps it; a handler
+rather than `trap ''`, because an ignored signal is inherited by the agent.
+The test that pins it runs the signal in a process group of its own — in the
+runner's group, `kill -INT 0` interrupts the runner.
+
+The reset saves the cursor before it leaves the alternate screen, which
+restores one, in xterm.js even when that screen was never entered, so without
+the save a Scrollback session — which never enters it — would have its prompt
+drawn over the top of the output. And it is written `\00337`, not `\0337`,
+which `printf %b` reads as one octal escape.
+
+The announcement is ordinary bytes, so it carries a token only the `sh` has:
+`pty_spawn` hands it over in `MUSTER_HANDBACK`, the `sh` unsets it before the
+agent starts, and `TerminalView` believes nothing without it — otherwise an
+agent, or a file it printed, could end the tab's agent phase while it ran. A
+WSL session gets the token through `WSLENV` and runs its line with
+`wsl.exe --exec`, because after `--` the line reaches the distro user's
+default shell as text, which expands `$code` too early and fails outright
+under fish. A believed announcement sets the tab's `handedBack`, and from then on `Pane`
+resolves what the tab runs as the shell: the Clicks/Scrollback control and the
+⟳ go, since both end the session to reopen the conversation and would take the
+user's shell and whatever it is running with them, the transcript is no longer
+read, the status bar, its notifications and a later ended bar say Shell, the
+tab takes a shell's colour, and the journal drawer offers the tab's own
+record, since the conversation in it has ended. In a session that hands back, a
+`pty://exit` means the shell ended, never the agent. PowerShell gets no
+hand-back at all — with nothing to announce it, the tab could not stop treating
+the prompt as the agent's, so there the session ends with the agent. The kill
+signals the terminal's foreground group as well as the spawn group: the agent
+shares the spawn group, but the shell after it runs each command as a job in a
+group of its own.
+
+The shell after the agent takes the shell integration a plain shell tab would,
+and on the `sh`'s own command line (`platform::shell_after`) rather than the
+session's environment: a `ZDOTDIR` there would send the agent's own login shell
+through Muster's startup files too. `TerminalView` holds its `OSC 133` off until
+the hand-back is believed, for the reason the gate below gives.
+
 The git writes the drawers make — commit, pull, push, checkout — are not
 sessions, but they run the user's programs too: a husky hook calling `bunx`, a
 git-lfs `pre-push`, `gh` as a credential helper. So `sync::login_path` borrows
@@ -449,8 +511,8 @@ Same shape and the same reason as `git_changes(counts)`.
 **A shell reports its own command boundaries, and nothing else can.** The
 prompt is just characters in the stream: no cell attribute marks it the way an
 agent's tinted block does — measured, no shell on this machine emits `OSC 133`
-on its own. So a **plain shell** session is started with a startup file of
-Muster's own (`src-tauri/shell/`), which sources the user's and then adds
+on its own. So a **plain shell** session, and the shell an agent session hands
+back to, is started with a startup file of Muster's own (`src-tauri/shell/`), which sources the user's and then adds
 `precmd`/`preexec` hooks that print the standard marks. The copy control and
 the completion list both read them, and a session that reports none simply has
 neither surface.
@@ -501,8 +563,10 @@ remote host printing into an `ssh` session can report a prompt boundary and a
 history file as easily as a shell can — and what it reports chooses a file for
 `shell_history` to open and text for `accept` to type back into that same
 session. So `pty_spawn` answers with `shellIntegration`, and the `OSC 133`
-handler drops everything until that is true. Every surface here is fed through
-that one call, which is what makes one check the whole gate.
+handler drops everything until that is true — and in a session that hands
+back, until the hand-back is believed as well, because before it the terminal
+is the agent's. Every surface here is fed through that one call, which is what
+makes one check the whole gate.
 
 Answered by the backend rather than re-derived in the frontend for two
 reasons: the same rule computed in two places drifts, and only that side knows
@@ -661,8 +725,9 @@ it does not show. `MODES` in `StatusBar` is the pair, the tab's own carries
 `continue` mode is not the same as having something to continue: both this
 control and the ⟳ respawn through the agent's own `continue`, so a tab whose
 first turn has not been written yet reopens onto `No conversation found to
-continue`, the child exits, and a tab that was working is left at `exited 1`
-by a button that promised to change its mode. `usePastSessions` counts what
+continue`, the agent exits at once, and a tab that was working is dropped to a
+shell prompt — or, under PowerShell, left at `exited 1` — by a button that
+promised to change its mode. `usePastSessions` counts what
 the store holds and `canReopen` decides, on the quiet edge the deck already
 tracks rather than a timer — a count taken at spawn would read zero for a
 conversation that exists moments later. `null` means unknown and still
@@ -713,7 +778,10 @@ ignoring the click; the web-links addon registers its own provider, so
 And it is `false` once the session has ended, because xterm clears the mode
 only when the child asks it to: a TUI that is killed rather than closed leaves
 tracking armed forever, and the output stays on screen under the ended-session
-bar with every path in it dead until the tab is closed.
+bar with every path in it dead until the tab is closed. An agent session that
+hands its terminal back is reset by the hand-back instead (`MODE_RESET`), which
+is why the check can stay on `live` — the shell after it never sees tracking
+the agent armed.
 
 **`macOptionClickForcesSelection` is toggled, never set.** It is what hands a
 macOS user a drag a tracking CLI would otherwise take — but xterm reads the
@@ -955,12 +1023,13 @@ records here, 11 sessions under the installed app carried **zero** events
 against 8 under `bun run dev` that carried them.
 
 A **WSL** session gets none of it unless the user's own `WSLENV` lists both
-variables. `cmd` there is `wsl.exe`, and only what
-`WSLENV` names crosses into the distro — which nothing here sets, so `TERM`,
-`COLORTERM` and `SCROLLBACK_ENV` do not cross either, and what does cross is
-whatever a `WSLENV` inherited from the user's own environment happens to
-list. What a WSL tab loses is the turn boundary: the bell and `announceExit`
-are read from the session itself and still notify.
+variables. `cmd` there is `wsl.exe`, and only what `WSLENV` names crosses
+into the distro — the one name this app adds to it is the hand-back token
+(`pass_token`), so `TERM`, `COLORTERM` and `SCROLLBACK_ENV` do not cross
+either, and what else crosses is whatever a `WSLENV` inherited from the user's
+own environment happens to list. What a WSL tab loses is the turn boundary:
+the bell, the hand-back and `announceExit` are read from the session itself and
+still notify.
 
 The other cost is that the payload is **agent-authored JSON arriving over a
 terminal escape sequence**, which is why `parseAgentEvent` answers `null` for

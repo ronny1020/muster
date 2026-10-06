@@ -29,7 +29,14 @@ years. The point is that Muster knows what is _in_ the tab:
   `--continue` later finds nothing.
 - 🐚 **Sessions run through a login shell**, so a CLI installed by your own profile
   — mise, nvm, `~/.local/bin` — is found. A GUI app otherwise inherits a bare
-  `PATH` and none of them exist.
+  `PATH` and none of them exist. Quit an agent on macOS, Linux or WSL and the
+  tab hands you that shell, in the same directory, as quitting it in any other
+  terminal would — with the agent's output still above the prompt in a
+  Scrollback tab. The tab then behaves as a shell's: the Clicks/Scrollback
+  control and ⟳ go, since they would end it, and with **Shell integration** on
+  it gets the copy control and completions a shell tab has. Under Windows
+  PowerShell the tab
+  ends with the agent.
 - 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
   session is still printing, solid once it goes quiet and wants you. It reads
   the output itself, so it works for every agent and for a plain shell.
@@ -497,7 +504,8 @@ what came before is reprinted.
 
 It is not on every tab. Shell tabs are left alone — their output wraps like
 ordinary text, so it survives a resize — and they have no conversation to
-reopen. Nor is it on a tab whose terminal is holding a single screen, which a
+reopen. Nor is it on a tab whose agent has handed it back to your shell, or on
+a tab whose terminal is holding a single screen, which a
 clickable tab usually is — there is no history for a resize to ruin. "Usually"
 because the button follows the buffer rather than the mode: a CLI that has
 turned its own fullscreen renderer off runs in the ordinary one and builds real
@@ -538,7 +546,8 @@ without Muster knowing anything about it. Two consequences worth knowing:
   switches a tab to the mode where the agent takes the mouse, and the start
   screen offers the same choice per launch. It appears once the agent has
   recorded a conversation in this directory — with none, `--continue` finds
-  nothing and the session ends rather than changing mode. It reopens that
+  nothing and the agent exits straight to your shell — in a Windows PowerShell
+  tab, the session ends — rather than changing mode. It reopens that
   directory's most recent conversation, which in a second tab on the same
   directory may not be the one that tab was running. Switching
   reopens the conversation with `--continue` so nothing is lost, and Settings
@@ -687,7 +696,8 @@ finished.
 
 Both need the app to know where one command ends and the next begins, which is
 what **Shell integration** in Settings turns on: it starts the next shell tab
-with a startup file of Muster's own that reports those places. Only zsh and
+— and the shell an agent tab hands you when the agent exits — with a startup
+file of Muster's own that reports those places. Only zsh and
 bash have one, and only on the host, so a PowerShell, fish or WSL tab reports
 nothing and gets neither surface. Nothing about your own configuration
 changes — the file sources yours first and then adds the marks.
@@ -729,9 +739,12 @@ you install into that CLI, so a session without one still shows a solid
 ends in an API error — a rate limit, an overload — is announced the same way as
 one that finished.
 
-Nothing fires while you are already looking at that tab, and a burst of signals
-becomes a single notification. Sessions that end are announced the same way,
-with the exit code when they failed. All of it is adjustable, including off.
+Nothing fires while you are already looking at that tab, and a turn announced
+two ways becomes a single notification. On macOS, Linux and WSL an agent that
+exits hands its tab to your shell rather than ending it, and says so in a
+notification of its own, with the exit code when it failed. A session that ends
+is announced the same way — the shell a tab was handed to, or under Windows
+PowerShell the agent itself. All of it is adjustable, including off.
 
 ## ⚙️ Settings
 
@@ -851,11 +864,14 @@ then `/reload-plugins` — it does nothing until it is reloaded. It also needs
 `jq` on the `PATH` (`brew install jq`, or your system's package manager), which
 every one of its hooks pipes through. A **WSL** tab is not told unless your
 Windows `WSLENV` lists `WARP_CLI_AGENT_PROTOCOL_VERSION` and
-`WARP_CLIENT_VERSION` — it still announces a session that ends, and an agent
-that rings the bell, but not the end of a turn.
+`WARP_CLIENT_VERSION` — it still announces an agent that exits, a session that
+ends and an agent that rings the bell, but not the end of a turn.
 
-**A tab says `exited 1` immediately.** The agent itself refused to start —
-scroll up in that tab, its own output says why.
+**An agent tab drops straight to a shell prompt** (in a Windows PowerShell tab:
+says `exited 1` at once). The agent itself refused to start — a wrong flag, a CLI that is not installed — and its own output above the
+prompt says why. Fix it and run the command again in that shell, or use the
+tab's **Back to start** button — it appears once you type `exit`, and at once
+under PowerShell.
 
 ## 🔒 Your data
 
