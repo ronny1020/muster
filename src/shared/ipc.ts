@@ -2,6 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import type { Backend } from './lib/platform'
 
@@ -16,6 +17,8 @@ export interface GitStatus {
   modified: number
   untracked: number
   conflicted: number
+  /** Push sends this branch under its own name for the first time. */
+  publishes: boolean
 }
 
 export interface Workspace {
@@ -59,6 +62,13 @@ export interface SpawnOptions {
    * whole trade.
    */
   scrollback: boolean
+  /**
+   * Start a plain shell — or the shell an agent hands its tab back to — with
+   * Muster's own startup file, so it reports where each prompt ends and each
+   * command's output begins — see `src-tauri/src/shell.rs`. Nothing else in a
+   * session reports that.
+   */
+  shellIntegration: boolean
 }
 
 /** One recorded session, as the journal panel lists it. */
@@ -99,10 +109,52 @@ export interface Turn {
 export const agentTurns = (cwd: string, id: string) =>
   invoke<Turn[]>('agent_turns', { cwd, id })
 
-export function spawnPty(
+/** What the backend answers about a session it has just started. */
+export interface Spawned {
+  /**
+   * Names this registration, quoted back by `killPty` — a tab reopening its
+   * conversation respawns under the same id, so a kill has to say which
+   * session it meant.
+   */
+  epoch: number
+  /**
+   * Whether the session really was started with Muster's own startup file.
+   * Only such a session's `OSC 133` reports mean anything: anything else that
+   * prints them is another program's claim about a shell that is not there.
+   * In a session with a `handbackToken`, only once it has handed back.
+   */
+  shellIntegration: boolean
+  /**
+   * The token the session's hand-back announcement carries, or `null` for a
+   * session that announces none. An announcement without it is someone
+   * else's bytes — the agent's own, or a file it printed.
+   */
+  handbackToken: string | null
+}
+
+export const spawnPty = (
   options: SpawnOptions,
   onOutput: (bytes: Uint8Array) => void,
-) {
+) =>
+  invoke<Spawned>('pty_spawn', { options, onOutput: outputChannel(onOutput) })
+
+/**
+ * Points a running session's output at this window, replaying what it sent
+ * after byte `from` — the count a moved tab's snapshot already shows — and
+ * answering the offset that replay actually starts at.
+ */
+export const reattachPty = (
+  id: string,
+  from: number,
+  onOutput: (bytes: Uint8Array) => void,
+) =>
+  invoke<number>('pty_reattach', {
+    id,
+    from,
+    onOutput: outputChannel(onOutput),
+  })
+
+function outputChannel(onOutput: (bytes: Uint8Array) => void) {
   const channel = new Channel<ArrayBuffer | number[]>()
   channel.onmessage = (message) =>
     onOutput(
@@ -110,10 +162,7 @@ export function spawnPty(
         ? new Uint8Array(message)
         : new Uint8Array(message),
     )
-  // The epoch that names this registration, quoted back by `killPty` — a tab
-  // reopening its conversation respawns under the same id, so a kill has to
-  // say which session it meant.
-  return invoke<number>('pty_spawn', { options, onOutput: channel })
+  return channel
 }
 
 export const writePty = (id: string, data: string) =>
@@ -122,6 +171,15 @@ export const resizePty = (id: string, cols: number, rows: number) =>
   invoke<void>('pty_resize', { id, cols, rows })
 export const killPty = (id: string, epoch: number) =>
   invoke<void>('pty_kill', { id, epoch })
+
+/**
+ * The commands a shell's history file holds, newest first.
+ *
+ * `path` is the shell's own answer, reported over `OSC 133;P;HistFile` rather
+ * than guessed at.
+ */
+export const shellHistory = (path: string) =>
+  invoke<string[]>('shell_history', { path })
 
 export const journalSessions = (cwd: string) =>
   invoke<JournalEntry[]>('journal_sessions', { cwd })
@@ -253,13 +311,10 @@ export interface LinkMeta {
   imageDataUrl: string | null
 }
 
-/**
- * Reads a page's Open Graph metadata. The only call in Muster that touches the
- * network, so it runs on an explicit click rather than on hover — terminal
- * output is written by an agent, and a URL it prints must not fetch itself.
- */
+/** Reads what a page says about itself, for the link hover label. */
 export const linkPreview = (url: string) =>
   invoke<LinkMeta>('link_preview', { url })
+
 export interface Branch {
   /** What a checkout would switch to; for a remote branch, the local name. */
   name: string
@@ -274,8 +329,30 @@ export const gitBranches = (cwd: string) =>
   invoke<Branch[]>('git_branches', { cwd })
 
 /** Rejects with git's own message, which names the files in the way. */
-export const gitCheckout = (cwd: string, branch: string) =>
-  invoke<void>('git_checkout', { cwd, branch })
+export const gitCheckout = (cwd: string, branch: string, op: string) =>
+  invoke<void>('git_checkout', { cwd, branch, op })
+
+/**
+ * Commits what is staged, or every change when nothing is. Resolves with
+ * git's one-line summary; rejects with git's own message, or `Cancelled.`
+ * once `gitCancel(op)` stopped it — as do the two below.
+ */
+export const gitCommit = (cwd: string, message: string, op: string) =>
+  invoke<string>('git_commit', { cwd, message, op })
+
+/** Fast-forward only. */
+export const gitPull = (cwd: string, op: string) =>
+  invoke<string>('git_pull', { cwd, op })
+
+/**
+ * Pushes the current branch where `git push` would send it, publishing one
+ * with no upstream or an upstream of another name.
+ */
+export const gitPush = (cwd: string, op: string) =>
+  invoke<string>('git_push', { cwd, op })
+
+/** Stops the command running under `op`; `false` when none is. */
+export const gitCancel = (op: string) => invoke<boolean>('git_cancel', { op })
 
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
@@ -293,7 +370,123 @@ export const onPtyExit = (
  * what the second one was asked for.
  */
 export const onOpenDirectory = (handler: (cwd: string) => void) =>
-  listen<string>('muster://open-directory', (event) => handler(event.payload))
+  windowListen<string>('muster://open-directory', handler)
+
+/**
+ * Listens for an event sent to this window alone. The module-level `listen`
+ * hears an event sent to *any* window, so every window would answer it.
+ */
+async function windowListen<T>(event: string, handler: (payload: T) => void) {
+  return getCurrentWebviewWindow().listen<T>(event, (message) =>
+    handler(message.payload),
+  )
+}
+
+/** A point or a box in CSS pixels. */
+export interface Point {
+  x: number
+  y: number
+}
+export interface Rect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface OpenRequest {
+  /** The tab the new window opens with, as `app/handoff.ts` writes it. */
+  handoff?: string
+  /**
+   * The tab whose running session moves with it. The new window owns that
+   * session from this call on, so this one may close as soon as it answers.
+   */
+  session?: string | null
+  /** Where the pointer holds the tab, to open the window under the cursor. */
+  grab?: Point
+}
+
+/** Opens a window the size of this one, carrying a tab if given one. */
+export const openWindow = (request: OpenRequest = {}) =>
+  invoke<string>('window_open', {
+    request: {
+      handoff: request.handoff ?? null,
+      session: request.session ?? null,
+      grab: request.grab ?? null,
+    },
+  })
+
+/** Sends a tab to an open window, which owns its session from this call on. */
+export const sendToWindow = (
+  label: string,
+  handoff: string,
+  session: string | null,
+) => invoke<void>('window_send', { label, handoff, session })
+
+/** Where this window's tab strip is, for drops from other windows. */
+export const reportStrip = (rect: Rect) =>
+  invoke<void>('window_strip', { rect })
+
+/** What a tab dragged out of this window would land on, if dropped now. */
+export type DropTarget =
+  { kind: 'strip'; label: string; x: number } | { kind: 'outside' }
+
+/** `carrying` for a window's only tab, which has been moving its window. */
+export const dropTarget = (carrying: boolean) =>
+  invoke<DropTarget>('window_drop_target', { carrying })
+
+/** The drag label's window, which `ghost.rs` names the same way. */
+export const GHOST_LABEL = 'ghost'
+
+/** What the label following a torn-off tab shows. */
+export interface GhostRequest {
+  title: string
+  accent: string
+  /** The window's only tab, which carries its window rather than opening one. */
+  lone: boolean
+  /** Where the pointer holds a lone tab, which its window follows by. */
+  grab: Point | null
+  /** Which tear-off this is, so a hide can say which one it ends. */
+  drag: number
+}
+
+/** What the label says a release would do, as the backend works it out. */
+export interface GhostState {
+  title: string
+  accent: string
+  over: 'strip' | 'window' | 'new'
+}
+
+/** Shows the label beside the cursor until `hideGhost`. */
+export const showGhost = (request: GhostRequest) =>
+  invoke<void>('ghost_show', { request })
+export const hideGhost = (drag: number) => invoke<void>('ghost_hide', { drag })
+/** Still dragging: the label hides itself once these stop. */
+export const ghostBeat = () => invoke<void>('ghost_beat')
+/** What the label says now — read once by its page, which may load late. */
+export const ghostState = () => invoke<GhostState | null>('ghost_state')
+
+/** The label's own window hears what to show here. */
+export const onGhost = (handler: (state: GhostState) => void) =>
+  windowListen('muster://ghost', handler)
+
+/**
+ * A tab dragged from another window is over this one's strip, at `x` CSS
+ * pixels — or `null` once it has left — with the colour of its agent.
+ */
+export interface DropHover {
+  x: number | null
+  accent: string
+}
+export const onDropHover = (handler: (hover: DropHover) => void) =>
+  windowListen('muster://drop-hover', handler)
+
+/** The tabs other windows have sent this one and it has not taken yet. */
+export const takeHandoffs = () => invoke<string[]>('window_take')
+
+/** Another window sent this one a tab; `takeHandoffs` collects it. */
+export const onHandoff = (handler: () => void) =>
+  windowListen<null>('muster://handoff', handler)
 
 export async function pickDirectory(defaultPath?: string) {
   const picked = await open({
@@ -492,6 +685,11 @@ export const windowLabel = () => {
 
 /** The whole backend-held store, read once at startup. */
 export const readAppState = () => invoke<Record<string, string>>('state_read')
+
+/** Another window changed an entry of the store. */
+export const onStateChange = (
+  handler: (change: { key: string; value: string | null }) => void,
+) => windowListen('muster://state', handler)
 
 /** Stores one entry, or forgets it when `value` is `null`. */
 export const writeAppState = (key: string, value: string | null) =>

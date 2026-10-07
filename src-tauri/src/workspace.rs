@@ -19,6 +19,13 @@ pub struct GitStatus {
     pub modified: u32,
     pub untracked: u32,
     pub conflicted: u32,
+    /// Whether the upstream is the remote's branch of the same name.
+    #[serde(skip)]
+    pub tracks_own_name: bool,
+    /// Whether the drawer's Push sends this branch under its own name for the
+    /// first time — see [`read_push_state`]. The label reads Publish then, and
+    /// `sync::push_target` acts on this same field.
+    pub publishes: bool,
 }
 
 impl GitStatus {
@@ -115,10 +122,12 @@ fn read_log(cwd: String, limit: u32) -> Vec<Commit> {
     parse_log(&out, &unpushed_shas(cwd))
 }
 
-/// Shas present locally but not on the upstream branch. Empty when the branch
-/// has no upstream, where "unpushed" has no meaning.
+/// Shas present locally but not where a push goes — the push target when that
+/// differs from the upstream, as the `↑` count is measured. Empty when the
+/// branch has no upstream, where "unpushed" has no meaning.
 fn unpushed_shas(cwd: &Path) -> HashSet<String> {
-    git(cwd, &["rev-list", "@{upstream}..HEAD"])
+    let base = push_base(cwd, &git_status(cwd)).unwrap_or_else(|| "@{upstream}".to_string());
+    git(cwd, &["rev-list", &format!("{base}..HEAD")])
         .into_iter()
         .flat_map(|out| out.lines().map(str::to_string).collect::<Vec<_>>())
         .collect()
@@ -242,41 +251,64 @@ fn remote_only(out: Option<&str>, local: &HashSet<String>) -> Vec<Branch> {
 ///
 /// Uncommitted work that the switch would overwrite is the usual refusal, and
 /// git's own message names the files — so it is passed through rather than
-/// summarised.
+/// summarised. It runs under `op` like the drawers' other writes, so the same
+/// Cancel reaches a post-checkout hook or an LFS download that stalls.
 #[tauri::command]
-pub async fn git_checkout(cwd: String, branch: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || checkout(&cwd, &branch))
+pub async fn git_checkout(cwd: String, branch: String, op: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || checkout(&cwd, &branch, &op))
         .await
         .unwrap_or_else(|_| Err("checkout did not run".to_string()))
 }
 
-fn checkout(cwd: &str, branch: &str) -> Result<(), String> {
+fn checkout(cwd: &str, branch: &str, op: &str) -> Result<(), String> {
     // A leading dash would be read as an option, and `--` cannot precede a
     // branch because git takes what follows it as paths.
     if branch.is_empty() || branch.starts_with('-') {
         return Err(format!("not a branch name: {branch}"));
     }
     let cwd = expand_home(cwd);
-    run_git(Path::new(&cwd), &["checkout", branch]).map(|_| ())
+    // `switch`, never `checkout`: given a name that is no longer a branch —
+    // one an agent deleted after the list was read — `checkout` takes it for
+    // a path and restores that directory from the index, discarding unstaged
+    // work in it without a word. `switch` only ever switches, and still starts
+    // a local branch from a remote-only one.
+    crate::sync::run_git_as(Path::new(&cwd), &["switch", branch], op).map(|_| ())
 }
 
-/// Like `git`, but keeps git's stderr so a failure can be shown to the user.
-fn run_git(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let out = platform::command("git")
+/// Variables that tell git which repository to act on, overriding `-C`.
+///
+/// Git exports `GIT_INDEX_FILE` to its hooks, and this repository's
+/// pre-commit hook runs the Rust tests — so a test's `git add --all` in a
+/// scratch repository would write the scratch tree over the commit being made.
+/// A Muster started from a hook or a shell that exported `GIT_DIR` would point
+/// every tab's git at one repository the same way.
+const REPOSITORY_OVERRIDES: [&str; 5] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+];
+
+/// `git -C <cwd>`, answering about `cwd` and nothing an environment names.
+pub(crate) fn git_in(cwd: &Path) -> std::process::Command {
+    let mut command = platform::command("git");
+    without_repository_overrides(&mut command)
         .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .output()
-        .map_err(|error| format!("could not run git: {error}"))?;
-    if out.status.success() {
-        return Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string());
+        .arg(cwd);
+    command
+}
+
+/// Removes [`REPOSITORY_OVERRIDES`] from a git child's environment, and from
+/// the login-`PATH` probe's, whose prompt runs git. PTY sessions are not
+/// covered: a shell started there keeps whatever the app inherited.
+pub(crate) fn without_repository_overrides(
+    command: &mut std::process::Command,
+) -> &mut std::process::Command {
+    for name in REPOSITORY_OVERRIDES {
+        command.env_remove(name);
     }
-    let error = String::from_utf8_lossy(&out.stderr).trim_end().to_string();
-    Err(if error.is_empty() {
-        "git refused the checkout".to_string()
-    } else {
-        error
-    })
+    command
 }
 
 /// Whether a path is a directory, a file, or absent.
@@ -412,7 +444,7 @@ fn starts_at_boundary(rest: &str) -> bool {
 }
 
 /// `git` output with trailing whitespace trimmed, or `None` when it failed —
-/// the caller wanted a fact, not a message. [`run_git`] is the one that keeps
+/// the caller wanted a fact, not a message. [`crate::sync::run_git_as`] is the one that keeps
 /// stderr, and [`git_verbatim`] the one that keeps whitespace.
 pub(crate) fn git(cwd: &Path, args: &[&str]) -> Option<String> {
     git_verbatim(cwd, args).map(|out| out.trim_end().to_string())
@@ -425,12 +457,7 @@ pub(crate) fn git(cwd: &Path, args: &[&str]) -> Option<String> {
 /// ends in blank lines — and those rows are precisely what a reviewer checks
 /// when an agent may have eaten a trailing newline.
 pub(crate) fn git_verbatim(cwd: &Path, args: &[&str]) -> Option<String> {
-    let out = platform::command("git")
-        .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .output()
-        .ok()?;
+    let out = git_in(cwd).args(args).output().ok()?;
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
@@ -438,7 +465,7 @@ pub(crate) fn git_verbatim(cwd: &Path, args: &[&str]) -> Option<String> {
 
 /// Reads branch, upstream divergence and worktree counts from one
 /// `git status --porcelain=v2` call.
-fn git_status(cwd: &Path) -> GitStatus {
+pub(crate) fn git_status(cwd: &Path) -> GitStatus {
     let Some(out) = git(
         cwd,
         &[
@@ -464,7 +491,120 @@ fn git_status(cwd: &Path) -> GitStatus {
     if status.branch.is_empty() {
         status.branch = "(empty)".into();
     }
+    status.tracks_own_name = tracks_own_name(&status);
+    read_push_state(cwd, &mut status);
     status
+}
+
+/// Fills in what a push of the current branch would do: whether it publishes,
+/// and how many commits it has to send.
+///
+/// A branch publishes when it has no upstream, or tracks a branch of another
+/// name — which is what `git checkout -b fix origin/main` leaves, and pushing
+/// that anywhere but under its own name would land the work on `main` — unless
+/// pushes go to another remote and have landed there before, which is a fork
+/// workflow's ordinary push.
+fn read_push_state(cwd: &Path, status: &mut GitStatus) {
+    let base = push_base(cwd, status);
+    if let Some(ahead) = base.as_deref().and_then(|base| ahead_of(cwd, base)) {
+        status.ahead = ahead;
+    }
+    status.publishes = !status.detached && !status.tracks_own_name && base.is_none();
+}
+
+/// Commits on `HEAD` that `base` does not have.
+fn ahead_of(cwd: &Path, base: &str) -> Option<u32> {
+    git(cwd, &["rev-list", "--count", &format!("{base}..HEAD")])?
+        .parse()
+        .ok()
+}
+
+/// The ref a push of the current branch last landed on, when pushes go
+/// somewhere other than the upstream's remote and have landed there before.
+///
+/// `branch.ab` counts against the upstream, but the drawer's Push sends to
+/// [`push_remote`] — and in a fork workflow (`pushRemote` or
+/// `remote.pushDefault` set) those differ, and counted against the upstream
+/// the number would not fall after a push, reading as one that had not
+/// landed. `ahead` means "to push"
+/// wherever it is shown, so it is counted from here when this answers. Git's
+/// own `@{push}` would answer this, but under the default `push.default=simple`
+/// it refuses a triangular setup outright.
+fn push_base(cwd: &Path, status: &GitStatus) -> Option<String> {
+    let tracked = tracked_remote(status)?;
+    let target = push_remote(cwd, &status.branch);
+    if target == tracked {
+        return None;
+    }
+    let pushed = format!("refs/remotes/{target}/{}", status.branch);
+    git(cwd, &["rev-parse", "--verify", "--quiet", &pushed])?;
+    Some(pushed)
+}
+
+/// Where a push of `branch` goes: its `pushRemote`, then `remote.pushDefault`,
+/// then the remote it tracks, then the repository's only remote, then
+/// `origin` — the order `git push` itself uses, with the only remote added so
+/// a repository whose remote is not called `origin` still publishes.
+///
+/// The first two are what a fork workflow sets — track the canonical
+/// repository, push to your own — so ignoring them would publish an agent's
+/// branch to the repository everyone shares. One `git config` call rather than
+/// one per key, because the status poll asks this in every pane.
+pub(crate) fn push_remote(cwd: &Path, branch: &str) -> String {
+    let branch_key = format!("branch.{}", regex_escape(branch));
+    let pattern = format!("^({branch_key}\\.(pushremote|remote)|remote\\.pushdefault)$");
+    let config = git(cwd, &["config", "--get-regexp", &pattern]).unwrap_or_default();
+    // `--get-regexp` lowercases a key's section and name but keeps its
+    // subsection — the branch — as written. It prints system, then global,
+    // then local, and for a key set twice the last one is the one git uses.
+    let value = |key: &str| {
+        config.lines().rev().find_map(|line| {
+            let (name, value) = line.split_once(' ')?;
+            (name == key).then(|| value.to_string())
+        })
+    };
+    value(&format!("branch.{branch}.pushremote"))
+        .or_else(|| value("remote.pushdefault"))
+        // `.` is the repository itself, which has nowhere to publish to.
+        .or_else(|| value(&format!("branch.{branch}.remote")).filter(|remote| remote != "."))
+        .or_else(|| sole_remote(cwd))
+        .unwrap_or_else(|| "origin".to_string())
+}
+
+/// The repository's one remote, whatever it is called, or `None` when there
+/// are several.
+fn sole_remote(cwd: &Path) -> Option<String> {
+    let remotes = git(cwd, &["remote"])?;
+    let mut names = remotes.lines();
+    let only = names.next()?.to_string();
+    names.next().is_none().then_some(only)
+}
+
+/// `text` with every extended-regex metacharacter escaped, for a branch name
+/// inside a `--get-regexp` pattern.
+fn regex_escape(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| {
+            let special = "\\^$.|?*+()[]{}".contains(c);
+            special.then_some('\\').into_iter().chain([c])
+        })
+        .collect()
+}
+
+/// The remote the upstream is on: `origin/<name>` names it first.
+pub(crate) fn tracked_remote(status: &GitStatus) -> Option<&str> {
+    Some(status.upstream.as_deref()?.split_once('/')?.0)
+}
+
+/// `origin/<name>` names the remote first; a remote whose own name holds a
+/// slash reads as tracking another name, and is published rather than pushed.
+fn tracks_own_name(status: &GitStatus) -> bool {
+    !status.detached
+        && status
+            .upstream
+            .as_deref()
+            .and_then(|upstream| upstream.split_once('/'))
+            .is_some_and(|(_, branch)| branch == status.branch)
 }
 
 fn read_branch_header(status: &mut GitStatus, header: &str) {

@@ -15,7 +15,8 @@ import { Icon } from '../../../shared/ui/Icon'
  * Both are always drawn, with the tab's own pressed. A single button labelled
  * with the current mode reads as "press for this", which is the opposite of
  * what it does — and the mode a user is looking for is the one they cannot
- * see. AGENTS.md's clicks-and-scrollback invariant has what each costs.
+ * see. `src/features/terminal/AGENTS.md`'s "But the mouse is on the other side of
+ * that trade" invariant has what each costs.
  */
 const MODES = [
   {

@@ -249,7 +249,7 @@ const Gutter = ({
       aria-label={`Open line ${line} in ${opener.editor}`}
       onClick={() => opener.open(line)}
       style={GUTTER_WIDTH}
-      className={`${GUTTER} cursor-pointer text-faint hover:text-brand hover:underline`}
+      className={`${GUTTER} cursor-pointer text-faint hover:text-primary hover:underline`}
     >
       {line}
     </button>

@@ -128,12 +128,17 @@ jobs:
             the first time; Windows SmartScreen wants "More info → Run anyway".
             See the README for the Homebrew and Scoop routes, which handle it
             for you.
-          # A tag push publishes straight away, and that is what carries the
-          # release the rest of the way: `update-packages.yml` triggers on
-          # `release: published`, so a draft leaves the Homebrew cask and the
-          # Scoop manifest on the previous version until someone clicks
-          # Publish — which is the step that got forgotten, and the reason
-          # `brew upgrade` reported nothing to do after a successful build.
+          # A tag push publishes straight away, so the assets are up without
+          # anyone clicking Publish — the step that used to be forgotten, and
+          # the reason `brew upgrade` reported nothing to do after a
+          # successful build.
+          #
+          # It does not carry the manifests, though, and publishing here is
+          # why: GitHub raises no workflow-starting event for a release
+          # published under the automatic `GITHUB_TOKEN`, so
+          # `update-packages.yml` — which triggers on `release: published` —
+          # never runs for a tag. docs/RELEASE.md has the command that starts
+          # it, and it is a step of every release.
           #
           # A manual run still drafts. That path exists for re-cutting a
           # release whose run failed halfway, which is exactly when the

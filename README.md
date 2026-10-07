@@ -29,11 +29,19 @@ years. The point is that Muster knows what is _in_ the tab:
   `--continue` later finds nothing.
 - 🐚 **Sessions run through a login shell**, so a CLI installed by your own profile
   — mise, nvm, `~/.local/bin` — is found. A GUI app otherwise inherits a bare
-  `PATH` and none of them exist.
+  `PATH` and none of them exist. Quit an agent on macOS, Linux or WSL and the
+  tab hands you that shell, in the same directory, as quitting it in any other
+  terminal would — with the agent's output still above the prompt in a
+  Scrollback tab. The tab then behaves as a shell's: the Clicks/Scrollback
+  control and ⟳ go, since they would end it, and with **Shell integration** on
+  it gets the copy control and completions a shell tab has. Under Windows
+  PowerShell the tab
+  ends with the agent.
 - 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
   session is still printing, solid once it goes quiet and wants you. It reads
   the output itself, so it works for every agent and for a plain shell.
-- 🔔 **A finished agent raises a dot on its tab and a desktop notification**,
+- 🔔 **A finished agent raises a dot on its tab, and a desktop notification**
+  where the turn is announced — for Claude Code, by a plugin you install —
   because the reason to run several is that you are not watching this one.
 - 🌿 **The footer follows the directory and its git state** as the agent changes
   it, and the drawer switches branches without leaving the tab.
@@ -165,10 +173,16 @@ and Scoop routes additionally verify a checksum recorded in their manifests.
 
 ### 🕶️ Privacy
 
-Muster makes no network requests of its own. It has no telemetry, no update
-check, and no accounts — it reads your filesystem and git state, and runs the
-CLIs you point it at, locally. Those CLIs do talk to their own providers, on
-their own terms, exactly as they would in your usual terminal.
+Muster makes one kind of network request of its own: resting the pointer on a
+web link fetches that page, and the image it names, for the hover preview —
+any address the link names, `localhost` included. A Stack Exchange question
+is asked of `api.stackexchange.com` instead, and its site's icon of
+`cdn.sstatic.net`. A link you click opens in
+your browser, which makes that request. It has no telemetry, no update check, and no accounts — it
+reads your filesystem and git state, and runs the CLIs you point it at, locally.
+Those CLIs do talk to their own providers, on their own terms, exactly as they
+would in your usual terminal. The drawers' **Pull** and **Push** run your own
+`git` against your own remote, and only when you press them.
 
 The agent CLIs are separate, and Muster deliberately does not bundle them.
 Install whichever you use — `claude`, `codex`, `agy` — and check each runs in
@@ -291,7 +305,15 @@ the folder it started in, and the tooltip says so.
 
 ## 🖱️ Clicking things in the output
 
-Agents print paths and URLs constantly, and all of them are live:
+Agents print paths and URLs constantly, and all of them are live: a click opens
+one. Hovering a web link — a URL, or a hyperlink an agent drew — shows where it
+goes, and which click opens it, at the tab's bottom-left corner, along with the
+page's title, summary and picture, and "Loading preview…" until they arrive. The click
+never waits for the preview. While the program in a tab is reading the mouse — a
+Clicks tab's agent, or `vim` or `tmux` with the mouse on — it takes the plain
+click, so a link opens on **⌘-click** (**Ctrl-click** on Windows and Linux)
+there instead. Paths and plain URLs are not
+underlined there; a hyperlink the agent drew still is:
 
 | You click                                                      | Muster does                                                                                                      |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -299,7 +321,7 @@ Agents print paths and URLs constantly, and all of them are live:
 | An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
 | An unchanged file inside the session's directory               | Opens it in the file column beside the terminal, so reading it does not take you out of the tab                  |
 | Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
-| A URL                                                          | Shows a card with the page's title, description and preview image, and a button to open it                       |
+| A URL                                                          | Opens it in your browser — `http` and `https` only; `mailto:`, `tel:` and other schemes are refused              |
 
 The rows are in the order Muster asks the questions: a path that names a changed
 file opens as a diff before anything else is considered, so an image the agent
@@ -319,15 +341,12 @@ Tools that emit images as terminal escape sequences work too: Sixel and
 iTerm2's inline-image protocol are both supported, so `imgcat`, `chafa
 --format=sixel` and `timg` render in place.
 
-Muster reads a URL's metadata only when you click it, never as output scrolls
-past — a page fetched automatically would turn any URL an agent printed into a
-tracking pixel. A URL that points straight at a private or loopback address is
-refused.
-
-> Known gap: every hop of a redirect is checked, but the hostname is resolved
-> once to check it and again to connect, so a record that changes between the
-> two remains a theoretical way past it. Treat clicking an untrusted link as a
-> request that may reach your own network.
+A link an agent drew as a hyperlink — Claude Code's `#604` pull-request links,
+or a long URL it breaks across rows — opens the `http` or `https` address it
+carries rather than the text on screen, so the page that opens is not always
+the one the text names. The corner label shows the real host in full, then the
+address, while you hover it — read that, not the text, as you would a link in
+an email.
 
 ## 🪣 Dropping files in
 
@@ -342,7 +361,8 @@ tab arrives as the path the distro can open — `/mnt/c/…`, not `C:\…`.
 ## 🔍 Reviewing what changed
 
 `⌘G`, or `Ctrl+Shift+G`, opens the review drawer on the right. It is a
-navigator, in two views over the same directory:
+navigator, in two views over the same directory, with commit, pull and push
+under the first:
 
 **Changes** lists every file that differs, with its status letter and line
 counts. The **vs** picker compares against a branch instead of your uncommitted
@@ -388,9 +408,8 @@ diagrams. A markdown file opened from the Changes list opens as its diff — you
 asked to see a change — and The header's button switches between them, and says
 where it goes: **Preview** to render, **Raw** or **Diff** to come back. Agents write a lot of markdown, and reading the source of a
 nested table is not reading the document. Nothing in a document can act on its
-own: its own HTML is escaped, links open through the same preview card the
-terminal's URLs use — with the URL in a tooltip, so you read it before you
-commit to it — and images are read off disk rather than fetched, from inside
+own: its own HTML is escaped, links open in your browser, as the terminal's URLs
+do — with the URL in a tooltip, so you read it before you commit to it — and images are read off disk rather than fetched, from inside
 the document's own folder only. One pointing outside says so instead of
 loading.
 
@@ -399,12 +418,49 @@ back, Escape mid-drag cancels, and the width is remembered for next time. The
 history drawer resizes the same way. All three can be open at once, and the
 terminal keeps a column of its own however wide you drag them.
 
-Nothing in the drawer or the column writes. There is no staging, no discarding
-and no editing: the agent in the tab is what edits files, and a second editable
-copy of a file being rewritten underneath you is a merge conflict waiting to
-happen. What it offers instead is a button to type the file's path into the
-session — the fastest way to say "look at this one again" — plus copy-path and
-open-in-editor.
+**Commit, pull and push** sit under the Changes list. Type a message and press
+the commit button — or `⌘Enter`, `Ctrl+Enter` elsewhere. With nothing staged it
+commits every uncommitted change, new files included, and reads **Commit all**;
+if you staged part of it in the terminal it commits only that, and says how
+many files. The **vs** picker changes only what the list compares against,
+never what a commit takes. If the commit fails — a hook refused it, say — what
+the button staged is unstaged again, so the next try picks up your fix. On a
+detached head it warns that the commit will belong to no branch, and lets you
+go ahead — a rebase stopped for an edit is detached too.
+
+**Pull** only fast-forwards, so it never leaves a half-finished merge in a tree
+an agent is working in, and shows how many commits you are behind; it is greyed
+out on a branch with no upstream. **Push** shows how many are waiting to go. It
+reads **Publish** instead on a branch with no upstream, or one tracking a branch
+of another name — which is what `git checkout -b fix origin/main` makes — and
+pushes it under its own name and tracks that, rather than onto `main`. It goes
+where `git push` itself would send it: your `pushRemote` or `remote.pushDefault`
+if you set one, otherwise the remote it tracks — or the repository's only
+remote, whatever it is called. A fork workflow publishes to your fork and leaves
+the branch tracking the repository you pull from, and from then on the button
+reads **Push**, counting what the fork has not got yet. Neither works on a
+detached head. The history drawer has the same Pull and Push.
+
+While git runs, **Cancel** stops it and whatever it started — a hook, `ssh` —
+including a branch switch from the history drawer. If git had already done its
+work — it commits before `post-commit` runs and switches before
+`post-checkout` does — the drawer says so instead of "Cancelled.". Stopping a
+switch or a pull while it is writing files can leave the tree half-updated,
+which then shows as changes; cancel those only when they are stuck. When git
+refuses — a hook failed, the remote moved, a credential is missing — the drawer
+shows git's own message. Hooks and credential helpers see the `PATH` your login
+shell sets up, as in a terminal; it is read the first time you press one of
+these, and read again a minute later if that failed. On macOS and Linux git is
+never given a terminal to prompt on, so a missing credential fails rather than
+waits — except gpg's pinentry, which gpg-agent opens itself and which waits for
+an answer as it would anywhere else. Cancel is the way out of that.
+
+Nothing else in the drawer or the column writes: nothing is staged except by
+**Commit all**, and there is no discarding and no editing — the agent in the tab is what edits files, and a
+second editable copy of a file being rewritten underneath you is a merge
+conflict waiting to happen. What it offers instead is a button to type the
+file's path into the session — the fastest way to say "look at this one again"
+— plus copy-path and open-in-editor.
 
 ## 🌿 History and branches
 
@@ -422,6 +478,12 @@ If the tree has uncommitted work the drawer says so before you pick, because a
 checkout can fail on it — though only when the two branches differ in the files
 you have touched, so it does not stop you trying. When git refuses, it names the
 files in the way and the drawer shows that as it came.
+
+**Pull** and **Push** sit under the drawer's header, the same two buttons the
+review drawer has — which is where the status bar's `↑` and `↓` counts lead.
+Switching runs `git switch`, which needs git 2.23 or later: given a name that
+is no longer a branch, it refuses, where `git checkout` would take the name for
+a folder and restore it over your unsaved work.
 
 ## 📍 Jumping back to what you asked
 
@@ -450,7 +512,8 @@ what came before is reprinted.
 
 It is not on every tab. Shell tabs are left alone — their output wraps like
 ordinary text, so it survives a resize — and they have no conversation to
-reopen. Nor is it on a tab whose terminal is holding a single screen, which a
+reopen. Nor is it on a tab whose agent has handed it back to your shell, or on
+a tab whose terminal is holding a single screen, which a
 clickable tab usually is — there is no history for a resize to ruin. "Usually"
 because the button follows the buffer rather than the mode: a CLI that has
 turned its own fullscreen renderer off runs in the ordinary one and builds real
@@ -491,7 +554,8 @@ without Muster knowing anything about it. Two consequences worth knowing:
   switches a tab to the mode where the agent takes the mouse, and the start
   screen offers the same choice per launch. It appears once the agent has
   recorded a conversation in this directory — with none, `--continue` finds
-  nothing and the session ends rather than changing mode. It reopens that
+  nothing and the agent exits straight to your shell — in a Windows PowerShell
+  tab, the session ends — rather than changing mode. It reopens that
   directory's most recent conversation, which in a second tab on the same
   directory may not be the one that tab was running. Switching
   reopens the conversation with `--continue` so nothing is lost, and Settings
@@ -518,8 +582,9 @@ are looking at. It steps aside near the bottom, where the `↑`/`↓` buttons ar
 
 Click the label to open that file in the reader beside the terminal.
 
-Every file the session named is also marked on the scrollbar itself, in blue,
-beside the orange marks for your own messages — so one glance says where the
+Every file the session named is also marked on the scrollbar itself, in grey,
+beside the marks for your own messages, which are in the colour of the agent
+you sent them to — so one glance says where the
 work happened. Each mark is as tall as the output that touched the file, and
 takes only the left edge of the bar, so the two kinds stay apart by shape as
 well as by colour.
@@ -600,10 +665,26 @@ kept, and records are deleted after the retention period you set. Nothing is
 ever sent anywhere, and nothing currently displays a record's contents — the
 list is built from each file's size and age.
 
-## 🪟 One window, where you left it
+## 🪟 Windows, where you left them
 
-Muster remembers its size, position and whether it was maximised, so a restart
-reopens the window you were using rather than the default one.
+Muster remembers each window's size, position and whether it was maximised,
+and the tabs in it, so a restart reopens the windows you were using rather
+than one default one.
+
+Drag a tab off the strip and let go anywhere but another window's tabs to give
+it a window of its own — over its own window too, as in Chrome — or over
+another window's tabs to move it there; right-click a tab and
+choose **Move to new window** for the same without the drag. A label follows
+the pointer saying where the tab will go, and the window it will join marks
+the spot in its tab strip. Dragging a window's only tab moves the whole
+window. On Wayland, which does not tell an app where the cursor or its windows
+are, a dragged tab can still get a window of its own, but there is no label,
+a lone tab does not carry its window, and a tab cannot be dropped onto another
+window's tabs. A running agent or shell moves with everything on its screen
+and keeps running — nothing restarts. Closing a tab that is a window's last closes the
+window, as in Chrome; closing the last window quits. Either asks first if a
+session in that window is still running. A window closed while others stay open takes its
+tabs with it.
 
 Launching it twice focuses the window you already have instead of opening a
 second copy — which matters because two copies would restore the same tabs,
@@ -618,7 +699,33 @@ The start screen lists the agents; below that list, and above the mode
 buttons, sits **Open a plain shell instead**, because the shell is not one of
 them — no flags, no modes, nothing to
 resume. Minimising the window on macOS and clicking the Dock icon brings it
-back; closing the window quits the app, as it always has.
+back; closing the last window quits the app.
+
+A **zsh or bash** tab gets two things an agent tab has no use for. Two
+characters in, the past commands that begin the same way appear under the
+cursor, newest first — the top one is also drawn ahead of the cursor in grey.
+`→` takes that one, `↓` walks the list and `↑` walks back up it, Enter fills
+the chosen line in without running it, and Escape puts the list away. `↑` at
+an untouched prompt is still the shell's own history, and a key with a
+modifier on it — `⌥→` to move a word, `⇧Enter` for a newline — always reaches
+the shell, so nothing you already do changes. They come from what this session has already run, newest first, and then from
+the shell's own history file — which it tells the app about, so a `HISTFILE`
+you moved is the one that is read. A command you ran a minute ago is suggested
+before anything in the file, which is where it would not appear until the
+shell exits.
+
+Hover a finished command and **Copy output** appears at the right of its first
+line: one click puts everything it printed on the clipboard, without selecting
+anything. `⌘⇧O` (`Ctrl+Shift+O`) does the same for the last command that
+finished.
+
+Both need the app to know where one command ends and the next begins, which is
+what **Shell integration** in Settings turns on: it starts the next shell tab
+— and the shell an agent tab hands you when the agent exits — with a startup
+file of Muster's own that reports those places. Only zsh and
+bash have one, and only on the host, so a PowerShell, fish or WSL tab reports
+nothing and gets neither surface. Nothing about your own configuration
+changes — the file sources yours first and then adds the marks.
 
 ## 🚫 When a folder cannot be read
 
@@ -650,21 +757,28 @@ hear about:
   words where the agent published them.
 
 Agents announce that moment two different ways — some ring the terminal bell,
-Claude Code broadcasts a structured event instead — and both are read, so this
-works without configuring anything.
+others broadcast a structured event instead — and both are read. The bell needs
+nothing. The structured event Claude Code sessions use comes from a hook plugin
+you install into that CLI, so a session without one still shows a solid
+"waiting" dot and the status bar, but no pulse and no notification. A turn that
+ends in an API error — a rate limit, an overload — is announced the same way as
+one that finished.
 
-Nothing fires while you are already looking at that tab, and a burst of signals
-becomes a single notification. Sessions that end are announced the same way,
-with the exit code when they failed. All of it is adjustable, including off.
+Nothing fires while you are already looking at that tab, and a turn announced
+two ways becomes a single notification. On macOS, Linux and WSL an agent that
+exits hands its tab to your shell rather than ending it, and says so in a
+notification of its own, with the exit code when it failed. A session that ends
+is announced the same way — the shell a tab was handed to, or under Windows
+PowerShell the agent itself. All of it is adjustable, including off.
 
 ## ⚙️ Settings
 
 Press the settings shortcut or click the gear at the right of the status bar.
 Settings open as a tab, and changes take effect immediately — including in
-terminals that are already running. Two are read when a session starts instead,
-so they reach the next session rather than the ones already going: **Record
-what sessions print**, and **Default terminal mode** — for which the status
-bar's
+terminals that are already running. Three are read when a session starts
+instead, so they reach the next session rather than the ones already going:
+**Record what sessions print**, **Shell integration**, and **Default terminal
+mode** — for which the status bar's
 Clicks / Scrollback control is the way to change a tab that is already open.
 
 - **New tabs** — which agent and directory to start on, and the **Terminal
@@ -674,7 +788,8 @@ Clicks / Scrollback control is the way to change a tab that is already open.
   width repair have something to work on. No session can have both. The status
   bar's control switches one tab without changing this.
 - **Terminal** — theme, font, size, line height, text width, scrollback,
-  blinking cursor. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
+  blinking cursor, and **Shell integration**, which is what gives a zsh or bash
+  tab its copy control and its completions. Ligatures are on: a font that draws `->`, `=>` or `!==` as a
   single glyph will do so here. The font list is every family installed on the
   machine, narrowed to the ones that can hold a column; **Show all system fonts**
   widens it to the rest. The review panel's diffs and files are drawn in the
@@ -695,19 +810,25 @@ distro.
 
 ## ⌨️ Shortcuts
 
-| Action              | macOS         | Windows / Linux                 |
-| ------------------- | ------------- | ------------------------------- |
-| New tab             | `⌘T`          | `Ctrl+Shift+T`                  |
-| Close tab           | `⌘W`          | `Ctrl+Shift+W`                  |
-| Toggle git history  | `⌘Y`          | `Ctrl+Shift+Y`                  |
-| Toggle review panel | `⌘G`          | `Ctrl+Shift+G`                  |
-| Find in scrollback  | `⌘F`          | `Ctrl+Shift+F`                  |
-| Copy selection      | `⌘C`          | `Ctrl+Shift+C`                  |
-| Paste               | `⌘V`          | `Ctrl+Shift+V`                  |
-| Settings            | `⌘,`          | `Ctrl+,`                        |
-| Jump to tab 1–8     | `⌘1`–`⌘8`     | `Ctrl+1`–`Ctrl+8`               |
-| Jump to last tab    | `⌘9`          | `Ctrl+9`                        |
-| Previous / next tab | `⌘⇧[` / `⌘⇧]` | `Ctrl+PageUp` / `Ctrl+PageDown` |
+| Action                | macOS                     | Windows / Linux                             |
+| --------------------- | ------------------------- | ------------------------------------------- |
+| New tab               | `⌘T`                      | `Ctrl+Shift+T`                              |
+| Close tab             | `⌘W`                      | `Ctrl+Shift+W`                              |
+| Toggle git history    | `⌘Y`                      | `Ctrl+Shift+Y`                              |
+| Toggle review panel   | `⌘G`                      | `Ctrl+Shift+G`                              |
+| Find in scrollback    | `⌘F`                      | `Ctrl+Shift+F`                              |
+| Copy selection        | `⌘C`                      | `Ctrl+Shift+C`                              |
+| Copy last output      | `⌘⇧O`                     | `Ctrl+Shift+O`                              |
+| Paste                 | `⌘V`                      | `Ctrl+Shift+V`                              |
+| Settings              | `⌘,`                      | `Ctrl+,`                                    |
+| Jump to tab 1–8       | `⌘1`–`⌘8`                 | `Ctrl+1`–`Ctrl+8`                           |
+| Jump to last tab      | `⌘9`                      | `Ctrl+9`                                    |
+| Previous / next tab   | `⌘⇧[` / `⌘⇧]`             | `Ctrl+PageUp` / `Ctrl+PageDown`             |
+| Move tab left / right | `⌘⇧PageUp` / `⌘⇧PageDown` | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` |
+
+At a shell prompt with a suggestion showing: `→` takes it, `↓`/`↑` walk the
+list, Enter fills the chosen line in, and Escape puts the list away. Every one
+of those keys reaches the shell untouched when there is no list.
 
 In the review drawer and the file column: Tab reaches every control, Escape
 closes the column, and a panel edge can be focused and then moved with `←`/`→`
@@ -715,7 +836,10 @@ closes the column, and a panel edge can be focused and then moved with `←`/`�
 number in a diff or a file is a link into your editor at that line, and `⇧F10`
 on a row in the Files tab opens its menu.
 
-Middle-click a tab to close it. Every other key goes to the agent untouched —
+Drag a tab to reorder the strip, as in Chrome — Escape mid-drag puts it back.
+Drag a tab off the strip to move it to another window or a new one; right-click
+it, or press the Menu key with it focused, for its menu. Middle-click a tab to
+close it. Every other key goes to the agent untouched —
 which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
 SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 
@@ -759,10 +883,24 @@ installed, or is not on the `PATH` your login shell sets up. Check that the
 command from the table above runs in your own terminal.
 
 **No desktop notifications.** Grant the app notification permission when your OS
-asks, or later in system settings. The tab dot works either way.
+asks, or later in system settings. If a Claude Code tab stays silent while its
+tab dot turns solid, the CLI has no notification plugin installed — the dot is
+read from the session's own output and needs nothing; the notification needs
+the plugin.
+Install one from inside a Claude Code session with `/plugin marketplace add
+warpdotdev/claude-code-warp`, then `/plugin install warp@claude-code-warp`,
+then `/reload-plugins` — it does nothing until it is reloaded. It also needs
+`jq` on the `PATH` (`brew install jq`, or your system's package manager), which
+every one of its hooks pipes through. A **WSL** tab is not told unless your
+Windows `WSLENV` lists `WARP_CLI_AGENT_PROTOCOL_VERSION` and
+`WARP_CLIENT_VERSION` — it still announces an agent that exits, a session that
+ends and an agent that rings the bell, but not the end of a turn.
 
-**A tab says `exited 1` immediately.** The agent itself refused to start —
-scroll up in that tab, its own output says why.
+**An agent tab drops straight to a shell prompt** (in a Windows PowerShell tab:
+says `exited 1` at once). The agent itself refused to start — a wrong flag, a CLI that is not installed — and its own output above the
+prompt says why. Fix it and run the command again in that shell, or use the
+tab's **Back to start** button — it appears once you type `exit`, and at once
+under PowerShell.
 
 ## 🔒 Your data
 
@@ -787,10 +925,11 @@ That last test is a comparison of the resolved path against the directory, and
 it is currently a prefix match — a path an agent wrote with `../` in it can
 still satisfy it, so treat it as "where the agent said" rather than a boundary.
 
-One thing does leave your machine, and only when you ask it to: clicking a URL —
-in the terminal or in a rendered document — fetches that page once for the
-preview card. Nothing else is sent anywhere, and the agents you run are the
-agents you picked.
+One thing leaves your machine through Muster itself: resting the pointer on a
+web link fetches that page's title and picture for the hover preview (see
+Privacy above). A web address you open — in the terminal or in a rendered
+document — is handed to your browser, and the agents you run are the agents
+you picked.
 
 ## 🤝 Contributing
 

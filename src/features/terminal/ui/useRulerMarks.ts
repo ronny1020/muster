@@ -3,11 +3,24 @@ import type { IDisposable, Terminal } from '@xterm/xterm'
 
 import type { Mark } from '../model/messages'
 
-/** The accent, so a message mark reads as "you" rather than as a warning. */
-export const MESSAGE_MARK = { color: '#d97757', position: 'full' } as const
+/** How one kind of mark is drawn on the ruler. */
+export interface RulerStyle {
+  color: string
+  position: 'full' | 'left'
+}
 
 /**
- * A theme blue in the bar's left third.
+ * Your messages, in the colour of the agent you sent them to — the full
+ * width of the bar, so they stay apart from the file marks by shape.
+ */
+export const messageMark = (accent: string): RulerStyle => ({
+  color: accent,
+  position: 'full',
+})
+
+/**
+ * A mid grey in the bar's left third — no agent's colour, so the two kinds
+ * stay apart by colour in every tab, and dark enough to show on a light theme.
  *
  * The lane is what makes the two kinds tell apart by **shape** as well as by
  * colour, which the accessibility bar asks for. It is not what protects the
@@ -15,7 +28,7 @@ export const MESSAGE_MARK = { color: '#d97757', position: 'full' } as const
  * every `full` one over the top with an opaque fill, so a message mark wins a
  * shared row whatever lane the file mark takes.
  */
-export const FILE_MARK = { color: '#6f9ede', position: 'left' } as const
+export const FILE_MARK: RulerStyle = { color: '#8e93a0', position: 'left' }
 
 /**
  * How many decorations one rescan may register.
@@ -70,7 +83,7 @@ const rulerOf = (term: Terminal) =>
 export function useRulerMarks(
   term: Terminal | null,
   marks: Mark[],
-  style: typeof MESSAGE_MARK | typeof FILE_MARK,
+  style: RulerStyle,
 ) {
   useEffect(() => {
     if (!term) return

@@ -14,6 +14,7 @@ const status = (overrides: Partial<GitStatus> = {}): GitStatus => ({
   modified: 0,
   untracked: 0,
   conflicted: 0,
+  publishes: false,
   ...overrides,
 })
 

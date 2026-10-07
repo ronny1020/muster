@@ -6,9 +6,9 @@ export interface SessionEndedProps {
 }
 
 /**
- * Shown when a session's process ends. A tab whose agent refused to start —
- * a wrong flag, a missing CLI, `No conversation found to continue` — would
- * otherwise be a dead terminal with no way out but closing it.
+ * Shown when a session's process ends — an agent session's once the shell it
+ * handed back to has exited, and a PowerShell one when the agent itself does.
+ * The tab would otherwise be a dead terminal with no way out but closing it.
  */
 export function SessionEnded({
   code,

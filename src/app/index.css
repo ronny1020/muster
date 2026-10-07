@@ -14,7 +14,12 @@
   --color-ink: #e6e6e8;
   --color-muted: #8b8b95;
   --color-faint: #63636d;
-  --color-brand: #d97757;
+  /* The app's own accent: neutral silver, so app chrome never reads as an
+     agent — every agent, Claude Code included, has a colour of its own. */
+  --color-primary: #c3c7d1;
+  /* The agent a tab is running: set per terminal from that agent's own
+     accent, so what is drawn over its output is in its colour. */
+  --color-agent: var(--color-primary);
   --color-danger: #e26d63;
 
   --font-sans: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;

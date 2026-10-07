@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -11,6 +12,7 @@ import {
   loadSettings,
   saveSettings,
   type Settings,
+  watchSettings,
 } from './settings'
 
 interface SettingsStore {
@@ -24,6 +26,9 @@ const SettingsContext = createContext<SettingsStore | null>(null)
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState(loadSettings)
+
+  // Another window's settings pane, which writes the same store.
+  useEffect(() => watchSettings(() => setSettings(loadSettings())), [])
 
   const persist = useCallback((next: Settings) => {
     setSettings(next)

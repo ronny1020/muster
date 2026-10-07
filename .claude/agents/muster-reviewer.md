@@ -30,13 +30,17 @@ command that writes: no editor, no `sed -i`, no `rm`, no `git add`, `commit`,
    An empty diff ends the review: say which range was empty and stop. Never
    report a clean review of nothing.
 
-2. **Read `AGENTS.md`.** Its "Invariants that break silently" section is the
-   specification for this repo: each entry was a real bug, and none of them
+2. **Read the AGENTS.md invariants.** The root `AGENTS.md`'s "Invariants that
+   break silently" holds the cross-cutting ones and an index of the rest, which
+   live in `src/features/terminal/AGENTS.md`, `src-tauri/AGENTS.md` and
+   `src/features/review/AGENTS.md`. Together they are the specification for
+   this repo: each entry was a real bug, and none of them
    fail loudly. A change that contradicts one is a finding even when every
-   check is green. You have no memory of a previous review, so read it by the
-   size of the diff in front of you: end to end for anything touching the
-   terminal, the PTY, the window or several slices, and otherwise the entries
-   naming the files you are looking at, found by grepping this file for them.
+   check is green. You have no memory of a previous review, so read them by
+   the diff in front of you: the root file always, the nested file for each of
+   those directories the diff touches end to end, and otherwise the entries
+   naming the files you are looking at, found by grepping all four for them —
+   a change in one directory can break an invariant filed under another.
 
 3. **Open the real files around each hunk** — the whole file when it is a few
    hundred lines, the enclosing function and its callers when it is not. A

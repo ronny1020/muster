@@ -11,19 +11,35 @@ import {
   type Deck,
   type DeckAction,
   deckReducer,
+  type Tab,
   tabSession,
 } from '../entities/tab/model/deck'
 import { useSettings } from '../entities/preferences/model/useSettings'
 import { useTabShortcuts } from './useTabShortcuts'
 import {
   attachSweep,
+  closeWindow,
+  dropTarget,
   journalSweep,
+  onHandoff,
   onOpenDirectory,
   onPtyExit,
+  openWindow,
+  report,
+  type Point,
+  sendToWindow,
 } from '../shared/ipc'
+import type { Grab } from '../widgets/tab-strip/model/useTabDrag'
+import { stripIndexAt } from '../widgets/tab-strip/ui/TabStrip'
+import {
+  detachTerminal,
+  resumeTerminal,
+} from '../features/terminal/model/handoff'
+import { adoptHandoffs, writeHandoff } from './handoff'
 import { loadDeck, saveDeck } from '../entities/tab/model/persist'
 import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
+import { runningAgent } from '../entities/agent/model/agents'
 
 /**
  * Tab ids, which also key the backend's PTY map.
@@ -58,14 +74,22 @@ function announceExit(
 
   if (attention) dispatch({ type: 'attention', id })
   if (!shouldNotify) return
-  const agent = tabSession(tab)?.agentName ?? 'Session'
+  const session = tabSession(tab)
+  const agent = session
+    ? (runningAgent(session.agentId, tab.handedBack)?.name ?? session.agentName)
+    : 'Session'
   const body =
     code === 0 ? 'Session ended.' : `Session ended with code ${code}.`
   void notify(`${agent} · ${tab.title}`, body, settings.notifySound)
 }
 
-export function App() {
-  const [deck, dispatch] = useReducer(deckReducer, nextTabId, loadDeck)
+export interface AppProps {
+  /** Tabs another window sent this one before it first drew. */
+  adopted: Tab[]
+}
+
+export function App({ adopted }: AppProps) {
+  const [deck, dispatch] = useReducer(deckReducer, adopted, initialTabs)
 
   // Remembered on every change rather than at quit: the window can be closed
   // by the OS, and `beforeunload` is not reliable in a webview.
@@ -105,9 +129,80 @@ export function App() {
     () => dispatch({ type: 'open', id: nextTabId() }),
     [],
   )
-  const close = useCallback(
-    (id: string) => dispatch({ type: 'close', id, replacementId: nextTabId() }),
-    [],
+  // Closing the last tab closes the window, as in Chrome — through the same
+  // prompt as its close button, so running sessions are still asked about.
+  const close = useCallback((id: string) => {
+    const { deck } = current.current
+    if (deck.tabs.length === 1 && deck.tabs[0]!.id === id) {
+      // Stored empty first, so a closed tab does not come back on the next
+      // launch. A prompt the user cancels hands focus back to the window,
+      // which stores the tab again — see the focus listener below.
+      saveDeck({ tabs: [], activeId: '' })
+      void closeWindow()
+    } else dispatch({ type: 'close', id, replacementId: nextTabId() })
+  }, [])
+
+  /**
+   * Hands a tab to another window, or to a new one. A live session keeps
+   * running: the other window takes over its output, and this one lets go
+   * without killing it. A session whose terminal cannot hand over stays put,
+   * since adopting it without one would start the agent again.
+   */
+  const handOff = useCallback(
+    async (id: string, destination: Destination) => {
+      const tab = current.current.deck.tabs.find((entry) => entry.id === id)
+      if (!tab) return
+      const terminal = await detachTerminal(id)
+      if (tabSession(tab) && !terminal) return
+      // An ended session has nothing left to hand over but its screen.
+      const session = terminal && tab.exitCode === null ? id : null
+      try {
+        if (destination.kind === 'window') {
+          const handoff = writeHandoff({ tab, terminal, dropX: destination.x })
+          await sendToWindow(destination.label, handoff, session)
+        } else {
+          const handoff = writeHandoff({ tab, terminal, dropX: null })
+          await openWindow({ handoff, session, grab: destination.grab })
+        }
+      } catch (error) {
+        report(error)
+        resumeTerminal(id)
+        return
+      }
+      close(id)
+    },
+    [close],
+  )
+
+  // A lone tab has nowhere to move to: its window would be left empty.
+  const moveToNewWindow = useCallback(
+    async (id: string) => {
+      if (current.current.deck.tabs.length < 2) return
+      await handOff(id, { kind: 'new' })
+    },
+    [handOff],
+  )
+
+  /**
+   * A tab dragged off the strip and released. Where it lands is the
+   * backend's answer, from the cursor's place on the desktop: another
+   * window's strip takes it, and anywhere else gets a new window under the
+   * cursor. A window's only tab has carried its window along all the drag,
+   * so for it anywhere but a strip is already where it belongs.
+   */
+  const tearOff = useCallback(
+    async (id: string, grab: Grab) => {
+      // Off the strip is out of it, as in Chrome — over its own window too.
+      // Escape, or bringing the tab back to the strip, is how to keep it.
+      const lone = current.current.deck.tabs.length === 1
+      const target = await dropTarget(lone).catch(() => null)
+      if (target?.kind === 'strip') {
+        await handOff(id, { kind: 'window', label: target.label, x: target.x })
+      } else if (!lone) {
+        await handOff(id, { kind: 'new', grab: grab.inNewWindow })
+      }
+    },
+    [handOff],
   )
   const closeActive = useCallback(
     () => close(deck.activeId),
@@ -116,6 +211,13 @@ export function App() {
   const cycle = useCallback(
     (step: number) => dispatch({ type: 'cycle', step }),
     [],
+  )
+  const moveActive = useCallback(
+    (step: number) => {
+      const index = deck.tabs.findIndex((tab) => tab.id === deck.activeId)
+      dispatch({ type: 'move', id: deck.activeId, index: index + step })
+    },
+    [deck.tabs, deck.activeId],
   )
   const openSettings = useCallback(
     () => dispatch({ type: 'openSettings', id: nextTabId() }),
@@ -142,12 +244,35 @@ export function App() {
     open,
     closeActive,
     cycle,
+    moveActive,
     activateIndex,
     toggleHistory,
     toggleReview,
     find,
     openSettings,
   })
+
+  // The window regaining focus is how a cancelled close prompt is noticed:
+  // `close` stored an empty deck before asking, and the tabs are still here.
+  useEffect(() => {
+    const restore = () => saveDeck(current.current.deck)
+    window.addEventListener('focus', restore)
+    return () => window.removeEventListener('focus', restore)
+  }, [])
+
+  // Tabs sent here after this window drew. Taken once on subscribing as well,
+  // for any that arrived between the first take and the listener.
+  useEffect(() => {
+    const adoptSent = async () => {
+      for (const { tab, dropX } of await adoptHandoffs()) {
+        const index = dropX === null ? undefined : stripIndexAt(dropX)
+        dispatch({ type: 'adopt', tab, index })
+      }
+    }
+    const unlisten = onHandoff(() => void adoptSent())
+    void adoptSent()
+    return () => void unlisten.then((stop) => stop())
+  }, [])
 
   useEffect(() => {
     const unlisten = onPtyExit(({ id, code }) => {
@@ -220,12 +345,15 @@ export function App() {
         tabs={deck.tabs}
         activeId={deck.activeId}
         onSelect={(id) => dispatch({ type: 'activate', id })}
+        onMove={(id, index) => dispatch({ type: 'move', id, index })}
+        onMoveToNewWindow={(id) => void moveToNewWindow(id)}
+        onTearOff={tearOff}
         onClose={close}
         onOpen={open}
       />
       <main className="relative min-h-0 flex-1">
         <CollisionProvider tabs={watched} pollSeconds={settings.gitPollSeconds}>
-          {deck.tabs.map((tab) => (
+          {byId(deck.tabs).map((tab) => (
             <Pane
               key={tab.id}
               tab={tab}
@@ -240,3 +368,23 @@ export function App() {
     </div>
   )
 }
+
+/**
+ * The panes in an order no drag can change. Reordering keyed children makes
+ * React move their DOM nodes, and a moved node loses its scroll position and
+ * focus — every pane is mounted, so a drag in the strip would disturb
+ * terminals nobody touched. Panes are stacked and hidden, so their order shows
+ * nowhere.
+ */
+const byId = (tabs: Tab[]) =>
+  [...tabs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+/** Where a tab is handed: a new window, or a point on another one's strip. */
+type Destination =
+  { kind: 'new'; grab?: Point } | { kind: 'window'; label: string; x: number }
+
+/** The tabs a window opens with: any sent to it, else what it last showed. */
+const initialTabs = (adopted: Tab[]): Deck =>
+  adopted.length > 0
+    ? { tabs: adopted, activeId: adopted.at(-1)!.id }
+    : loadDeck(nextTabId)

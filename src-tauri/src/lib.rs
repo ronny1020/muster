@@ -4,15 +4,20 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 mod attach;
 mod editor;
 mod fonts;
+mod ghost;
 mod image;
 mod journal;
 mod link;
+mod output;
 mod platform;
 mod pty;
 mod review;
 mod sessions;
+mod shell;
 mod store;
+mod sync;
 mod transcript;
+mod window;
 mod workspace;
 
 #[cfg(test)]
@@ -29,7 +34,7 @@ pub fn run() {
         // same tab list, each spawn its own PTYs for them, and each record and
         // sweep the same per-directory journal folders.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            let Some(window) = app.get_webview_window("main") else {
+            let Some(window) = window::front(app) else {
                 return;
             };
             // The gesture was "open Muster", so answer it: an unfocused or
@@ -41,8 +46,10 @@ pub fn run() {
             // argv is the user's own — they typed it — so unlike a URL scheme
             // this needs no trust decision; it still only ever produces a
             // pre-filled launcher, never a spawned session.
+            // To that one window: every window listens, and each would open
+            // a launcher of its own.
             if let Some(dir) = first_directory(&argv, &cwd) {
-                let _ = app.emit("muster://open-directory", dir);
+                let _ = app.emit_to(window.label(), "muster://open-directory", dir);
             }
         }));
 
@@ -69,13 +76,16 @@ pub fn run() {
                 // Deliberately not `all()`. DECORATIONS would let a saved
                 // state fight `tauri.windows.conf.json`, which turns the frame
                 // off on purpose; VISIBLE could restore a window hidden, which
-                // on a single-window app leaves no way to get it back.
+                // leaves no way to get it back.
                 .with_state_flags(
                     StateFlags::SIZE
                         | StateFlags::POSITION
                         | StateFlags::MAXIMIZED
                         | StateFlags::FULLSCREEN,
                 )
+                // The drag label goes wherever the cursor is, and a saved
+                // place for it would restore it there.
+                .with_denylist(&[window::DRAG_LABEL])
                 .build(),
         )
         // The webview's own browser shortcuts, turned off. `Ctrl+R` or `F5`
@@ -88,7 +98,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(pty::Sessions::default())
+        .manage(pty::Exits::default())
         .manage(store::Store::default())
+        .manage(window::Handoffs::default())
+        .manage(window::Strips::default())
+        .manage(ghost::Ghost::default())
+        .setup(|app| {
+            window::restore(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -98,11 +116,24 @@ pub fn run() {
             pty::pty_cwd,
             store::state_read,
             store::state_write,
+            window::window_open,
+            window::window_send,
+            window::window_take,
+            window::window_strip,
+            window::window_drop_target,
+            ghost::ghost_show,
+            ghost::ghost_hide,
+            ghost::ghost_state,
+            ghost::ghost_beat,
             workspace::workspace_info,
             fonts::font_families,
             workspace::git_log,
             workspace::git_branches,
             workspace::git_checkout,
+            sync::git_commit,
+            sync::git_pull,
+            sync::git_push,
+            sync::git_cancel,
             workspace::path_kind,
             review::git_changes,
             review::git_file_diff,
@@ -124,23 +155,46 @@ pub fn run() {
             link::link_preview,
             platform::platform_info,
             platform::drop_paths,
+            shell::shell_history,
         ])
         .on_window_event(|window, event| match event {
             // Quitting over a mid-turn agent throws away work that cannot be
             // recovered, so it is worth one question.
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                let live = window.state::<pty::Sessions>().live();
+                let sessions = window.state::<pty::Sessions>();
+                let last = !has_other_windows(window);
+                let live = if last {
+                    sessions.live()
+                } else {
+                    sessions.live_in(window.label())
+                };
                 if live == 0 {
                     return;
                 }
                 api.prevent_close();
                 let window = window.clone();
-                confirm_quit(window, live);
+                confirm_close(window, live, last);
             }
-            // The frontend is never unmounted on quit, so this is the only
-            // chance to reach the agents' own process groups.
+            tauri::WindowEvent::Focused(true) => {
+                window.state::<window::Strips>().focused(window.label());
+            }
+            // The frontend is never unmounted on close, so this is the only
+            // chance to reach the agents' own process groups. Only this
+            // window's: the others are still showing theirs.
             tauri::WindowEvent::Destroyed => {
-                window.state::<pty::Sessions>().end_all();
+                window.state::<pty::Sessions>().end_window(window.label());
+                window.state::<pty::Sessions>().park_window(window.label());
+                window.state::<window::Strips>().forget(window.label());
+                window.state::<window::Handoffs>().forget(window.label());
+                // A window closed while others stay open takes its tabs with
+                // it. The last one keeps them, so the next launch restores
+                // what was open — as quitting does.
+                if has_other_windows(window) {
+                    store::forget_window(window.app_handle(), window.label());
+                } else {
+                    // Hidden, it would still keep the app running.
+                    ghost::close(window.app_handle());
+                }
             }
             _ => {}
         })
@@ -201,11 +255,11 @@ fn prevent_default<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// would break promises this app makes elsewhere.
 ///
 /// `FOCUS_MOVE` is `Shift+Tab`, and blocking it breaks backward keyboard
-/// navigation — against the Level AA bar in AGENTS.md, and against
+/// navigation — against the Level AA bar in the root AGENTS.md, and against
 /// `shared/ui/ContextMenu`, which exists to be reachable from the keyboard.
 /// `CONTEXT_MENU` is the right click the file tree's own menu is built on, and
-/// AGENTS.md notes that hanging it off `onContextMenu` is what also makes it
-/// answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
+/// the root AGENTS.md notes that hanging it off `onContextMenu` is what also
+/// makes it answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
 /// the native menu away risks taking that with it.
 ///
 /// `DEV_TOOLS` is left alone in a debug build for the obvious reason.
@@ -278,7 +332,16 @@ fn without_dot_segments(path: std::path::PathBuf) -> std::path::PathBuf {
     out
 }
 
-/// Brings the main window back when the Dock icon is clicked.
+/// Whether any window but this one is open.
+///
+/// The drag label is not a window anyone works in, so it never counts.
+fn has_other_windows(window: &tauri::Window) -> bool {
+    window::real_windows(window.app_handle())
+        .iter()
+        .any(|(label, _)| label != window.label())
+}
+
+/// Brings a window back when the Dock icon is clicked.
 ///
 /// The case that reaches here is a **minimized** window: closing the last one
 /// exits the app, so there is no window-less state to rebuild from.
@@ -293,7 +356,7 @@ fn without_dot_segments(path: std::path::PathBuf) -> std::path::PathBuf {
 /// the click then.
 #[cfg(target_os = "macos")]
 fn reopen_window(handle: &tauri::AppHandle) {
-    let Some(window) = handle.get_webview_window("main") else {
+    let Some(window) = window::front(handle) else {
         return;
     };
     let _ = window.unminimize();
@@ -301,23 +364,30 @@ fn reopen_window(handle: &tauri::AppHandle) {
     let _ = window.set_focus();
 }
 
-/// Asks before closing over running sessions, then closes for real.
+/// Asks before closing over running sessions, then closes for real. The last
+/// window's close quits the app, so it says so; any other ends only the
+/// sessions it shows.
 ///
 /// The dialog is shown from a callback rather than awaited: blocking inside the
 /// window-event handler deadlocks the event loop that has to draw the dialog.
-fn confirm_quit(window: tauri::Window, live: usize) {
+fn confirm_close(window: tauri::Window, live: usize, last: bool) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
     let plural = if live == 1 { "session" } else { "sessions" };
+    let (title, verb, action) = if last {
+        ("Quit Muster?", "Quitting", "Quit")
+    } else {
+        ("Close this window?", "Closing it", "Close")
+    };
     window
         .dialog()
         .message(format!(
-            "{live} {plural} still running. Quitting ends them and anything they started."
+            "{live} {plural} still running. {verb} ends them and anything they started."
         ))
-        .title("Quit Muster?")
+        .title(title)
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
-            "Quit".to_string(),
+            action.to_string(),
             "Cancel".to_string(),
         ))
         .show(move |quit| {

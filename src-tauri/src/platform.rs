@@ -7,6 +7,8 @@
 
 use std::{ffi::OsStr, process::Command};
 
+use crate::shell::Integration;
+
 /// Which world a session runs in. On Windows a session can run either the
 /// host's own shell or one inside a WSL distro; elsewhere there is only the host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize)]
@@ -67,13 +69,20 @@ pub struct Argv {
 /// A stale `wsl` setting can never strand a session: off Windows it is ignored
 /// rather than spawning an `wsl.exe` that isn't there.
 pub fn argv(launch: &Launch) -> Argv {
+    integrated_argv(launch, None)
+}
+
+/// [`argv`], with the shell an agent session hands back to started under
+/// `integration` — see `shell::prepare`. A WSL session's shell reads the
+/// distro's filesystem, where the scripts' paths name nothing, so it takes none.
+pub fn integrated_argv(launch: &Launch, integration: Option<&Integration>) -> Argv {
     match launch.backend {
         Backend::Wsl if cfg!(windows) => wsl_argv(launch),
-        _ => native_argv(launch),
+        _ => native_argv(launch, integration),
     }
 }
 
-fn native_argv(launch: &Launch) -> Argv {
+fn native_argv(launch: &Launch, integration: Option<&Integration>) -> Argv {
     let cwd = launch.cwd.to_string();
     // A program the caller asked to run without a shell replaces the wrapper;
     // an empty program *is* the shell, so it always keeps it.
@@ -84,12 +93,141 @@ fn native_argv(launch: &Launch) -> Argv {
             cwd,
         };
     }
+    let shell = default_shell();
+    let run = native_shell_args(launch.program, launch.args);
+    if hands_back(launch) {
+        let then = shell_after(&shell, integration);
+        return Argv {
+            program: "/bin/sh".into(),
+            args: vec![
+                "-c".into(),
+                handback_line(&posix_command_line(&shell, &run), &then),
+            ],
+            cwd,
+        };
+    }
     Argv {
-        program: default_shell(),
-        args: native_shell_args(launch.program, launch.args),
+        program: shell,
+        args: run,
         cwd,
     }
 }
+
+/// Whether a session's terminal passes to a shell once its program exits,
+/// announcing it with [`HANDBACK`] — every agent session a POSIX shell runs.
+///
+/// Leaving an agent should land where leaving it in any other terminal does:
+/// a prompt, in the same directory, with its output still above. The agent
+/// runs `exec`ed over the login shell, as every agent session does, so its
+/// pid is the one it publishes its session under and its job control is its
+/// own — and a small `/bin/sh` above it holds the terminal, so that when the
+/// agent has gone there is something left to become the shell. The pty's child
+/// is that `sh` throughout, which `exec`s the login shell in place: nothing is
+/// respawned, and nothing about the terminal changes hands.
+///
+/// A PowerShell session ends with its agent: with nothing to announce a
+/// hand-back, the tab would go on treating a prompt as the agent's — offering
+/// to reopen the conversation over it, and clearing its history on every
+/// resize.
+pub fn hands_back(launch: &Launch) -> bool {
+    let posix = if cfg!(windows) {
+        launch.backend == Backend::Wsl
+    } else {
+        true
+    };
+    posix && launch.via_shell && !launch.program.is_empty()
+}
+
+/// The command line an agent session's `sh` `exec`s once the agent has gone:
+/// the login shell, under `integration` when there is one.
+///
+/// The integration's environment is set on this line rather than on the
+/// session, because the agent runs under the session's: a `ZDOTDIR` there
+/// would send the agent's own login shell through Muster's startup files.
+fn shell_after(shell: &str, integration: Option<&Integration>) -> String {
+    let Some(integration) = integration else {
+        return posix_command_line(shell, &["-l".to_string()]);
+    };
+    let mut argv: Vec<String> = integration
+        .env
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect();
+    argv.push(shell.to_string());
+    if integration.args.is_empty() {
+        argv.push("-l".into());
+    } else {
+        argv.extend(integration.args.iter().cloned());
+    }
+    posix_command_line("env", &argv)
+}
+
+/// The `OSC 777` verb the hand-back announces itself with, followed by the
+/// session's token and the agent's exit status.
+pub const HANDBACK: &str = "muster-handback";
+
+/// Where the session's token reaches the `sh` that announces the hand-back.
+///
+/// The token is what makes the announcement the `sh`'s own: an agent, or a
+/// file it prints, can send `OSC 777;muster-handback` as easily as the `sh`
+/// can, and the frontend then believes a hand-back that has not happened. So
+/// the `sh` reads the token and unsets it before the agent starts — it is in no
+/// argv for `ps` to show and no environment the agent inherits. It is not a
+/// secret from an agent that goes looking: wherever the OS lets a same-user
+/// process read another's starting environment — Linux's
+/// `/proc/<pid>/environ` does — the `sh`'s still holds it. What it stops is
+/// output that happens to carry the sequence; what a forged one can do is end
+/// the tab's agent phase early and raise a notification, nothing more.
+pub const HANDBACK_TOKEN_ENV: &str = "MUSTER_HANDBACK";
+
+/// `sh` that runs `run`, resets what it left behind, says so, and becomes
+/// `then`.
+///
+/// The reset and the announcement go through the pty itself, so they can only
+/// arrive after the agent's last output and never overtake it. A full-screen
+/// agent that crashed rather than quit leaves the alternate screen, mouse
+/// reporting and its keyboard protocol switched on, and a shell under those
+/// would receive every click as typed escape codes. It leaves the tty raw too
+/// — no echo, no Ctrl+C, no carriage return — which no login shell repairs on
+/// its own, so the `sh` restores the settings it saved before the agent ran.
+///
+/// `trap : INT QUIT` keeps the `sh` alive through the agent's own Ctrl+C and
+/// Ctrl+\: the agent shares its process group, so the terminal signals both,
+/// and dash — `/bin/sh` on Debian, Ubuntu and most WSL distros — dies of one
+/// even when the agent catches it, ending the session instead of handing it
+/// back. A handler rather than `trap ''`, because an ignored signal is
+/// inherited and a caught one is reset for the agent and for the shell after.
+fn handback_line(run: &str, then: &str) -> String {
+    format!(
+        "t=\"${HANDBACK_TOKEN_ENV}\"; unset {HANDBACK_TOKEN_ENV}; \
+         tty=$(stty -g 2>/dev/null); trap : INT QUIT; \
+         {run}; code=$?; stty \"$tty\" 2>/dev/null; printf '%b' '{MODE_RESET}'; \
+         printf '\\033]777;{HANDBACK};%s;%s\\033\\\\' \"$t\" \"$code\"; exec {then}"
+    )
+}
+
+/// Everything an agent may have switched on and not switched off, in the
+/// escapes `printf %b` expands: the alternate screen, every mouse-reporting
+/// mode, focus and bracketed-paste reporting, application cursor keys and
+/// keypad, the kitty keyboard protocol's stack, a hidden cursor and the
+/// current colours.
+///
+/// It opens by returning to the normal screen and saving the cursor there,
+/// because leaving the alternate screen with `?1049l` always restores one — in
+/// xterm.js even when that screen was never entered — and a session that never
+/// saved a position would have its prompt drawn over the top of the output
+/// instead of below it. `?47l` and `?1047l` switch screens without touching the
+/// cursor, so after them the save is taken in the normal screen, where the
+/// cursor already is, whichever of the three an agent entered it with.
+pub const MODE_RESET: &str = concat!(
+    // `\0033` then `7`: written `\0337`, `%b` reads one octal escape, 0337.
+    r"\033[?47l\033[?1047l\00337\033[?1049l",
+    r"\033[?9l\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l\033[?1015l",
+    r"\033[?1004l\033[?2004l",
+    r"\033[?1l\033>",
+    r"\033[<99u",
+    r"\033[?25h\033[0m",
+);
 
 #[cfg(unix)]
 fn native_shell_args(program: &str, args: &[String]) -> Vec<String> {
@@ -126,16 +264,26 @@ fn wsl_args(launch: &Launch) -> Vec<String> {
         // No command leaves the distro's own login shell, interactive.
         return args;
     }
-    args.push("--".into());
     if launch.via_shell {
-        // `bash` is the one login shell every distro is guaranteed to have.
-        args.push("bash".into());
-        args.push("-lic".into());
-        args.push(format!(
-            "exec {}",
-            posix_command_line(launch.program, launch.args)
+        // `--exec` hands the line to `sh` as one argument, so `$?` and `$code`
+        // are expanded by the `sh` that runs them, never by the distro user's
+        // own shell, which may be fish and unable to parse them.
+        // `bash` is the one login shell every distro is guaranteed to have;
+        // the shell the session hands back to is the distro user's own, which
+        // WSL's init puts in `SHELL`.
+        let run = [
+            "-lic".to_string(),
+            format!("exec {}", posix_command_line(launch.program, launch.args)),
+        ];
+        args.push("--exec".into());
+        args.push("sh".into());
+        args.push("-c".into());
+        args.push(handback_line(
+            &posix_command_line("bash", &run),
+            "\"${SHELL:-bash}\" -l",
         ));
     } else {
+        args.push("--".into());
         args.push(launch.program.to_string());
         args.extend(launch.args.iter().cloned());
     }
@@ -361,6 +509,59 @@ fn on_path(name: &str) -> bool {
 /// Whether [`process_cwd`] can answer at all, which decides whether the status
 /// bar follows a `cd` typed in the terminal or stays on the launch directory.
 pub const FOLLOWS_CWD: bool = cfg!(unix);
+
+/// Whether `pid` is still the `sh` holding an agent session's terminal, rather
+/// than the login shell it has since become by `exec` — after which its
+/// children are the user's commands, not the agent.
+///
+/// Read from the command line, which names the hand-back's verb only while it
+/// is the `sh`'s own: a login shell that is itself `sh` answers to the same
+/// name.
+#[cfg(unix)]
+pub fn is_wrapper(pid: u32) -> bool {
+    let Ok(out) = command("ps")
+        .args(["-ww", "-o", "args=", "-p", &pid.to_string()])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&out.stdout).contains(HANDBACK)
+}
+
+#[cfg(not(unix))]
+pub fn is_wrapper(_pid: u32) -> bool {
+    false
+}
+
+/// The processes `pid` started, for finding the agent under the `sh` that
+/// holds an agent session's terminal — see `hands_back`.
+#[cfg(unix)]
+pub fn children_of(pid: u32) -> Vec<u32> {
+    pids_from(command("pgrep").args(["-P", &pid.to_string()]))
+}
+
+#[cfg(not(unix))]
+pub fn children_of(_pid: u32) -> Vec<u32> {
+    Vec::new()
+}
+
+/// The processes in process group `group`.
+#[cfg(unix)]
+pub fn group_members(group: i32) -> Vec<u32> {
+    pids_from(command("pgrep").args(["-g", &group.to_string()]))
+}
+
+/// The pids `pgrep` printed, one per line.
+#[cfg(unix)]
+fn pids_from(pgrep: &mut Command) -> Vec<u32> {
+    let Ok(out) = pgrep.output() else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .collect()
+}
 
 /// Working directory of the process that currently owns the terminal.
 ///

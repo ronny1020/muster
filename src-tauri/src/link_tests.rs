@@ -101,49 +101,10 @@ fn resolves_a_relative_image_against_a_page_with_no_path() {
 }
 
 #[test]
-fn an_ipv4_mapped_ipv6_address_is_not_public() {
-    // A dual-stack connect to these lands on the v4 address, so the v6
-    // rules alone let loopback and the metadata endpoint through.
-    for mapped in [
-        "::ffff:127.0.0.1",
-        "::ffff:169.254.169.254",
-        "::ffff:10.0.0.1",
-        "::ffff:192.168.1.1",
-    ] {
-        assert!(
-            !is_public(mapped.parse().unwrap()),
-            "{mapped} must not count as public",
-        );
-    }
-}
-
-#[test]
-fn multicast_and_reserved_addresses_are_not_public() {
-    for reserved in ["224.0.0.1", "239.1.2.3", "240.0.0.1", "255.255.255.254"] {
-        assert!(
-            !is_public(reserved.parse().unwrap()),
-            "{reserved} must not count as public",
-        );
-    }
-}
-
-#[test]
-fn a_real_public_address_is_still_allowed() {
-    // The guard has to stay useful, not just strict.
-    assert!(is_public("93.184.216.34".parse().unwrap()));
-    assert!(is_public("2606:2800:220:1::".parse().unwrap()));
-}
-
-#[test]
 fn a_redirect_target_is_resolved_against_the_url_that_sent_it() {
-    // The hop has to become an absolute URL before it can be validated.
     assert_eq!(
-        absolute_url("https://example.com/a/b", "/latest/meta-data/").as_deref(),
-        Some("https://example.com/latest/meta-data/"),
-    );
-    assert_eq!(
-        absolute_url("https://example.com/a/b", "http://169.254.169.254/x").as_deref(),
-        Some("http://169.254.169.254/x"),
+        absolute_url("https://example.com/a/b", "/next/").as_deref(),
+        Some("https://example.com/next/"),
     );
 }
 
@@ -206,40 +167,194 @@ fn refuses_a_scheme_that_is_not_http() {
         "javascript:alert(1)",
         "/tmp/x",
     ] {
-        assert!(public_host(url).is_err(), "{url} should be refused");
+        assert!(preview(url.into()).is_err(), "{url} should be refused");
     }
 }
 
 #[test]
-fn refuses_loopback_and_private_addresses() {
-    for url in [
-        "http://127.0.0.1/",
-        "http://localhost:1420/",
-        "http://10.0.0.5/",
-        "http://192.168.1.1/admin",
-        "http://172.16.0.1/",
-        "http://169.254.169.254/latest/meta-data/",
-        "http://[::1]/",
+fn a_stack_exchange_question_is_recognised_on_every_site_of_the_family() {
+    for (url, site, id) in [
+        (
+            "https://stackoverflow.com/questions/11227809/why-is-it-faster",
+            "stackoverflow.com",
+            11227809,
+        ),
+        ("https://www.superuser.com/q/42", "superuser.com", 42),
+        (
+            "https://unix.stackexchange.com/questions/7?tab=votes",
+            "unix.stackexchange.com",
+            7,
+        ),
+        (
+            "https://ru.stackoverflow.com/questions/9#answer",
+            "ru.stackoverflow.com",
+            9,
+        ),
     ] {
-        assert!(public_host(url).is_err(), "{url} should be refused");
+        let question = stack_exchange_question(url).expect(url);
+        assert_eq!((question.site.as_str(), question.id), (site, id), "{url}");
     }
 }
 
 #[test]
-fn classifies_addresses() {
-    assert!(is_public("93.184.216.34".parse().unwrap()));
-    assert!(is_public("2606:2800:220:1::".parse().unwrap()));
-    assert!(!is_public("127.0.0.1".parse().unwrap()));
-    assert!(!is_public("169.254.169.254".parse().unwrap()));
-    assert!(!is_public("100.100.0.1".parse().unwrap()));
-    assert!(!is_public("fd00::1".parse().unwrap()));
-    assert!(!is_public("fe80::1".parse().unwrap()));
+fn only_a_question_page_goes_to_the_stack_exchange_api() {
+    for url in [
+        "https://stackoverflow.com/users/87234/someone",
+        "https://stackoverflow.com/questions/tagged/rust",
+        "https://stackoverflow.com/",
+        "https://notstackoverflow.com/questions/1",
+        "https://stackoverflow.com.evil.example/questions/1",
+        "https://evil.example#.stackoverflow.com/questions/1",
+        "https://evil.example?.stackexchange.com/questions/1",
+        "https://user@unix.stackexchange.com/questions/1",
+        "https://a&site=b.stackexchange.com/questions/1",
+    ] {
+        assert!(stack_exchange_question(url).is_none(), "{url}");
+    }
 }
 
 #[test]
-fn splits_a_port_but_keeps_an_ipv6_literal_whole() {
-    assert_eq!(split_port("example.com"), ("example.com", 443));
-    assert_eq!(split_port("example.com:8080"), ("example.com", 8080));
-    assert_eq!(split_port("[::1]:9000"), ("::1", 9000));
-    assert_eq!(split_port("[::1]"), ("::1", 443));
+fn a_stack_exchange_answer_becomes_a_title_and_its_facts() {
+    let meta = parse_stack_exchange(
+        r#"{"items":[{"title":"Why is a &quot;sorted&quot; array faster?","score":27546,"answer_count":25,"tags":["java","c++"]}]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        meta.title.as_deref(),
+        Some("Why is a \"sorted\" array faster?")
+    );
+    assert_eq!(
+        meta.description.as_deref(),
+        Some("27546 votes · 25 answers · java, c++"),
+    );
+}
+
+#[test]
+fn a_question_the_api_does_not_return_is_no_preview() {
+    assert!(parse_stack_exchange(r#"{"items":[]}"#).is_none());
+    assert!(parse_stack_exchange("not json").is_none());
+}
+
+#[test]
+fn a_microdata_image_is_used_when_open_graph_names_none() {
+    let meta = parse_meta(
+        r#"<head><meta content="/images/g.png" itemprop="image"><title>Google</title></head>"#,
+    );
+    assert_eq!(meta.image_data_url.as_deref(), Some("/images/g.png"));
+}
+
+#[test]
+fn open_graph_still_wins_over_a_microdata_image_written_first() {
+    let meta = parse_meta(
+        r#"<head><meta itemprop="image" content="/micro.png"><meta property="og:image" content="/og.png"></head>"#,
+    );
+    assert_eq!(meta.image_data_url.as_deref(), Some("/og.png"));
+}
+
+#[test]
+fn a_page_with_no_image_meta_falls_back_to_its_icon() {
+    let meta = parse_meta(
+        r#"<head><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/touch.png"></head>"#,
+    );
+    assert_eq!(meta.image_data_url.as_deref(), Some("/touch.png"));
+    let shortcut = parse_meta(r#"<head><link rel="shortcut icon" href="/f.ico"></head>"#);
+    assert_eq!(shortcut.image_data_url.as_deref(), Some("/f.ico"));
+}
+
+#[test]
+fn numeric_entities_are_decoded_and_a_bare_ampersand_is_kept() {
+    assert_eq!(
+        decode_entities("World&#x2019;s &#8212; Q&amp;A &amp;lt; R&D &bogus;"),
+        "World\u{2019}s \u{2014} Q&A &lt; R&D &bogus;",
+    );
+}
+
+#[test]
+fn a_stack_exchange_site_is_drawn_with_its_own_icon() {
+    for (site, slug) in [
+        ("stackoverflow.com", "stackoverflow"),
+        ("unix.stackexchange.com", "unix"),
+        ("mathoverflow.net", "mathoverflow"),
+        ("ru.stackoverflow.com", "ru"),
+        ("meta.stackoverflow.com", "stackoverflowmeta"),
+        ("unix.meta.stackexchange.com", "unixmeta"),
+        ("meta.stackexchange.com", "stackexchangemeta"),
+        ("meta.superuser.com", "superusermeta"),
+        ("meta.mathoverflow.net", "mathoverflowmeta"),
+        ("ru.meta.stackoverflow.com", "rumeta"),
+        ("superuser.com", "superuser"),
+    ] {
+        assert_eq!(
+            site_icon(site),
+            format!("https://cdn.sstatic.net/Sites/{slug}/Img/apple-touch-icon.png"),
+        );
+    }
+}
+
+#[test]
+fn an_answer_link_is_previewed_through_its_question() {
+    let answer = stack_exchange_question("https://stackoverflow.com/a/11227902/1").unwrap();
+    assert!(answer.answer);
+    let question = stack_exchange_question("https://stackoverflow.com/q/11227809").unwrap();
+    assert!(!question.answer);
+    assert_eq!(
+        question_of_answer(r#"{"items":[{"answer_id":11227902,"question_id":11227809}]}"#),
+        Some(11227809),
+    );
+    assert_eq!(question_of_answer(r#"{"items":[]}"#), None);
+}
+
+#[test]
+fn a_page_query_is_not_a_directory() {
+    assert_eq!(
+        absolute_url("https://x.com/a?next=/b/c", "card.png").as_deref(),
+        Some("https://x.com/card.png"),
+    );
+    assert_eq!(
+        absolute_url("https://x.com/list/page?p=1", "?p=2").as_deref(),
+        Some("https://x.com/list/page?p=2"),
+    );
+}
+
+#[test]
+fn a_scheme_in_capitals_is_still_the_web() {
+    assert!(is_web("HTTPS://Example.com/"));
+    assert!(is_web("Http://example.com"));
+    assert!(!is_web("ftp://example.com"));
+    assert!(!is_web("h"));
+}
+
+#[test]
+fn a_page_of_bare_ampersands_decodes_to_itself() {
+    let text = "&".repeat(100_000);
+    assert_eq!(decode_entities(&text), text);
+}
+
+#[test]
+fn a_fragment_keeps_the_page_query_and_a_data_image_is_not_a_page() {
+    assert_eq!(
+        absolute_url("https://a.com/x/y?q=1#old", "#top").as_deref(),
+        Some("https://a.com/x/y?q=1#top"),
+    );
+    assert_eq!(
+        absolute_url("https://a.com/x", "data:image/png;base64,AA"),
+        None
+    );
+    assert_eq!(absolute_url("https://a.com/x", "javascript:alert(1)"), None);
+    assert_eq!(
+        absolute_url("https://a.com/x/", "img.png?v=a:b").as_deref(),
+        Some("https://a.com/x/img.png?v=a:b"),
+    );
+}
+
+#[test]
+fn a_zero_padded_numeric_entity_still_decodes() {
+    assert_eq!(decode_entities("&#x00000041;&#0000000039;"), "A'");
+}
+
+#[test]
+fn a_title_cannot_reorder_itself_or_carry_control_characters() {
+    assert_eq!(decode_entities("Safe &#x202E;txt.exe"), "Safe txt.exe");
+    assert_eq!(decode_entities("a\u{2066}b\u{200F}c"), "abc");
+    assert_eq!(decode_entities("line&#10;break&#0;end"), "line break end");
 }

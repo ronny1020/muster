@@ -179,7 +179,7 @@ pub struct JournalEntry {
 ///
 /// Our record is keyed on the **tab**, which outlives any one session, so the
 /// id the CLI published is the only thing that names the conversation — see
-/// the session-record seam in AGENTS.md. Read from the sidecar rather than
+/// the session-record seam in the root AGENTS.md. Read from the sidecar rather than
 /// tracked in memory because a tab that was restored, or moved between
 /// windows, never told this process anything.
 pub fn session_ids_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<String> {
@@ -277,7 +277,10 @@ pub async fn journal_read(app: AppHandle, cwd: String, id: String) -> Result<Str
 /// read them — which is also the only place that knows which tabs are running,
 /// hence `live`.
 #[tauri::command]
-pub async fn journal_sweep(app: AppHandle, days: u32, live: Vec<String>) {
+pub async fn journal_sweep(app: AppHandle, days: u32, mut live: Vec<String>) {
+    // The caller's window knows only its own tabs, and another window's
+    // running sessions are recording too.
+    live.extend(app.state::<crate::pty::Sessions>().ids());
     let _ = tauri::async_runtime::spawn_blocking(move || {
         if let Some(root) = root(&app) {
             sweep(

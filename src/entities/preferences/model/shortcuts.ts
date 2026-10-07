@@ -8,6 +8,7 @@ export type ShortcutAction =
   | { type: 'find' }
   | { type: 'closeActive' }
   | { type: 'cycle'; step: number }
+  | { type: 'moveActive'; step: number }
   | { type: 'activateIndex'; index: number }
 
 /** Just the fields a shortcut is decided from, so this stays testable. */
@@ -34,9 +35,14 @@ export function matchShortcut(
     : event.ctrlKey && !event.metaKey
   if (!modifier) return null
 
-  // Page keys cycle tabs everywhere; nothing in a terminal wants them modified.
-  if (event.key === 'PageUp') return { type: 'cycle', step: -1 }
-  if (event.key === 'PageDown') return { type: 'cycle', step: 1 }
+  // Page keys cycle tabs everywhere, and move the tab under shift as Chrome's
+  // do; nothing in a terminal wants them modified.
+  const page = PAGE_STEP[event.key]
+  if (page) {
+    return event.shiftKey
+      ? { type: 'moveActive', step: page }
+      : { type: 'cycle', step: page }
+  }
   if (event.shiftKey && BRACKET_STEP[event.key])
     return { type: 'cycle', step: BRACKET_STEP[event.key] }
 
@@ -53,6 +59,8 @@ export function matchShortcut(
   if (event.shiftKey !== !isMac) return null
   return LETTER_ACTIONS[event.key.toLowerCase()] ?? null
 }
+
+const PAGE_STEP: Record<string, number> = { PageUp: -1, PageDown: 1 }
 
 /** Shift turns `[` into `{` on some layouts, so both spellings count. */
 const BRACKET_STEP: Record<string, number> = {

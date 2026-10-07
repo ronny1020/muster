@@ -85,21 +85,31 @@ Templates for both live in [`dist-packaging/`](../dist-packaging), and are the
 right thing to copy when first creating those repositories.
 
 **Automatically** — `.github/workflows/update-packages.yml` does exactly the
-above on `release: published`, which makes step 4 nothing at all. It needs one
-secret, `PACKAGES_PAT`: a fine-grained token with Contents read and write on
-`ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. The automatic
-`GITHUB_TOKEN` cannot stand in — it is scoped to this repository, and a tap has
-to live in its own — so this is the one part of a release no workflow can do
-for itself.
+above, and today it does it for **no** release on its own. Two things have to
+be true, and neither is:
 
-Without the secret the run stops at its first step, stays **green**, and writes
-the checksums and these manual edits into the run summary. Green because the
-release itself succeeded: only the manifests are behind. A red X there used to
-say `Input required and not supplied: token`, which names neither the secret
-nor the repository.
+- **It has to be started.** Its `release: published` trigger fires only for a
+  release a person published. A tag's release is published by `release.yml`
+  using the automatic `GITHUB_TOKEN`, and GitHub does not start workflows from
+  events that token raises — so since publishing moved into the tag workflow,
+  no tag has ever started this one. Run it by hand, with the command below.
+- **It needs `PACKAGES_PAT`**: a fine-grained token with Contents read and
+  write on `ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. The
+  automatic `GITHUB_TOKEN` cannot stand in — it is scoped to this repository,
+  and a tap has to live in its own.
 
-For a release whose event has already passed — one published before the secret
-existed, or a run that failed — trigger it by hand:
+The second is the one that hides. Without the secret the run stops at its gate,
+stays **green**, and writes the checksums and the manual edits into the run
+summary — so a release looks finished from the Actions tab while every user's
+`brew upgrade` reports nothing to do. Check the manifests themselves, never the
+run's colour.
+
+Green because the release itself succeeded: only the manifests are behind. A
+red X there used to say `Input required and not supplied: token`, which names
+neither the secret nor the repository.
+
+Every release therefore needs this by hand, and a release whose event has
+already passed needs it too:
 
 ```bash
 gh workflow run update-packages.yml -f version=v0.2.1

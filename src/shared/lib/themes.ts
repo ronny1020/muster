@@ -39,7 +39,7 @@ export const THEMES: Record<string, TerminalTheme> = {
     name: 'Muster',
     foreground: '#e6e6e8',
     background: '#171719',
-    cursor: '#d97757',
+    cursor: '#c3c7d1',
     cursorAccent: '#171719',
     selectionBackground: '#37414f',
     black: '#2a2a30',

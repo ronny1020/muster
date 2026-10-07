@@ -8,10 +8,7 @@
 
 use std::{collections::HashSet, io::Write, path::Path, process::Stdio};
 
-use crate::{
-    platform,
-    workspace::{expand_home, git, git_verbatim},
-};
+use crate::workspace::{expand_home, git, git_in, git_verbatim};
 
 /// One file the review panel lists.
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -715,9 +712,7 @@ fn ignored_names(dir: &Path, names: &[String]) -> HashSet<String> {
     if names.is_empty() {
         return HashSet::new();
     }
-    let Ok(mut child) = platform::command("git")
-        .arg("-C")
-        .arg(dir)
+    let Ok(mut child) = git_in(dir)
         .args(["check-ignore", "-z", "--stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

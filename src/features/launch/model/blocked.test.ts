@@ -102,7 +102,7 @@ test('every settings URL this can return is one the opener is allowed to open', 
 
 test('the opener scope holds nothing but those two settings URLs', () => {
   // Containment, which availability alone cannot give: the same `openUrl` is
-  // reachable from a preview card whose URL an agent-authored markdown link
+  // reachable from every link click, whose URL an agent-authored markdown link
   // chooses, so a `*` added to this array has to fail here.
   //
   // `opener:allow-default-urls` sits beside it and contributes `http://*`,

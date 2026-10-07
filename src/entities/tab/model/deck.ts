@@ -68,6 +68,12 @@ export interface Tab {
   attention: boolean
   /** What the agent is doing, as it last announced it. */
   status: AgentStatus
+  /**
+   * The session's agent has exited and its terminal runs the user's shell —
+   * `platform::hands_back`. The session is the agent's still, so this is what
+   * tells the tab to stop offering the agent's controls.
+   */
+  handedBack: boolean
   content: TabContent
 }
 
@@ -84,6 +90,8 @@ export type DeckAction =
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
   | { type: 'activate'; id: string }
+  | { type: 'move'; id: string; index: number }
+  | { type: 'adopt'; tab: Tab; index?: number }
   | { type: 'activateIndex'; index: number }
   | { type: 'cycle'; step: number }
   | { type: 'start'; id: string; session: Session; title: string }
@@ -106,6 +114,7 @@ export type DeckAction =
   | { type: 'status'; id: string; status: AgentStatus }
   | { type: 'relaunch'; id: string }
   | { type: 'exited'; id: string; code: number }
+  | { type: 'handedBack'; id: string }
 
 /**
  * What the agent in a tab is doing, from the events it broadcasts.
@@ -132,6 +141,7 @@ export const newTab = (
   findOpen: false,
   attention: false,
   status: 'unknown',
+  handedBack: false,
   content,
 })
 
@@ -205,6 +215,14 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       // Looking at a tab is how its notice gets acknowledged.
       return { ...clearAttention(deck, action.id), activeId: action.id }
 
+    case 'move':
+      return moveTab(deck, action.id, action.index)
+
+    // A tab moved here from another window, which comes forward as it would
+    // in the window it left.
+    case 'adopt':
+      return adoptTab(deck, action.tab, action.index)
+
     case 'activateIndex': {
       const tab =
         action.index === -1 ? deck.tabs.at(-1) : deck.tabs[action.index]
@@ -224,6 +242,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         content: { type: 'session', session: action.session },
         title: action.title,
         exitCode: null,
+        handedBack: false,
         detail: '',
         // The find bar only exists once a terminal does, so a search opened on
         // the launcher would otherwise appear unbidden over the new session.
@@ -254,6 +273,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         exitCode: null,
         attention: false,
         status: 'unknown',
+        handedBack: false,
         historyOpen: false,
         reviewOpen: false,
         journalOpen: false,
@@ -322,6 +342,14 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         exitCode: action.code,
         detail: action.code === 0 ? 'exited' : `exited ${action.code}`,
       }))
+
+    case 'handedBack':
+      // A shell has no announced turns, so the agent's last status would
+      // otherwise stay on the tab for the rest of its life.
+      return patch(deck, action.id, () => ({
+        handedBack: true,
+        status: 'unknown',
+      }))
   }
 }
 
@@ -336,8 +364,8 @@ function openSettings(deck: Deck, id: string): Deck {
 }
 
 /**
- * Closing focuses the tab that slid into its place, like Chrome. The last tab
- * is replaced by a fresh one rather than leaving an empty window.
+ * Closing focuses the tab that slid into its place, like Chrome. A last tab
+ * is replaced by a fresh one, since a deck is never empty.
  */
 function closeTab(deck: Deck, id: string, replacementId: string): Deck {
   const index = deck.tabs.findIndex((tab) => tab.id === id)
@@ -350,6 +378,26 @@ function closeTab(deck: Deck, id: string, replacementId: string): Deck {
       ? tabs[Math.min(index, tabs.length - 1)].id
       : deck.activeId
   return { tabs, activeId }
+}
+
+/** Takes in a tab from another window, at `index` or else at the end. */
+function adoptTab(deck: Deck, tab: Tab, index = deck.tabs.length): Deck {
+  if (deck.tabs.some((held) => held.id === tab.id)) return deck
+  const tabs = [...deck.tabs]
+  tabs.splice(index, 0, tab)
+  return { tabs, activeId: tab.id }
+}
+
+/** Puts a tab at `index` of the strip, clamped to its ends. */
+function moveTab(deck: Deck, id: string, index: number): Deck {
+  const from = deck.tabs.findIndex((tab) => tab.id === id)
+  const to = Math.max(0, Math.min(index, deck.tabs.length - 1))
+  if (from < 0 || from === to) return deck
+
+  const tabs = [...deck.tabs]
+  const [tab] = tabs.splice(from, 1)
+  tabs.splice(to, 0, tab!)
+  return { ...deck, tabs }
 }
 
 const clearAttention = (deck: Deck, id: string): Deck =>

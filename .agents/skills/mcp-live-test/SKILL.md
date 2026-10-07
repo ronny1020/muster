@@ -66,6 +66,30 @@ Useful commands: `execute_js`, `get_dom`, `dispatch_pointer`, `press_key`,
 **cannot** separate two mark colours in a 10px strip: it corroborates, it never
 proves. The full list is the match in the plugin's `src/tools/mod.rs`.
 
+**There may be more than one window.** `js` runs in `main`; any other window
+— `w-<hex>` for one a tab was moved to, `ghost` for the drag label — takes
+`execute_js` with a `window_label`. List them first:
+`window.__TAURI_INTERNALS__.invoke('plugin:window|get_all_windows')`. A
+synthetic pointer drag needs `Element.prototype.setPointerCapture` stubbed (a
+synthetic pointer id is not one WebKit knows) and a pointer id no real device
+uses, or the user's own mouse moves arrive in the middle of it. And
+`window_drop_target` reads the **real** cursor, so a synthetic tear-off lands
+wherever the mouse happens to be.
+
+**A rejected call leaves the window unusable.** Any IPC call the
+capabilities refuse — `plugin:window|set_focus` from the page, say — is an
+unhandled rejection, and Bun's dev overlay (`<bun-hmr>`) answers it with a
+full-window layer at the top z-index that stays after its message is
+dismissed, eating every click and drag. Catch what a probe invokes, and if the
+app stops taking the pointer, check `document.elementFromPoint` before
+suspecting the code; `document.querySelector('bun-hmr').remove()` clears it.
+
+Colours depend on the tab: the message marks on the ruler, the find bar's
+current match, the rails, the drop outline and the path and copy controls'
+hover take the agent's own accent — the step buttons stay neutral
+(`--color-agent` on the terminal's root), so compare against the agent the tab
+runs, never a fixed hex.
+
 Before measuring anything, check you are measuring the build you edited. A
 socket that answers may belong to an app you did not start, and `tauri dev`
 rebuilds on save, so `stat -f "%Sm %N" src-tauri/target/debug/muster <the file
@@ -73,7 +97,19 @@ you changed>` and the tab list are both worth a look. When you are done, leave
 the app running only if you started it — and close the tabs you opened, because
 the tab list is persisted in `state.json` and outlives the run.
 
-## The four traps
+Stopping the app does not stop the frontend server `tauri dev` started for it —
+`bun --port 1420 ./index.html`, from `bun run serve` — so when you stop an app
+you started, stop that too. Left
+running, it keeps 1420, and the next run's server cannot have it and falls back
+to Bun's default, 3000, without saying so. The app still loads from 1420, from
+the old server, which makes that easy to miss:
+
+```bash
+pkill -f 'bun --port 1420 ./index.html'
+lsof -nP -iTCP:1420 -iTCP:3000 -sTCP:LISTEN   # nothing, once it is stopped
+```
+
+## The traps
 
 Each of these produced a wrong measurement that read as a bug in the app.
 
@@ -99,6 +135,13 @@ control, or use `dispatch_pointer`.
 **Hold no element or terminal across calls.** React replaces nodes, a
 frontend edit reloads the page, and a disposed terminal answers every question
 with a stale, plausible number. Re-query inside each call.
+
+**React has not rendered when your call returns.** A synthetic
+`pointermove` or a click handler sets state, and the DOM it produces appears
+on the _next_ commit — so dispatching and querying inside one `js()` call
+always finds nothing, which reads exactly like the handler not firing. Split
+them: dispatch in one call, query in the next. This cost a working hover
+control an hour of looking like a broken one.
 
 **A terminal's grid is a canvas, so there is nothing to read in the DOM.**
 Assert on what the app exposes instead — an `aria-label`, `scrollTop`, a
@@ -141,6 +184,39 @@ by its colour appearing at `x >= floor(width / 3)`, which only `full` can
 reach, and a file mark by its colour appearing **only** below that. Note that
 the lane does not stop a message mark painting over a file mark: the renderer
 draws every non-`full` zone and then every `full` one on top, opaquely.
+
+## Getting a shell tab with real blocks
+
+A zsh or bash tab reports its command boundaries over `OSC 133`, which is what
+the completion list and the copy control are drawn from. The overlay's
+presence is the quickest check that they are arriving at all:
+
+```js
+!!document.querySelector(
+  '.pointer-events-none.absolute.inset-2.overflow-hidden',
+)
+```
+
+It is false until the first boundary of that session arrives, so after a
+frontend reload it stays false until the next prompt is drawn — that is the
+reload, not the feature.
+
+Typing into xterm with synthetic `KeyboardEvent`s does not work, and
+`type_into_focused` writes the helper textarea rather than the pty. Write to
+the session instead, with the id off the React fibre:
+
+```js
+let f = el[Object.keys(el).find((n) => n.startsWith('__reactFiber'))]
+while (f && !f.memoizedProps?.sessionId) f = f.return
+window.__TAURI_INTERNALS__.invoke('pty_write', {
+  id: f.memoizedProps.sessionId,
+  data: 'ls\r',
+})
+```
+
+The `shell` surface itself is on the overlay's fibre — `blockAt(row)`,
+`reporting`, `suggestions` — which is how to prove a block covers the rows you
+think it does without reading the user's own output.
 
 ## Getting an agent tab with real output
 

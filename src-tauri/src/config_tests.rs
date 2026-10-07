@@ -1,6 +1,6 @@
 //! What the two window configurations have to agree on.
 //!
-//! See AGENTS.md's "Windows has no frame" invariant for why the Windows file
+//! See `src-tauri/AGENTS.md`'s "Windows has no frame" invariant for why the Windows file
 //! restates the whole window rather than only the key it changes.
 
 use serde_json::Value;
@@ -158,7 +158,7 @@ fn the_keyboard_shortcuts_the_app_needs_are_never_swallowed() {
     let prevented = super::prevented_shortcuts();
 
     // `Shift+Tab`. Blocking it breaks backward keyboard navigation, which is
-    // the Level AA bar AGENTS.md sets and what `shared/ui/ContextMenu` needs.
+    // the Level AA bar the root AGENTS.md sets and what `shared/ui/ContextMenu` needs.
     assert!(!prevented.contains(Flags::FOCUS_MOVE));
     // Right click, which the file tree's own menu is built on — and which is
     // also what makes that menu answer the Menu key and Shift+F10.

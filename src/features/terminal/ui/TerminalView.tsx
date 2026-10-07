@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -8,11 +9,17 @@ import {
 } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { type ILink, type ILinkProvider, Terminal } from '@xterm/xterm'
+import {
+  type IBufferRange,
+  type ILink,
+  type ILinkProvider,
+  Terminal,
+} from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import type { Turn } from '../../../shared/ipc'
@@ -25,38 +32,56 @@ import {
   attachText,
   dropPaths,
   killPty,
+  reattachPty,
   report,
   resizePty,
+  type SpawnOptions,
   spawnPty,
   writePty,
 } from '../../../shared/ipc'
 import { IS_MAC } from '../../../shared/lib/platform'
-import { flattenLogicalLine, rangeOf } from '../model/termcells'
+import { webHref } from '../../../shared/lib/weburl'
+import { covers, flattenLogicalLine, linkAt, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
 import { surfacesFor } from '../model/surfaces'
 import {
-  MAX_LOOKS,
-  MAX_STALLS,
-  moved,
   needleFor,
-  NOTCHES_PER_LOOK,
   onScreen,
-  rowsOf,
+  type Screen,
+  sweep,
+  type Sweep,
 } from '../model/seek'
+import { placeKey, walkTo, walkedKey } from '../model/walk'
 import {
   messagesIn,
   type Place,
 } from '../../../entities/transcript/model/turns'
 import { QUIET_MS } from '../model/working'
+import {
+  CARRIED_MODES,
+  modeSequences,
+  offerHandoff,
+  takeAdoption,
+  type TerminalHandoff,
+} from '../model/handoff'
 import { SHELL_AGENT } from '../../../entities/agent/model/agents'
 import { fileAbove, type NamedFile } from '../model/codeblocks'
 import { currentMessage, nextMessage, previousMessage } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
+import { HANDBACK_VERB, parseHandback } from '../model/handback'
+import {
+  parseShellEvent,
+  type Position,
+  type ShellEvent,
+} from '../model/blocks'
+import { ShellOverlay } from './ShellOverlay'
+import { LinkHover } from './LinkHover'
+import { type ResolvedBlock, useShellBlocks } from './useShellBlocks'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
 import { useViewportRow } from './useViewportRow'
-import { FILE_MARK, MESSAGE_MARK, useRulerMarks } from './useRulerMarks'
+import { FILE_MARK, messageMark, useRulerMarks } from './useRulerMarks'
 
 export interface TerminalViewProps {
   sessionId: string
@@ -66,9 +91,25 @@ export interface TerminalViewProps {
   onBell(): void
   /**
    * Fired for each turn boundary the agent announces over `OSC 777`. Claude
-   * Code never rings the bell, so this is the only signal it hands back.
+   * Code never rings the bell, so this is the only signal it hands back — and
+   * only where a hook plugin is installed to broadcast it.
    */
   onAgentEvent(event: AgentEvent): void
+  /**
+   * The agent has exited and the terminal now runs the user's shell, with the
+   * agent's exit status. From then on the tab's terminal is a shell's.
+   */
+  onHandback(code: number): void
+  /**
+   * A moved-in tab whose session had exited by the time this window took it
+   * over, before this window was listening for the exit.
+   */
+  onAdoptedExit(code: number): void
+  /**
+   * The colour of what the tab is running — its agent's, or a shell's once
+   * the agent has handed back — for everything drawn over its output.
+   */
+  accent: string
   /** The session's live directory, for resolving a relative path in the output. */
   cwd: string
   home: string
@@ -117,6 +158,17 @@ export interface TerminalViewProps {
  */
 const bestEffort = (call: Promise<unknown>) => void call.catch(() => {})
 
+/** Sets the `agent` colour token for everything inside the terminal. */
+const agentColour = (accent: string): CSSProperties =>
+  Object.fromEntries([['--color-agent', accent]])
+
+/** The code in `pty_reattach`'s `exited:<code>`, or 1 for a session that is
+ *  simply gone. */
+const exitCodeOf = (error: unknown) => {
+  const code = /^exited:(\d+)$/.exec(String(error))?.[1]
+  return code === undefined ? 1 : Number(code)
+}
+
 /**
  * An xterm view bound to a backend PTY. Mounted once per tab and kept alive
  * while hidden, so switching tabs never restarts the agent.
@@ -127,6 +179,9 @@ export function TerminalView({
   active,
   onBell,
   onAgentEvent,
+  onHandback,
+  onAdoptedExit,
+  accent,
   cwd,
   home,
   onPath,
@@ -140,6 +195,8 @@ export function TerminalView({
   paste,
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null)
+  /** The whole pane, which is what the overlay follows the pointer across. */
+  const pane = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal>(null)
   /** The grid's last column count, so either re-fit path can spot a change. */
   const lastCols = useRef(0)
@@ -157,6 +214,95 @@ export function TerminalView({
    * them had already happened.
    */
   const [alternate, setAlternate] = useState(false)
+  /**
+   * Where the link under the pointer goes and the click that opens it, shown
+   * where a browser shows one: an agent's hyperlink draws any text it likes
+   * over its target, so the target is what the label shows.
+   */
+  const [linkTarget, setLinkTarget] = useState<{
+    uri: string
+    hint: string
+  } | null>(null)
+  /**
+   * Where the terminal's `OSC 133` route delivers, filled in by the hook that
+   * tracks the blocks. Held here because the handler is registered with the
+   * terminal itself: a boundary reported before the hook had subscribed would
+   * be the first prompt of the session, which is the one the completion needs.
+   */
+  const shellSink = useRef<((event: ShellEvent, at: Position) => void) | null>(
+    null,
+  )
+  const shell = useShellBlocks({
+    term: mounted,
+    sessionId,
+    active,
+    live: !ended,
+    sink: shellSink,
+  })
+  /**
+   * When the last copy happened, so the control can confirm it.
+   *
+   * A copy leaves nothing on screen to show it worked — the clipboard is
+   * somewhere else — and both routes to it need the same answer.
+   */
+  const [copiedAt, setCopiedAt] = useState(0)
+  const copyOutput = useCallback(
+    (block: ResolvedBlock) => {
+      const text = shell.outputText(block)
+      if (!text) return false
+      void writeClipboard(text)
+      setCopiedAt(Date.now())
+      // The control is a real button outside the grid, so clicking it takes
+      // DOM focus off xterm's textarea and the session stops receiving
+      // typing. Every other control drawn over the grid hands focus back the
+      // same way.
+      terminal.current?.focus()
+      return true
+    },
+    [shell],
+  )
+  // Assigned while rendering, like every other handler the key route reads:
+  // that route is registered once, with the terminal, and must not be torn
+  // down and rebuilt as a completion appears and goes.
+  const shellKey = useRef<((event: KeyboardEvent) => boolean) | null>(null)
+  shellKey.current = (event) => {
+    // A modified chord belongs to the shell whatever the list is showing:
+    // `⌥→` is `forward-word`, `⇧Enter` is a newline in several CLIs, and a
+    // list that swallowed them would take a key the reader has always had.
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      return false
+    }
+    switch (event.key) {
+      // The rest of the line, the way every shell that draws a completion
+      // accepts one — at the end of the line, where the key had nothing else
+      // to do.
+      case 'ArrowRight':
+        return shell.accept()
+      // Down enters the list. It is the one arrow a prompt can spare: with a
+      // line typed, a shell's own Down is already at the newest entry and
+      // does nothing.
+      case 'ArrowDown':
+        return shell.move(1)
+      // Up only walks a list already entered, so recalling the previous
+      // command still reaches the shell.
+      case 'ArrowUp':
+        return shell.move(-1)
+      // Enter fills the chosen row in and leaves it there: running it is
+      // still a press the reader makes, having read the line.
+      case 'Enter':
+        return shell.selected >= 0 && shell.accept()
+      case 'Escape':
+        return shell.dismiss()
+      default:
+        return false
+    }
+  }
+  const copyLast = useRef<(() => boolean) | null>(null)
+  copyLast.current = () => {
+    const block = shell.lastFinished()
+    if (!block) return false
+    return copyOutput(block)
+  }
   /**
    * What this session's view supports — the rail's source, whether xterm
    * draws a scrollbar, and whether a width change has anything to repair.
@@ -188,8 +334,12 @@ export function TerminalView({
    * so the first ↑ goes to the newest — and put back there whenever the
    * transcript grows, since the turns arrive after the first render and a
    * new message is the newest thing to walk back from.
+   *
+   * State rather than a ref because the rail draws it: this is the only thing
+   * that says which place the walk is on, so a ref would leave every dot
+   * looking the same however many times the buttons were pressed.
    */
-  const stepped = useRef(said.length)
+  const [stepped, setStepped] = useState(said.length)
   // Keyed on the newest turn, not the count: the list is a window on the last
   // dozen, so past a dozen messages its length stops changing and a reset
   // that watched the length would never fire again.
@@ -204,99 +354,140 @@ export function TerminalView({
   const walked = useRef<string | null>(null)
   if (said.length > 0 && walked.current !== newest) {
     walked.current = newest
-    stepped.current = said.length
+    // A render-phase update of this component's own state, which React
+    // re-renders in place: the walk has to be put back before the rail is
+    // drawn, or one frame marks a dot the buttons have already left.
+    setStepped(said.length)
   }
-  /** Walks the transcript's messages with the step buttons, newest last. */
-  const stepThrough = useCallback(
-    (direction: -1 | 1) => {
-      if (said.length === 0) return
-      const next = Math.max(
-        0,
-        Math.min(said.length - 1, stepped.current + direction),
-      )
-      stepped.current = next
-      void seekTo(said[next]!)
-    },
-    // `seekTo` is stable, and `said` changes only when the transcript does.
-    [said],
-  )
-
   /** Which seek owns the view: a later click supersedes an unfinished one. */
   const seeking = useRef(0)
   /** Which registration this view's session is, for the kill on the way out. */
   const epoch = useRef<number | null>(null)
   /**
-   * Scrolls the agent's own view back to one of its messages.
+   * Whether this session was started with Muster's own startup file, which is
+   * the only session whose reported boundaries are believed.
    *
-   * The wheel is the only thing that moves a view the agent owns, so this
+   * The backend's answer rather than the same rule re-derived here — it is the
+   * side that knows whether the scripts could be written — and a ref because
+   * it is read inside the terminal's own parser.
+   */
+  const integrated = useRef(false)
+  /** Whether it is believed once the agent has handed back, and not before. */
+  const integratedAfterHandback = useRef(false)
+  /**
+   * Sets up a run of the wheel over the agent's own view, or answers null
+   * when nothing may be sent.
+   *
+   * The wheel is the only thing that moves a view the agent owns, so a sweep
    * sends notches the way a hand would and reads the screen between them —
    * see `seek.ts`. Dispatched on xterm's own element rather than encoded
    * here: the report's shape is the terminal's business, and it is already
    * right.
    *
-   * It gives up the moment the view stops moving, which is what makes it
-   * usable — the agent pins its view to the bottom while it is printing, and
-   * a seek that kept trying through that spent the better part of a minute
-   * going nowhere. Not finding it leaves the view where it started.
-   *
-   * And it sends nothing at all unless the agent is reading the mouse, which
-   * is not a tidy guard but the whole safety of the gesture. xterm answers a
+   * It sends nothing at all unless the agent is reading the mouse, which is
+   * not a tidy guard but the whole safety of the gesture. xterm answers a
    * wheel nobody asked to hear on a buffer with no scrollback by **typing**:
    * it turns each line the notch would have scrolled into `ESC[A` or `ESC[B`
    * and writes them to the pty. A burst is eight notches of roughly seven
-   * lines, so one stalled seek is around a hundred arrow presses into a live
+   * lines, so one stalled sweep is around a hundred arrow presses into a live
    * agent — and Up recalls the previous prompt in Claude Code, so a click
    * meant to scroll would overwrite a draft and leave nothing looking wrong.
    * The rail is drawn from the buffer and the turns, neither of which says
    * whether tracking is armed, so the check has to be here.
    */
-  const seekTo = useCallback(async (place: Place) => {
-    const term = terminal.current
-    const element = host.current?.querySelector<HTMLElement>('.xterm-screen')
-    const needle = needleFor(place.label)
-    if (!term || !element || !needle) return
-    if (!agentReadsMouse(term, live.current)) return
-    // A second dot clicked mid-seek supersedes the first: two loops sending
-    // bursts at one view, each undoing its own count afterwards, leave it
-    // somewhere neither click asked for.
-    const mine = (seeking.current += 1)
-    const screen = screenOf(term)
-    const notch = (up: boolean) => sendNotches(element, up ? -1 : 1)
-    // Only the bursts that moved the view are worth undoing. A burst the
-    // agent absorbed — at the top of what it kept, or while it was printing
-    // — scrolled nothing, so counting it into the way back drives the view
-    // past where it started and pins it to the bottom.
-    let travelled = 0
-    let stalls = 0
-    // Read before the first burst, not left empty: `moved` calls two empty
-    // screens moved so a seek always gets its first burst, and seeding this
-    // with one would bill that burst to the way back even when it scrolled
-    // nothing.
-    let before = rowsOf(screen)
-    for (let look = 0; look < MAX_LOOKS; look += 1) {
-      if (onScreen(screen, needle)) return
-      for (let i = 0; i < NOTCHES_PER_LOOK; i += 1) notch(true)
-      // The agent answers a burst by repainting over the pty, so the screen
-      // read next is only current once that has arrived.
-      await new Promise((settle) => setTimeout(settle, SEEK_SETTLE_MS))
-      // Re-checked, not just tested once: a TUI can drop tracking mid-seek,
-      // and every later notch would then be typed rather than reported.
-      if (seeking.current !== mine || !agentReadsMouse(term, live.current)) {
-        return
+  const wheelOver = useCallback(
+    (up: boolean, arrived: (screen: Screen) => boolean): Sweep | null => {
+      const term = terminal.current
+      const element = host.current?.querySelector<HTMLElement>('.xterm-screen')
+      if (!term || !element) return null
+      if (!agentReadsMouse(term, live.current)) return null
+      // A second click mid-sweep supersedes the first: two loops sending
+      // bursts at one view, each undoing its own count afterwards, leave it
+      // somewhere neither click asked for.
+      const mine = (seeking.current += 1)
+      const screen = screenOf(term)
+      return {
+        screen,
+        up,
+        notch: (upward) => sendNotches(element, upward ? -1 : 1),
+        settle: () =>
+          new Promise((landed) => setTimeout(landed, SEEK_SETTLE_MS)),
+        owns: () =>
+          seeking.current === mine && agentReadsMouse(term, live.current),
+        done: () => arrived(screen),
       }
-      const after = rowsOf(screen)
-      const shifted = moved(before, after)
-      if (shifted) travelled += NOTCHES_PER_LOOK
-      stalls = shifted ? 0 : stalls + 1
-      before = after
-      if (stalls >= MAX_STALLS) break
-    }
-    if (onScreen(screen, needle) || seeking.current !== mine) return
-    // Put the view back as far as it actually came.
-    for (let i = 0; i < travelled; i += 1) notch(false)
-  }, [])
+    },
+    [],
+  )
 
-  useRulerMarks(mounted, messages, MESSAGE_MARK)
+  /**
+   * Scrolls the agent's own view back to one of its messages.
+   *
+   * It gives up the moment the view stops moving, which is what makes it
+   * usable — the agent pins its view to the bottom while it is printing, and
+   * a seek that kept trying through that spent the better part of a minute
+   * going nowhere. Not finding it leaves the view where it started.
+   */
+  const seekTo = useCallback(
+    async (place: Place) => {
+      const needle = needleFor(place.label)
+      if (!needle) return
+      const run = wheelOver(true, (screen) => onScreen(screen, needle))
+      if (!run) return
+      const travelled = await sweep(run)
+      if (run.done() || !run.owns()) return
+      // Put the view back as far as it actually came.
+      for (let i = 0; i < travelled; i += 1) run.notch(!run.up)
+    },
+    [wheelOver],
+  )
+
+  /**
+   * Returns the agent's own view to the newest output.
+   *
+   * The end of the walk is the live bottom rather than the newest message:
+   * what an agent prints after it is where the work is, and nothing else here
+   * can reach it once a dot has taken the view up the conversation — the
+   * alternate buffer has no scrollback, so `scrollToBottom` moves nothing.
+   *
+   * It runs until the view stops rather than looking for anything, because
+   * nothing reports where the bottom is, and it keeps what it sent rather
+   * than undoing it: arriving *is* the stall.
+   */
+  const seekToBottom = useCallback(() => {
+    const run = wheelOver(false, () => false)
+    if (run) void sweep(run)
+  }, [wheelOver])
+
+  /**
+   * Walks the transcript's messages with the step buttons, newest last.
+   *
+   * Past the newest, ↓ goes to the live bottom rather than resting on it —
+   * the same gesture `stepMessage` answers with `scrollToBottom` in a
+   * scrollback tab, and the only way back to where the agent is working.
+   */
+  const stepThrough = useCallback(
+    (direction: -1 | 1) => {
+      if (said.length === 0) return
+      const next = walkTo({ at: stepped, count: said.length, direction })
+      setStepped(next)
+      if (next === said.length) seekToBottom()
+      else void seekTo(said[next]!)
+    },
+    [said, stepped, seekTo, seekToBottom],
+  )
+
+  /** Seeks to one message from a click on its dot, and walks on from there. */
+  const jumpToSaid = useCallback(
+    (index: number) => {
+      setStepped(index)
+      void seekTo(said[index]!)
+    },
+    [said, seekTo],
+  )
+
+  const messageStyle = useMemo(() => messageMark(accent), [accent])
+  useRulerMarks(mounted, messages, messageStyle)
   const fileMarks = useFileMarks(mounted, active)
   useRulerMarks(mounted, fileMarks, FILE_MARK)
   const viewportRow = useViewportRow(mounted, active)
@@ -327,6 +518,19 @@ export function TerminalView({
   bell.current = onBell
   const agentEvent = useRef(onAgentEvent)
   agentEvent.current = onAgentEvent
+  const handback = useRef(onHandback)
+  handback.current = onHandback
+  const adoptedExit = useRef(onAdoptedExit)
+  adoptedExit.current = onAdoptedExit
+  /** The token this session's hand-back announcement carries, if any. */
+  const handbackToken = useRef<string | null>(null)
+  /**
+   * Announcements that arrived before `pty_spawn` answered with the token —
+   * an agent that fails at once can hand back first — held until it does.
+   */
+  const earlyHandbacks = useRef<string[] | null>([])
+  /** Whether it has, so the terminal is a shell's from here on. */
+  const handedBack = useRef(false)
   const working = useRef(onWorking)
   working.current = onWorking
   /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
@@ -365,8 +569,9 @@ export function TerminalView({
    */
   const settleCols = useCallback((term: Terminal) => {
     if (term.cols === lastCols.current) return
-    if (lastCols.current !== 0 && reflowRuins(term, launch.current.agentId))
-      term.clear()
+    // A tab its agent handed back is a shell's, whose wraps reflow correctly.
+    const agentId = handedBack.current ? SHELL_AGENT.id : launch.current.agentId
+    if (lastCols.current !== 0 && reflowRuins(term, agentId)) term.clear()
     lastCols.current = term.cols
   }, [])
 
@@ -416,16 +621,50 @@ export function TerminalView({
           ? callback(undefined)
           : provider.provideLinks(row, callback),
     })
-    // A click opens a preview card rather than the browser: the card is what
-    // makes the network fetch deliberate, and it carries the Open button.
-    const linksAddon = new WebLinksAddon((_event, uri) =>
-      link.current!.onUrl(uri),
+    /** Every provider before gating, for `linkUnder`. */
+    const ungated: ILinkProvider[] = []
+    const register = term.registerLinkProvider.bind(term)
+    const registerGated = (provider: ILinkProvider) => {
+      ungated.push(provider)
+      return register(gateLinks(provider))
+    }
+    /** The OSC 8 hyperlink under the pointer, which xterm reports by hover. */
+    let hoveredHyperlink: { uri: string; range: IBufferRange } | null = null
+    /**
+     * Sends an agent's own hyperlinks — Claude Code's PR links, a long URL it
+     * breaks across rows — to the browser as a URL is, since their target need
+     * not match their text. xterm draws them from a provider of its own, and
+     * its fallback is `window.confirm`, which the dialog plugin replaces with
+     * a command this app does not grant.
+     *
+     * While tracking is on the plain click is the agent's and the ⌘-click is
+     * `onLinkMouseDown`'s, so activation there opens nothing.
+     */
+    term.options.linkHandler = {
+      activate: (_event, uri) => {
+        if (!agentReadsMouse(term, live.current)) link.current!.onUrl(uri)
+      },
+      hover: (_event, uri, range) => {
+        hoveredHyperlink = { uri, range }
+        setLinkTarget({ uri, hint: openHint(term, live.current) })
+      },
+      leave: () => {
+        hoveredHyperlink = null
+        setLinkTarget(null)
+      },
+    }
+    const linksAddon = new WebLinksAddon(
+      (_event, uri) => link.current!.onUrl(uri),
+      {
+        hover: (_event, uri) =>
+          setLinkTarget({ uri, hint: openHint(term, live.current) }),
+        leave: () => setLinkTarget(null),
+      },
     )
     // The addon registers its own provider, so the gate has to meet it at the
     // one call it makes — the same shape as `withoutLocalFonts` below, and for
     // the same reason: the addon offers no hook of its own.
-    const register = term.registerLinkProvider.bind(term)
-    term.registerLinkProvider = (provider) => register(gateLinks(provider))
+    term.registerLinkProvider = registerGated
     try {
       term.loadAddon(linksAddon)
     } finally {
@@ -440,9 +679,10 @@ export function TerminalView({
       storageLimit: 32,
     })
     term.loadAddon(imageAddon)
-    term.registerLinkProvider(
-      gateLinks({ provideLinks: pathLinks(term, link) }),
-    )
+    // What a tab moving to another window carries its screen in.
+    const serializeAddon = new SerializeAddon()
+    term.loadAddon(serializeAddon)
+    registerGated({ provideLinks: pathLinks(term, link) })
     // Windows and Linux have no menu accelerator for copy, and Ctrl+C has to
     // stay SIGINT — so the Ctrl+Shift+C/V convention is ours to implement.
     /**
@@ -495,9 +735,29 @@ export function TerminalView({
     element.addEventListener('paste', onDomPaste, true)
 
     term.attachCustomKeyEventHandler((event) => {
+      // The suggestion list answers a few keys, and only while it has
+      // something to say — so every one of them still reaches the shell when
+      // it does not.
+      if (event.type === 'keydown' && shellKey.current?.(event)) {
+        event.preventDefault()
+        // Stopped as well as prevented: several surfaces close on Escape and
+        // `FileViewer` listens on `window`, which this event would reach on
+        // the way up — so dismissing the list would also close the file
+        // column behind it. Same rule as the Escape invariant in the root AGENTS.md,
+        // met from xterm's own handler on the textarea, which is below
+        // `window` in the bubble.
+        event.stopPropagation()
+        return false
+      }
       const intent = clipboardIntent(event, IS_MAC)
       if (!intent) return true
-      if (intent === 'copy') {
+      if (intent === 'copyOutput') {
+        // Only claimed when it copied something: a tab with no finished
+        // command has nothing to answer with, and the chord belongs to
+        // whatever is running there instead.
+        if (!copyLast.current?.()) return true
+        event.preventDefault()
+      } else if (intent === 'copy') {
         void writeClipboard(term.getSelection())
       } else {
         // Prevented as well as claimed: returning false stops xterm, not the
@@ -510,6 +770,98 @@ export function TerminalView({
       return false
     })
     term.open(element)
+    const screen = element.querySelector<HTMLElement>('.xterm-screen')!
+    /** The link under the pointer, hyperlinks first as xterm ranks them. */
+    const linkUnder = (event: MouseEvent) => {
+      const cell = cellAt(term, screen, event)
+      if (!cell) return null
+      const hyperlink = hoveredHyperlink
+      if (hyperlink && covers(hyperlink.range, cell, term.cols)) {
+        return {
+          range: hyperlink.range,
+          open: () => link.current!.onUrl(hyperlink.uri),
+        }
+      }
+      const found = linkAt(ungated, cell, term.cols)
+      return (
+        found && {
+          range: found.range,
+          open: (up: MouseEvent) => found.activate(up, found.text),
+        }
+      )
+    }
+    /** The release a claimed press is waiting for, so cleanup can drop it. */
+    let pendingRelease: ((up: MouseEvent) => void) | null = null
+    const endPress = () => {
+      if (pendingRelease)
+        window.removeEventListener('mouseup', pendingRelease, true)
+      window.removeEventListener('blur', endPress)
+      pendingRelease = null
+    }
+    /**
+     * Opens the link under a ⌘-click (Ctrl-click off macOS) while the agent
+     * owns the plain click, as iTerm2 and VS Code's terminal do — on release
+     * over the same link, like any click. Claimed only over a link, so a
+     * ⌘-click anywhere else still reaches the agent.
+     */
+    const onLinkMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0 || !opensLink(event)) return
+      if (!agentReadsMouse(term, live.current)) return
+      const target = linkUnder(event)
+      if (!target) return
+      event.stopPropagation()
+      event.preventDefault()
+      endPress()
+      const release = (up: MouseEvent) => {
+        // Another button's release belongs to the press xterm reported.
+        if (up.button !== 0) return
+        // Claimed wherever it lands: xterm's `Linkifier` may still hold a
+        // link it offered before tracking began, and would open that too.
+        up.stopPropagation()
+        endPress()
+        const cell = cellAt(term, screen, up)
+        if (cell && covers(target.range, cell, term.cols)) target.open(up)
+      }
+      pendingRelease = release
+      window.addEventListener('mouseup', release, true)
+      window.addEventListener('blur', endPress)
+    }
+    screen.addEventListener('mousedown', onLinkMouseDown)
+    /** The plain URL the tracked-mode label shows, so a move along it does
+     *  not set the same label again. */
+    let trackedUri: string | null = null
+    /** The label object this handler put up. xterm's own hover may set one in
+     *  the same event, even for the same address, so clearing compares by
+     *  identity and takes down only this one. */
+    let trackedLabel: { uri: string; hint: string } | null = null
+    const showTracked = (uri: string | null) => {
+      if (uri === trackedUri) return
+      trackedUri = uri
+      const mine = trackedLabel
+      trackedLabel =
+        uri === null ? null : { uri, hint: openHint(term, live.current) }
+      const next = trackedLabel
+      setLinkTarget((shown) => next ?? (shown === mine ? null : shown))
+    }
+    /**
+     * Labels a plain URL while the agent reads the mouse. The gate offers
+     * xterm no links then, so the web-links addon never hears a hover — but
+     * the ⌘-click still opens one, and the label is the only thing that says
+     * so. An agent's hyperlink is xterm's own and labels itself.
+     */
+    const onTrackedMove = (event: MouseEvent) => {
+      if (!agentReadsMouse(term, live.current)) return showTracked(null)
+      const cell = cellAt(term, screen, event)
+      const hyperlink = hoveredHyperlink
+      if (!cell || (hyperlink && covers(hyperlink.range, cell, term.cols))) {
+        return showTracked(null)
+      }
+      const text = linkAt(ungated, cell, term.cols)?.text ?? null
+      showTracked(text && webHref(text) ? text : null)
+    }
+    const onTrackedLeave = () => showTracked(null)
+    screen.addEventListener('mousemove', onTrackedMove)
+    screen.addEventListener('mouseleave', onTrackedLeave)
     // `->`, `=>`, `!==` drawn as the single glyph the font has for them, for
     // the fonts that carry one, through xterm's character-joiner API — which
     // the WebGL renderer honours.
@@ -595,6 +947,16 @@ export function TerminalView({
       const needed = live.current && term.modes.mouseTrackingMode !== 'none'
       if (term.options.macOptionClickForcesSelection !== needed) {
         term.options.macOptionClickForcesSelection = needed
+        // The click that opens a link changed with it, and a label the
+        // tracked-mode handler put up belongs to a mode that just ended.
+        const mine = trackedLabel
+        trackedUri = null
+        trackedLabel = null
+        setLinkTarget((shown) =>
+          !shown || shown === mine
+            ? null
+            : { ...shown, hint: openHint(term, live.current) },
+        )
       }
     }
     term.onWriteParsed(() => {
@@ -628,23 +990,130 @@ export function TerminalView({
     )
     // Read through a ref so a new handler identity never re-runs the spawn.
     term.onBell(() => bell.current())
+    // The session's own hand-back, believed only with its token.
+    const acceptHandback = (data: string) => {
+      const token = handbackToken.current
+      const code = token === null ? null : parseHandback(data, token)
+      if (code === null || handedBack.current) return false
+      handedBack.current = true
+      integrated.current = integratedAfterHandback.current
+      handback.current(code)
+      return true
+    }
     // The other half of "the session wants you": an agent CLI announces its
     // turn boundaries here instead of ringing the bell. Claimed rather than
     // passed on, since nothing else in the app reads `OSC 777`.
     term.parser.registerOscHandler(777, (data) => {
+      if (earlyHandbacks.current && data.startsWith(HANDBACK_VERB)) {
+        // The newest handful: the real one is the session's last word, so
+        // whatever the agent printed before it is what gets dropped.
+        earlyHandbacks.current = [...earlyHandbacks.current, data].slice(-4)
+        return true
+      }
+      if (acceptHandback(data)) return true
       const event = parseAgentEvent(data)
       if (event) agentEvent.current(event)
+      return true
+    })
+    // The modes a move has to carry itself — see `CARRIED_MODES`. Watched,
+    // never claimed: xterm still applies every one of them.
+    const carriedModes = new Map<number, boolean>()
+    for (const final of ['h', 'l'] as const) {
+      term.parser.registerCsiHandler({ prefix: '?', final }, (params) => {
+        for (const mode of params) {
+          if (typeof mode === 'number' && CARRIED_MODES.has(mode)) {
+            carriedModes.set(mode, final === 'h')
+          }
+        }
+        return false
+      })
+    }
+    // A reset puts every mode back, so none of them is carried any more.
+    term.parser.registerEscHandler({ final: 'c' }, () => {
+      carriedModes.clear()
+      return false
+    })
+    /** The history file the shell reported, which it reports only once. */
+    let historyFile: string | null = null
+    // Where the shell says its prompts end and its commands' output begins.
+    // The position is read here rather than in the hook: the parser is at the
+    // write that carried the sequence, so the cursor is where the boundary
+    // is, and a frame later it is wherever the session has printed to.
+    term.parser.registerOscHandler(133, (data) => {
+      // Only from a session Muster put its own startup file into. The
+      // sequences are ordinary bytes, so an agent CLI, a command's output, or
+      // a remote host printing into an `ssh` session can write them just as
+      // well as a shell can — and what they carry chooses a file to read and
+      // text to type back. Everything this feature draws is fed through this
+      // one call, so this is the whole gate.
+      if (!integrated.current) return true
+      const event = parseShellEvent(data)
+      if (event?.kind === 'historyFile') historyFile = event.path
+      if (event) {
+        const buffer = term.buffer.active
+        shellSink.current?.(event, {
+          row: buffer.baseY + buffer.cursorY,
+          col: buffer.cursorX,
+        })
+      }
       return true
     })
     terminal.current = term
     setMounted(term)
     if (paste) paste.current = (text: string) => term.paste(text)
 
+    /**
+     * How many bytes of output this terminal has been sent — the backend's
+     * own count, so a move can say exactly how much its snapshot shows.
+     */
+    let received = 0
+    /** Set once the tab has handed its session to another window. */
+    let detached = false
+    /** Which output channel is this view's: only the latest one counts. */
+    let channel = 0
+    /**
+     * A handler for a new output channel. Chunks still in flight on an older
+     * one — a move that failed and was resumed from the backlog — would show
+     * twice and push the count past what the backend sent.
+     */
+    const receiver = () => {
+      const mine = ++channel
+      return (bytes: Uint8Array) => {
+        if (mine !== channel || detached) return
+        received += bytes.length
+        markWorking()
+        term.write(bytes)
+      }
+    }
+
     // The PTY is spawned only once the pane has real dimensions, so the
     // agent's TUI draws at the right size from its first frame.
     let started = false
+    /** Set while a moved-in snapshot is still being parsed at its own size. */
+    let adopting = false
+    /** Set once this view is torn down, for work still awaiting when it is. */
+    let disposed = false
+    /** Spawns this tab's session and believes what the backend answers. */
+    const startSession = async (options: SpawnOptions) => {
+      try {
+        const started = await spawnPty(options, receiver())
+        epoch.current = started.epoch
+        // Until a hand-back the terminal is the agent's, whose output can
+        // say anything a shell can.
+        const handsBack = started.handbackToken !== null
+        integrated.current = started.shellIntegration && !handsBack
+        integratedAfterHandback.current = started.shellIntegration && handsBack
+        handbackToken.current = started.handbackToken
+        const early = earlyHandbacks.current ?? []
+        earlyHandbacks.current = null
+        early.forEach(acceptHandback)
+      } catch (error) {
+        term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`)
+      }
+    }
+
     const sync = () => {
-      if (element.clientHeight === 0) return
+      if (element.clientHeight === 0 || adopting) return
       fitAddon.fit()
       settleCols(term)
       if (started) {
@@ -654,38 +1123,120 @@ export function TerminalView({
       started = true
       const { agentId, cwd, program, args, backend, distro, scrollback } =
         launch.current
-      void spawnPty(
-        {
-          id: sessionId,
-          cwd,
-          program,
-          args,
-          backend,
-          distro,
+      void startSession({
+        id: sessionId,
+        cwd,
+        program,
+        args,
+        backend,
+        distro,
+        cols: term.cols,
+        rows: term.rows,
+        loginShell: true,
+        // Read through the ref, like every other setting here: flipping it
+        // must never re-run the spawn effect and start a second PTY.
+        journal: latest.current.journalEnabled,
+        // So a record remembers which agent wrote it, and the panel can
+        // offer that agent's own resume for the conversation.
+        agentId,
+        // Fixed for the life of the session: the agent reads it once, at
+        // start, so a tab changes mode by reopening the conversation.
+        scrollback,
+        // Read through the ref for the same reason as the journal flag.
+        // A plain shell, or the shell an agent hands its tab back to.
+        shellIntegration: latest.current.shellIntegration,
+      })
+    }
+
+    /**
+     * Takes over a session another window was showing: its screen as that
+     * window last drew it, then everything the session printed after.
+     */
+    const adopt = async (handoff: TerminalHandoff) => {
+      epoch.current = handoff.epoch
+      integrated.current = handoff.integrated
+      integratedAfterHandback.current = handoff.integratedAfterHandback
+      handbackToken.current = handoff.handbackToken
+      handedBack.current = handoff.handedBack
+      earlyHandbacks.current = null
+      received = handoff.offset
+      // Held at the size it was drawn at until it has all been parsed — a fit
+      // in the middle would lay the rest out at another width.
+      adopting = true
+      term.resize(handoff.cols, handoff.rows)
+      await new Promise<void>((resolve) =>
+        term.write(handoff.snapshot + handoff.modes, resolve),
+      )
+      adopting = false
+      // A tab closed while its snapshot was parsing has no terminal left to
+      // fit, and its kill on the way out already ended the session.
+      if (disposed) return
+      // Then fitted like any resize, so a width change that would ruin an
+      // agent's scrollback clears it, as `settleCols` does everywhere else.
+      lastCols.current = handoff.cols
+      fitAddon.fit()
+      settleCols(term)
+      // Only where it was believed: the report that named it passed the same
+      // gate in the window it came from.
+      if (handoff.historyFile && handoff.integrated) {
+        historyFile = handoff.historyFile
+        shellSink.current?.(
+          { kind: 'historyFile', path: handoff.historyFile },
+          { row: term.buffer.active.baseY, col: 0 },
+        )
+      }
+      try {
+        const start = await reattachPty(sessionId, handoff.offset, receiver())
+        if (disposed) return
+        // The backlog may not reach back to the snapshot's offset, and the
+        // count has to be the backend's for a second move to be exact.
+        received += start - handoff.offset
+        bestEffort(resizePty(sessionId, term.cols, term.rows))
+      } catch (error) {
+        // The session ended on the way here, before this window was listening
+        // for its exit: the snapshot is all there is, and the tab says so.
+        if (!disposed) adoptedExit.current(exitCodeOf(error))
+      }
+    }
+
+    const withdraw = offerHandoff(sessionId, {
+      detach: async () => {
+        if (epoch.current === null || detached) return null
+        detached = true
+        const offset = received
+        // Lets xterm parse what it has queued, so the snapshot shows every
+        // byte the offset counts.
+        await new Promise<void>((resolve) => term.write('', resolve))
+        return {
+          snapshot: serializeAddon.serialize(),
+          offset,
           cols: term.cols,
           rows: term.rows,
-          loginShell: true,
-          // Read through the ref, like every other setting here: flipping it
-          // must never re-run the spawn effect and start a second PTY.
-          journal: latest.current.journalEnabled,
-          // So a record remembers which agent wrote it, and the panel can
-          // offer that agent's own resume for the conversation.
-          agentId,
-          // Fixed for the life of the session: the agent reads it once, at
-          // start, so a tab changes mode by reopening the conversation.
-          scrollback,
-        },
-        (bytes) => {
-          markWorking()
-          term.write(bytes)
-        },
-      )
-        .then((started) => {
-          epoch.current = started
-        })
-        .catch((error) =>
-          term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
-        )
+          epoch: epoch.current,
+          integrated: integrated.current,
+          integratedAfterHandback: integratedAfterHandback.current,
+          handbackToken: handbackToken.current,
+          handedBack: handedBack.current,
+          modes: modeSequences(carriedModes),
+          historyFile,
+        }
+      },
+      // The output dropped while detached is still in the backend's backlog.
+      resume: () => {
+        if (!detached) return
+        detached = false
+        bestEffort(reattachPty(sessionId, received, receiver()))
+      },
+    })
+
+    // A moved-in session attaches at once, visible or not. It brings its
+    // own grid size, and a hidden pane never syncs: left for the first
+    // `sync`, it would stay detached until shown while its output piled up
+    // past what the backlog keeps.
+    const adoption = takeAdoption(sessionId)
+    if (adoption) {
+      started = true
+      void adopt(adoption)
     }
 
     const observer = new ResizeObserver(sync)
@@ -693,13 +1244,22 @@ export function TerminalView({
     sync()
 
     return () => {
+      disposed = true
+      withdraw()
       observer.disconnect()
       clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
+      screen.removeEventListener('mousedown', onLinkMouseDown)
+      screen.removeEventListener('mousemove', onTrackedMove)
+      screen.removeEventListener('mouseleave', onTrackedLeave)
+      endPress()
       // Named by epoch, never by id alone: this tab may already be respawning
       // under the same id, and a kill that arrives after would otherwise end
       // the session that replaced this one.
-      if (epoch.current !== null) bestEffort(killPty(sessionId, epoch.current))
+      // A tab that moved to another window leaves its session running there.
+      if (epoch.current !== null && !detached) {
+        bestEffort(killPty(sessionId, epoch.current))
+      }
       // Every addon before the terminal, not just the renderer. `dispose` on
       // the Terminal tears `_core` down and only then lets its addon manager
       // dispose what is still registered — and an addon that reaches through
@@ -711,6 +1271,7 @@ export function TerminalView({
       for (const addon of [
         webgl,
         ligaturesAddon,
+        serializeAddon,
         imageAddon,
         linksAddon,
         searchAddon,
@@ -846,6 +1407,13 @@ export function TerminalView({
     releaseSelection.current?.()
   }, [ended])
 
+  // The confirmation is worth about as long as it takes to look away.
+  useEffect(() => {
+    if (copiedAt === 0) return
+    const timer = setTimeout(() => setCopiedAt(0), COPIED_MS)
+    return () => clearTimeout(timer)
+  }, [copiedAt])
+
   const closeFind = useCallback(() => {
     search.current?.clearDecorations()
     onCloseFind()
@@ -885,7 +1453,11 @@ export function TerminalView({
   // text sits inside it. The fit addon measures the inset host, so the column
   // count follows the padding rather than overflowing behind it.
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas">
+    <div
+      ref={pane}
+      className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas"
+      style={agentColour(accent)}
+    >
       {background && (
         <div
           aria-hidden="true"
@@ -912,13 +1484,17 @@ export function TerminalView({
           {said.length > 0 && (
             <Rail
               entries={said.map((place: Place, index: number) => ({
-                key: `said-${index}`,
+                key: placeKey(index),
                 label: place.label,
-                open: () => void seekTo(place),
+                open: () => jumpToSaid(index),
               }))}
-              current={null}
+              // Which place the walk is on, not which one the view is
+              // inside: the agent owns its own scrolling and reports nothing
+              // about it, so where the buttons are is the only position
+              // anything here knows.
+              current={walkedKey(stepped, said.length)}
               label="Your messages in this conversation"
-              className="right-[18px] text-brand"
+              className="right-[18px] text-agent"
             />
           )}
           <MessageSteps
@@ -944,7 +1520,7 @@ export function TerminalView({
                 currentMessage(messages, viewportBottom)?.row.toString() ?? null
               }
               label="Your messages in the scrollback"
-              className="right-[18px] text-brand"
+              className="right-[18px] text-agent"
             />
           )}
           <MessageSteps
@@ -959,13 +1535,26 @@ export function TerminalView({
           />
         </>
       )}
-      {findOpen && search.current && (
-        <FindBar search={search.current} onClose={closeFind} />
+      {mounted && !alternate && shell.reporting && (
+        <ShellOverlay
+          host={host}
+          surface={pane}
+          shell={shell}
+          viewportRow={viewportRow}
+          term={mounted}
+          settings={settings}
+          onCopy={copyOutput}
+          copied={copiedAt !== 0}
+        />
       )}
+      {findOpen && search.current && (
+        <FindBar search={search.current} accent={accent} onClose={closeFind} />
+      )}
+      {linkTarget && <LinkHover {...linkTarget} />}
       {dropping && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-brand/70 p-4"
+          className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-agent/70 p-4"
         >
           <span className="rounded bg-chrome/95 px-2 py-1 text-[11px] text-muted">
             Drop to type the path
@@ -1084,7 +1673,7 @@ function ScrollPath({
       type="button"
       onClick={onOpen}
       title={`Open ${file.path}`}
-      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-brand hover:text-ink"
+      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
       style={{
         top: `calc(0.75rem + ${fraction} * (100% - ${STEPS_RESERVE}))`,
       }}
@@ -1104,7 +1693,7 @@ function ScrollPath({
  * not, so on Windows alone activating the addon would raise a font permission
  * dialog at startup — something the user did nothing to cause, and a reflexive
  * "Don't Allow" is remembered. Fonts are answered natively for exactly that
- * reason; see AGENTS.md's font-enumeration note. Taking the fallback on every
+ * reason; see the root AGENTS.md's font-enumeration note. Taking the fallback on every
  * platform also makes one host's ligatures the same as another's.
  */
 function withoutLocalFonts(activate: () => void) {
@@ -1197,17 +1786,24 @@ function MessageSteps({
   )
 }
 
-/** Search options shared by every call, so highlights stay consistent. */
-const SEARCH_OPTIONS = {
-  decorations: {
-    matchBackground: '#4a4632',
-    matchBorder: '#6b6440',
-    matchOverviewRuler: '#d8b165',
-    activeMatchBackground: '#d97757',
-    activeMatchBorder: '#f0906f',
-    activeMatchColorOverviewRuler: '#d97757',
-  },
-} as const
+/** How long the copy control says it copied something. */
+const COPIED_MS = 1500
+
+/**
+ * Search options shared by every call, so highlights stay consistent. The
+ * current match takes the tab's agent colour; every other match is amber.
+ */
+const searchOptions = (accent: string) =>
+  ({
+    decorations: {
+      matchBackground: '#4a4632',
+      matchBorder: '#6b6440',
+      matchOverviewRuler: '#d8b165',
+      activeMatchBackground: accent,
+      activeMatchBorder: accent,
+      activeMatchColorOverviewRuler: accent,
+    },
+  }) as const
 
 /**
  * Scrollback search, floating over the grid.
@@ -1218,11 +1814,15 @@ const SEARCH_OPTIONS = {
  */
 function FindBar({
   search,
+  accent,
   onClose,
 }: {
   search: SearchAddon
+  /** The tab's agent colour, for the current match. */
+  accent: string
   onClose(): void
 }) {
+  const options = useMemo(() => searchOptions(accent), [accent])
   const [query, setQuery] = useState('')
   const [found, setFound] = useState({ index: -1, count: 0 })
   const input = useRef<HTMLInputElement>(null)
@@ -1246,13 +1846,13 @@ function FindBar({
       setFound({ index: -1, count: 0 })
       return
     }
-    search.findNext(query, { ...SEARCH_OPTIONS, incremental: true })
-  }, [search, query])
+    search.findNext(query, { ...options, incremental: true })
+  }, [search, query, options])
 
   const step = (forward: boolean) => {
     if (!query) return
-    if (forward) search.findNext(query, SEARCH_OPTIONS)
-    else search.findPrevious(query, SEARCH_OPTIONS)
+    if (forward) search.findNext(query, options)
+    else search.findPrevious(query, options)
   }
 
   return (
@@ -1371,13 +1971,38 @@ const SEEK_SETTLE_MS = 40
  * ended-session bar, and without this every path and URL in it would be dead
  * until the tab closed.
  *
- * It answers for the **session's** process, which is the agent, because the
- * session is an `exec` and the login shell goes with it. A TUI killed inside a
- * still-running shell — `vim` with `set mouse=a` — leaves that tab's links off
- * until something resets the terminal, and nothing here can see that it died.
+ * An agent that hands its tab back to a shell never ends the session, so
+ * `live` cannot catch that one — the hand-back resets the modes itself before
+ * the shell starts (`platform::handback_line`). A TUI killed inside a shell the
+ * user started — `vim` with `set mouse=a` — gets no such reset, and leaves that
+ * tab's links off until something resets the terminal.
  */
 const agentReadsMouse = (term: Terminal, live: boolean) =>
   live && term.modes.mouseTrackingMode !== 'none'
+
+/** The modifier that opens a link while the program is reading the mouse. */
+const opensLink = (event: MouseEvent) =>
+  IS_MAC ? event.metaKey : event.ctrlKey
+
+/**
+ * Which click the label says opens a link: a plain one, unless the program
+ * in the tab is reading the mouse and takes the plain click itself.
+ */
+const openHint = (term: Terminal, live: boolean) =>
+  !agentReadsMouse(term, live)
+    ? 'click to open'
+    : IS_MAC
+      ? '⌘-click to open'
+      : 'Ctrl-click to open'
+
+/** The buffer cell under the pointer, 1-based as `ILink.range` counts. */
+function cellAt(term: Terminal, screen: Element, event: MouseEvent) {
+  const box = screen.getBoundingClientRect()
+  const x = Math.floor(((event.clientX - box.left) / box.width) * term.cols)
+  const y = Math.floor(((event.clientY - box.top) / box.height) * term.rows)
+  if (x < 0 || y < 0 || x >= term.cols || y >= term.rows) return null
+  return { x: x + 1, y: y + 1 + term.buffer.active.viewportY }
+}
 
 /**
  * Underlines the file paths in one row and hands a click back to the pane.

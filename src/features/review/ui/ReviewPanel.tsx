@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { changeTotals, sortChanges } from '../model/changes'
 import { useChanges } from '../model/useChanges'
@@ -27,6 +27,8 @@ export interface ReviewPanelProps {
   /** Branch being compared against, or `''` for uncommitted work. */
   base: string
   onBase(base: string): void
+  /** Drawn under the Changes list — the commit and sync controls. */
+  footer?: ReactNode
   view: ReviewView
   onView(view: ReviewView): void
   /** What the content column is showing, so the list can mark it. */
@@ -44,16 +46,19 @@ const DEFAULT_WIDTH = 340
 /**
  * What the agent changed, and the tree it changed it in.
  *
- * Strictly a navigator: everything you actually read — a diff, a file — opens
- * in the column beside it, which has the width for it. Nothing here writes.
- * No staging, no discarding, no editing: the agent in the tab is what edits,
- * and a reviewer that can also edit is a merge conflict waiting to happen.
+ * A navigator: everything you actually read — a diff, a file — opens in the
+ * column beside it, which has the width for it. The only writes are the
+ * footer's commit, pull and push; a commit with nothing staged stages
+ * everything first. No discarding, no editing: the agent in the tab is what
+ * edits, and a reviewer that can also edit is a merge conflict waiting to
+ * happen.
  */
 export function ReviewPanel({
   cwd,
   revision,
   base,
   onBase,
+  footer,
   view,
   onView,
   viewed,
@@ -163,7 +168,7 @@ export function ReviewPanel({
         )}
       </div>
 
-      {view === 'changes' ? (
+      {view === 'changes' && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           {changes && !changes.repo ? (
             <Empty>Not a git repository, so there is nothing to compare.</Empty>
@@ -179,7 +184,11 @@ export function ReviewPanel({
             />
           )}
         </div>
-      ) : (
+      )}
+      {view === 'changes' && footer && (
+        <div className="flex-none border-t border-line">{footer}</div>
+      )}
+      {view === 'files' && (
         <div className="min-h-0 flex-1 overflow-auto">
           <FileTree
             root={cwd}

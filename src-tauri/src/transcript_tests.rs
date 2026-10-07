@@ -174,7 +174,10 @@ fn a_transcript_that_fits_is_read_whole() {
     let dir = scratch("whole");
     let path = dir.join("session.jsonl");
     std::fs::write(&path, "one\ntwo\n").expect("written");
-    assert_eq!(read_all(open_tail(&path).expect("opened")), "one\ntwo\n");
+    assert_eq!(
+        read_all(open_tail(&path, MAX_BYTES).expect("opened")),
+        "one\ntwo\n"
+    );
 }
 
 #[test]
@@ -192,7 +195,7 @@ fn a_symlinked_transcript_is_refused_rather_than_followed() {
     if std::os::windows::fs::symlink_file(&real, &link).is_err() {
         return; // Unprivileged Windows cannot create one; nothing to test.
     }
-    assert!(open_tail(&link).is_none());
+    assert!(open_tail(&link, MAX_BYTES).is_none());
 }
 
 #[test]
@@ -211,7 +214,7 @@ fn an_oversized_transcript_is_read_from_the_end_at_a_line_boundary() {
     body.push_str("last\n");
     std::fs::write(&path, &body).expect("written");
 
-    let read = read_all(open_tail(&path).expect("opened"));
+    let read = read_all(open_tail(&path, MAX_BYTES).expect("opened"));
     assert!(read.len() as u64 <= MAX_BYTES, "the cap holds");
     assert!(
         read.ends_with("last\n"),

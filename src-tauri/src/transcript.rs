@@ -94,18 +94,22 @@ fn turns_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<Turn> {
     // `session_ids_for` for why a published id is not a promise of one.
     crate::journal::session_ids_for(app, cwd, tab_id)
         .into_iter()
-        .find_map(|session_id| open_tail(&dir.join(format!("{session_id}.jsonl"))))
+        .find_map(|session_id| open_tail(&dir.join(format!("{session_id}.jsonl")), MAX_BYTES))
         .map(read_turns)
         .unwrap_or_default()
 }
 
-/// The last `MAX_BYTES` of a transcript, from a line boundary, or `None`.
+/// The last `limit` bytes of a file, from a line boundary, or `None`.
 ///
 /// Opened through `open_plain`, which holds the refusals, and handed back as a
 /// reader that cannot outrun the cap: this read happens on its own, with no
 /// click behind it, and a `.jsonl` that is a link to `/dev/zero`, or one very
 /// long line, would otherwise grow without limit inside a blocking task. The
 /// app's other automatic reads are bounded for the same reason (see AGENTS.md).
+///
+/// The shell's history file is read through this too — append-only and oldest
+/// first is what the two have in common, and the tail is the part either
+/// reader wants.
 ///
 /// A seek lands mid-line and half an object parses as nothing, so the partial
 /// first line is dropped — one turn at the far end of the window rather than
@@ -116,10 +120,10 @@ fn turns_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<Turn> {
 /// than by the line it returned, and discards the rest when it drops, so
 /// leaving the position where it lands skips several turns instead of one
 /// fragment.
-fn open_tail(path: &std::path::Path) -> Option<impl Read> {
+pub fn open_tail(path: &std::path::Path, limit: u64) -> Option<impl Read> {
     let (mut file, len) = open_plain(path)?;
-    if len > MAX_BYTES {
-        file.seek(SeekFrom::End(-(MAX_BYTES as i64))).ok()?;
+    if len > limit {
+        file.seek(SeekFrom::End(-(limit as i64))).ok()?;
         let mut reader = BufReader::new(&mut file);
         let mut partial = Vec::new();
         reader.read_until(b'\n', &mut partial).ok()?;
@@ -127,7 +131,7 @@ fn open_tail(path: &std::path::Path) -> Option<impl Read> {
         drop(reader);
         file.seek(SeekFrom::Current(-unread)).ok()?;
     }
-    Some(file.take(MAX_BYTES))
+    Some(file.take(limit))
 }
 
 /// A transcript opened for reading, with its size, or `None` for anything that

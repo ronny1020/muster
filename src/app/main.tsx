@@ -2,6 +2,9 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import { loadAppState } from '../shared/lib/appstate'
+import { adoptHandoffs } from './handoff'
+import { GHOST_LABEL, windowLabel } from '../shared/ipc'
+import { DragGhost } from '../widgets/tab-strip/ui/DragGhost'
 
 declare global {
   interface Window {
@@ -42,16 +45,32 @@ if (import.meta.env.DEV) void listenForMcp()
  * skipping the one-shot `localStorage` migration that brings an older
  * version's tabs across.
  *
+ * A window opened to receive a tab takes it before drawing too, so it opens
+ * showing that tab rather than a blank one that the tab then joins.
+ *
  * No StrictMode either: terminals own PTY processes, and its double-mounted
  * effects would spawn each session twice in development.
  */
 const start = async () => {
+  if (windowLabel() === GHOST_LABEL) return drawGhost()
   await loadAppState()
+  const adopted = (await adoptHandoffs()).map(({ tab }) => tab)
   createRoot(document.querySelector('#root')!).render(
     <SettingsProvider>
-      <App />
+      <App adopted={adopted} />
     </SettingsProvider>,
   )
+}
+
+/**
+ * The drag label's window draws only the label, over a transparent page — it
+ * has no tabs, no state and no sessions of its own.
+ */
+function drawGhost() {
+  for (const element of [document.documentElement, document.body]) {
+    element.style.background = 'transparent'
+  }
+  createRoot(document.querySelector('#root')!).render(<DragGhost />)
 }
 
 void start()

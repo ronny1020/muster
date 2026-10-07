@@ -14,20 +14,20 @@ you, with your full privileges. **"An attacker who can already run code in the
 webview can run arbitrary commands" is not a vulnerability here** — that is the
 product, and `pty_spawn` grants it by design.
 
-What _is_ in scope is anything that gives one of these five a capability it
+What _is_ in scope is anything that gives one of these four a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the app's only network egress.                                                                                                                 |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                         |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence.           |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                            |
-| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`. |
+| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, so the target is shown at the pane's corner while the pointer is over one, and a click opens it in the browser — which also means a row an agent made one big link opens its page on a click meant only to focus the pane; only `http` and `https` targets are offered. |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-None of those five is you, and none of them should be able to reach the
-network on your behalf, read a file you did not choose, or put an argument in
-front of a program you did not type.
+None of those four is you, and none of them should be able to read a file you
+did not choose or put an argument in front of a program you did not type. The
+network is the one exception, accepted on purpose: hovering a link fetches its
+page for the preview — see "What hovering a link fetches" below.
 
 The last one is worth spelling out, because it is the only inbound channel a
 released build has. A development build asked for with `bun run dev:mcp`
@@ -36,6 +36,43 @@ launcher tab** — no spawn, no file written, no path but the one it named, and
 the agent and flags come from your own settings. What it does gain is that the
 window is raised and that tab made active, so a stray Return in the focused
 directory field would start a session in a directory the sender chose.
+
+## Commit, pull and push run your own git
+
+The review and history drawers' buttons run `git commit` — with `git add
+--all` before it when nothing is staged, and `git reset` after it if it fails —
+`git pull --ff-only`, `git push` and `git switch` in the tab's directory, on a
+click and never otherwise. They run the same `git` with the same hooks,
+credential helper, SSH agent and remote a terminal in that directory would use,
+and with the `PATH` your login shell sets up: read by starting that shell,
+interactively, on the first click that needs it, and given up on after five
+seconds; a success is kept, a failure retried a minute later. They run with
+your full rights, outside any sandbox an agent runs in. That is the reach to weigh: an
+unsandboxed agent could have run `git push` itself, but a sandboxed one allowed
+to write its workspace and not the network can plant a hook, set
+`core.hooksPath` or repoint `origin`, and your click runs it for them. Read
+`.git/hooks`, `git config core.hooksPath` and `git remote -v` before pressing
+them in a repository an agent has had unsupervised.
+
+`GIT_DIR`, `GIT_INDEX_FILE` and the other variables that point git at a
+repository are removed from every git the app runs, so none of them can be
+aimed at a repository other than the tab's by an environment the app inherited.
+
+On macOS and Linux git runs in a session of its own with no controlling
+terminal, and pull and push set `GIT_TERMINAL_PROMPT=0`, so a prompt that needs
+a terminal — a missing credential, an unknown host key, a key passphrase —
+fails with git's own message instead of waiting on a terminal nobody is
+watching. That does not reach gpg's pinentry, which gpg-agent starts rather
+than git: a graphical one asks in its own window, and a terminal one still
+draws on whatever terminal `GPG_TTY` names. **Cancel** is the way out of either,
+and of a hook or remote that never answers: it sends `SIGTERM` to git's whole
+process group, then `SIGKILL` after two seconds; on Windows `taskkill /T` ends
+the tree forcibly, which can leave git's `index.lock` behind. Only 64 KB of
+each stream is kept — the start of its output, where git's summary is, and the
+end of its errors, where its refusal is — so a hook cannot fill the app's
+memory, and a background job a hook leaves holding the output open is waited
+for half a second, not for as long as it runs. The commit message is passed as
+one argument after `-m`, so no message can be read as an option.
 
 ## The debugging socket, and why a release build has none
 
@@ -79,11 +116,12 @@ development build and not something a user runs:
 
 ## What an agent may put in a desktop notification
 
-An agent CLI announces the end of a turn with
+A hook plugin installed into an agent CLI announces the end of a turn with
 `OSC 777;notify;warp://cli-agent;<json>`, and Muster reads it — that sequence
-is how Claude Code hands control back, since it never rings the terminal bell.
-The event's `response` field becomes the body of a desktop notification, so
-text the agent chose leaves the terminal and appears in the OS.
+is how a Claude Code session hands control back, since it never rings the
+terminal bell. The event's `response` field becomes the body of a desktop
+notification, so text the agent chose leaves the terminal and appears in the
+OS.
 
 What bounds it:
 
@@ -95,15 +133,53 @@ What bounds it:
   cap below is not the only bound on it.
 - The text it carries is capped, because an unbounded string in a notification
   body is a wall of text on your screen.
-- Only `stop` reaches the notification path. `session_start`,
-  `prompt_submit` and `tool_complete` are parsed and ignored.
+- Only `stop` and `stop_failure` reach the notification path.
+  `session_start`, `prompt_submit`, `tool_complete` and `idle_prompt` are
+  parsed and ignored.
 - The payload is never interpreted as anything but text: no path is resolved
   from it, no file read, nothing typed into a session. The "nothing an agent
   names may reach a session as keystrokes" rule in AGENTS.md applies here too.
+- `OSC 777;muster-handback` — an agent session's own announcement that the
+  agent has exited — is believed only with the token `pty_spawn` handed the
+  `sh` that sends it, which unsets it before the agent starts. Output that
+  merely carries the sequence — a file the agent prints — is ignored. An agent
+  that goes looking can still find the token wherever the OS lets a same-user
+  process read another's starting environment — Linux's
+  `/proc/<pid>/environ` does, and macOS's `ps -E` likely does too. Forged, the
+  announcement ends the tab's agent phase early, raises a false notification,
+  and opens that tab's `OSC 133` gate — see the shell-integration section
+  below for what that reaches.
+  A tab moved to another window carries the token with it, inside the app —
+  through Rust, never through the terminal stream — and its screen travels
+  as a serialized snapshot: the characters on screen and the colour and
+  cursor sequences that redraw them, but no OSC sequence — so no report or
+  announcement the agent printed is re-parsed in the window it lands in. Every live session keeps its
+  last 512 KB of output in memory for exactly this, and that is what carries
+  a session across until the new window attaches.
 
-The channel itself is not a new capability. The bytes already arrived in the
-pty stream Muster reads and records, so nothing was opened to get them — no
-hook and no plugin.
+The sequence is not the CLI's own, and Muster is what switches it on: it comes
+from a hook plugin the user installs, gated behind the advertisement
+`CLI_AGENT_ENV` in `pty.rs` makes — see `advertise_protocol` there, including
+which sessions it does not reach. Two things follow that the bounds above do
+not cover:
+
+- **The plugin reads the session's transcript.** Its `stop` and
+  `stop_failure` hooks each read the whole file the CLI hands them and carry
+  an excerpt of the last prompt and the last reply. So a read of that file
+  happens at the end of every turn, caused by this app, in a session the user
+  started for something else.
+- **What the plugin emits is bounded on screen, not on disk.** The 8 KB
+  refusal above protects the frontend, and the journal is written from the pty
+  stream before the frontend sees any of it — so a hook that carries an
+  unbounded field, as the approval-request one does with the whole tool input,
+  puts it in the record at full length. A file an agent asked to write is the
+  case that matters: the frontend refuses that event unread past 8 KB, and the
+  record keeps it whole.
+
+The second is bounded by the recording setting, the 4 MB cap on one session
+and the retention sweep. The first is bounded by nothing here: it is the
+plugin's read, and it stops only when the plugin is uninstalled. Neither is
+reachable by anyone who could not already print into the pty.
 
 ## Reading the agent's own transcript
 
@@ -134,13 +210,58 @@ own — `typed`, or `queued` while the agent was still working — cut to 120
 characters and drawn as text; it is the agent's file, so it says what that file
 says.
 
+## Reading the shell's own history file
+
+A plain zsh or bash tab is started with a startup file of Muster's own, which
+sources the user's and then reports where each prompt ends and each command's
+output begins. It also reports **where that shell keeps its history**, and the
+app reads that file to offer a completion as you type.
+
+Three things bound it. The path is the shell's own answer rather than a guess,
+which is what keeps the read to a file the user's own shell already writes; it
+is refused if it is longer than any host accepts or carries a control byte,
+because anything that can print to the session can write that sequence. The
+read itself goes through the same `open_tail` the transcript takes — a link is
+refused, and only the last 512 KB is parsed, into at most 500 commands. And
+nothing leaves the machine: the list is held in the tab that asked for it and
+is dropped when the tab closes.
+
+What the list is used for is the part worth being exact about, because
+accepting a suggestion **types it into a live shell**. A history entry that
+spans lines is dropped rather than joined, and a candidate whose remainder
+carries a control byte is never offered — a newline in accepted text would be
+a command submitted by the keystroke that promised to complete one, and an
+`ESC` would reach the line editor as a keypress. A line the user hid from
+their history by starting it with a space is never completed either — the
+space is read before it is trimmed away, and a candidate carrying one is
+refused whichever side it came from. And accepting only ever fills the line
+in: running it is still a press of Enter the reader makes.
+
+**Only a session Muster started itself is believed.** The sequences are
+ordinary bytes, so an agent CLI, a command's output, or a remote host printing
+into an `ssh` session can write them as easily as a shell can — and what they
+carry chooses a file to read and text to type back. So the reader is gated on
+the backend's own answer about whether it really did inject its startup file
+into _that_ session, which is a plain zsh or bash tab on the host with the
+setting on — or the shell an agent tab on the host hands back to, and only from
+the believed hand-back on. A boundary from anywhere else is dropped before it
+is parsed. An agent that reads the hand-back token where the OS shows it (see
+`OSC 777;muster-handback` above) can forge that moment and be believed; what it
+reaches then is what any program run in a shell tab reaches — a history file to
+draw suggestions from, which only the reader's own keystroke accepts.
+
+The integration changes nothing about the user's own configuration. The
+startup file sources theirs first and hands `ZDOTDIR` back before it does, and
+the setting is read at spawn, so a tab already running is never altered under
+it.
+
 ## Four places an agent's own text is drawn outside the grid
 
 All four are display-only, and all four are worth knowing because the grid is
 where agent output is normally confined.
 
-**A desktop notification body**, from `OSC 777`'s `stop` event — bounded as the
-section above describes.
+**A desktop notification body**, from `OSC 777`'s `stop` and `stop_failure`
+events — bounded as the section above describes.
 
 **The message rail's tooltip and accessible name.** `findMessageRows` marks a
 row whose first columns carry a non-default background, and `labelled` reads
@@ -187,6 +308,34 @@ What bounds it: the read needs a click, `read_capped` refuses a symlinked final
 component with `symlink_metadata` and `O_NOFOLLOW`, refuses anything that is
 not a regular file, refuses a file containing a NUL byte, and stops at 2 MB.
 Treat the directory test as "where the agent said it was", not as a boundary.
+
+## What hovering a link fetches
+
+Resting the pointer on an `http` or `https` link for a quarter of a second
+makes Muster request that page itself (`link.rs`), and then the image the page
+names — or failing that, its icon — to draw the preview in the corner label.
+A Stack Exchange question is the one exception: its pages answer every
+non-browser client with a Cloudflare challenge, so the question's id goes to
+`api.stackexchange.com` instead and the site's icon comes from
+`cdn.sstatic.net`. No click is involved, and the
+link was chosen by whoever printed it — usually an agent.
+
+That is a choice the user made knowingly, and it has no address policy:
+`localhost`, the local network and a cloud metadata address are fetched like
+any other host, so an agent that prints `http://127.0.0.1:8080/admin/reset`
+gets a `GET` sent there when the pointer crosses it. A link-preview request
+also tells the page's server that someone looked, and when. What bounds it is
+small: a `GET` only, with no cookies and no credentials; at most five
+redirects, 8 seconds for the whole preview, 512 KB of page and 1 MB of image;
+an image only of an allowlisted type, returned as a `data:` URI so the webview
+fetches nothing; and one successful fetch per address per window, kept until 64
+others replace it — a failed one is tried again on the next hover. The text
+that comes back is rendered as React text, never as markup, with control
+characters and direction overrides removed so a title cannot reorder itself;
+and the label names the link's real host whole, before the address, because a
+long address cut short can read as a different host.
+
+Opening a link never waits on the preview and never depends on what it said.
 
 ## What the message rail says, and what it does not
 
@@ -314,17 +463,29 @@ properties hold, and each has a test:
   resolves to where it really goes before being compared.
 - **A diagram cannot navigate the window.** Mermaid's `click` directive becomes
   a real anchor in the SVG and `securityLevel: strict` does not prevent that,
-  so the destination is moved onto the same preview card every other link in a
-  document uses.
+  so the destination is moved to where every other link in a document goes:
+  the system browser, never the app's own window — and only for an `http` or
+  `https` address.
 
 Rendering a document also loads code — markdown-it, and mermaid with DOMPurify
 for a diagram — in response to what a file contains. Markdown is parsed with
-raw HTML disabled, links carry no `href` and are activated through the same
-preview card a terminal URL uses, and mermaid runs at `securityLevel: strict`.
+raw HTML disabled, links carry no `href` and are handed to the system browser
+as a terminal URL is — a web address only: `webHref` refuses `mailto:`,
+`tel:` and every other scheme before the opener sees it — and mermaid runs at
+`securityLevel: strict`.
 
 ## Known gaps
 
 Named rather than hidden, because the code carries the same notes:
+
+- **The shell's reports escape only `\` and `;`.** A `HISTFILE` or a command
+  line carrying a BEL ends the sequence early, and whatever follows it is
+  parsed as terminal input of its own rather than as part of the value. Both
+  values come from inside a session Muster started itself — the variable is
+  set by the user's own startup files, the command is what they typed — so
+  reaching this needs either write access to those files or a paste carrying
+  a control byte, and neither buys more than what that access already gives.
+  The value is refused outright if a control byte survives into it.
 
 - **The journal's own reads and writes do not refuse a symlink.** `review.rs`
   and `image.rs` both check `symlink_metadata` before reading, because a
@@ -336,7 +497,7 @@ Named rather than hidden, because the code carries the same notes:
   `sessions.rs`'s `published_session_id` reads `~/.claude/sessions/<pid>.json`
   without the check. All three are dominated by the fact that an agent with a
   pty can run `rm` itself, which is why they are gaps rather than
-  vulnerabilities — but the invariant AGENTS.md states is not currently kept,
+  vulnerabilities — but the invariant `src-tauri/AGENTS.md` states is not currently kept,
   and the fixes are one `symlink_metadata` call, one `create_new(true)`, and
   one more `symlink_metadata`.
 - **The transcript read has no kernel-side no-follow on Windows.** `O_NOFOLLOW`
@@ -355,10 +516,6 @@ Named rather than hidden, because the code carries the same notes:
   `ESC[201~` ends paste mode early and the rest arrives as typed keys. It
   requires the user to copy hostile content, and it predates the journal work.
 
-- **Redirects in the link preview.** The private-address check validates every
-  hop of a redirect chain, but DNS is resolved twice — once to validate and
-  once to connect — so a short-TTL rebinding record remains a theoretical
-  bypass. Resolving once and connecting to that address is the fix.
 - **Unsigned binaries.** No Apple Developer membership and no Windows
   certificate, so macOS builds are ad-hoc signed and Windows builds are
   unsigned. Every release is built in public by GitHub Actions from the tag it

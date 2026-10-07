@@ -94,7 +94,7 @@ export function normalizeDeck(input: unknown): StoredDeck {
   return { tabs, activeIndex }
 }
 
-function normalizeStart(input: unknown): LauncherStart | null {
+export function normalizeStart(input: unknown): LauncherStart | null {
   if (typeof input !== 'object' || input === null) return null
   const raw = input as Record<string, unknown>
   const cwd = typeof raw.cwd === 'string' ? raw.cwd : ''

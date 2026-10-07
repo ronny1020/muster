@@ -23,6 +23,7 @@ const status = (extra: Partial<GitStatus> = {}): GitStatus => ({
   modified: 0,
   untracked: 0,
   conflicted: 0,
+  publishes: true,
   ...extra,
 })
 

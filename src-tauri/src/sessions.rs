@@ -276,6 +276,11 @@ pub fn normalize_key(value: &str) -> String {
 #[path = "sessions_tests.rs"]
 mod tests;
 
+/// Whether the agent publishes the session id [`published_session_id`] reads.
+pub fn publishes_session_id(agent_id: &str) -> bool {
+    agent_id == "claude"
+}
+
 /// The agent's own session id for a running child, where the CLI publishes one.
 ///
 /// Claude Code keeps a live registry at `~/.claude/sessions/<pid>.json` and
@@ -283,7 +288,7 @@ mod tests;
 /// asking once. This is the only id that can resume *that* conversation — our
 /// own journal is keyed on the tab, which outlives any one session.
 pub fn published_session_id(agent_id: &str, pid: u32) -> Option<String> {
-    if agent_id != "claude" {
+    if !publishes_session_id(agent_id) {
         return None;
     }
     let home = platform::home()?;
