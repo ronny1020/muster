@@ -155,6 +155,8 @@ fn current_branch(repo: &Path) -> Option<String> {
     full.strip_prefix("refs/heads/").map(str::to_string)
 }
 
+/// Windows has no executable bit; git runs a hook there through its own `sh`.
+#[cfg_attr(not(unix), expect(unused_variables))]
 fn make_executable(path: &Path) {
     #[cfg(unix)]
     {
@@ -380,6 +382,7 @@ fn the_head_of_stdout_and_the_tail_of_stderr_are_kept() {
     assert_eq!(tail.len(), MAX_OUTPUT);
 }
 
+#[cfg(unix)]
 fn piped(command: &mut Command) -> std::process::Child {
     command
         .stdin(Stdio::null())
