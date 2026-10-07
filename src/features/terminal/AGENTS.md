@@ -76,6 +76,14 @@ xterm does not have. Read its doc comment before trusting a green run: the
 bundles are minified, so it sees only the literal `_core.x` spelling and not
 the aliased reads that most of them compile to.
 
+A range does not make an addon's next minor safe, either: the 0.x minors that
+shipped with xterm 6 are its builds. `@xterm/addon-fit@0.11.0` reads xterm 6's
+`overviewRuler.width` for the scrollbar it reserves, finds nothing under 5.5's
+`overviewRulerWidth`, and assumes 14px against this app's 10 — no field is
+missing, so the test above stays green while the grid can fit a column short.
+`.github/dependabot.yml` therefore ignores the addons' minor updates; they move
+with `@xterm/xterm`'s major, by hand.
+
 **Ligatures are activated with the Local Font Access API hidden.** The addon
 reads a font's real ligature set through `queryLocalFonts` where the browser has
 it and falls back to a fixed programming set where it does not — and WebView2
