@@ -242,10 +242,23 @@ export const SHELL_AGENT: Agent = {
   ],
 }
 
+/**
+ * What a session is running now: its agent, or the shell once the agent has
+ * handed the terminal back — one answer for everything that names or colours
+ * a tab. `undefined` for an agent no longer in the roster, so a caller keeps
+ * what the session stored rather than taking another agent's name.
+ */
+export function runningAgent(
+  agentId: string,
+  handedBack: boolean,
+): Agent | undefined {
+  if (handedBack || agentId === SHELL_AGENT.id) return SHELL_AGENT
+  return AGENTS.find((agent) => agent.id === agentId)
+}
+
 /** Falls back to the first agent, so a stale saved id can never strand a tab. */
 export function agentById(id: string): Agent {
-  if (id === SHELL_AGENT.id) return SHELL_AGENT
-  return AGENTS.find((agent) => agent.id === id) ?? AGENTS[0]
+  return runningAgent(id, false) ?? AGENTS[0]
 }
 
 /**

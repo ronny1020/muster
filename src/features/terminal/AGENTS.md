@@ -77,16 +77,16 @@ bundles are minified, so it sees only the literal `_core.x` spelling and not
 the aliased reads that most of them compile to.
 
 **Ligatures are activated with the Local Font Access API hidden.** The addon
-reads a font's real ligature set through `queryLocalFonts` where the browser
-has it and falls back to a fixed programming set where it does not — and
-WebView2 has it while WKWebView does not, so activating it plainly would raise
-a font permission dialog on Windows alone, at startup, for something the user
-did nothing to ask for. `withoutLocalFonts` deletes the property for the
-duration of `loadAddon` and puts it back, which is the same stance as the
-native font enumeration below and has the side effect of making one host's
-ligatures match another's. The version is the last on the xterm 5 line
-(`0.9.0`, peer `^5.0.0`); `0.10.0` declares no peer at all, which is the trap
-the pinning invariant above describes.
+reads a font's real ligature set through `queryLocalFonts` where the browser has
+it and falls back to a fixed programming set where it does not — and WebView2
+has it while WKWebView does not, so activating it plainly would raise a font
+permission dialog on Windows alone, at startup, for something the user did
+nothing to ask for. `withoutLocalFonts` deletes the property for the duration of
+`loadAddon` and puts it back, which is the same stance as the native font
+enumeration in the root AGENTS.md's Scope section and has the side effect of
+making one host's ligatures match another's. The version is the last on the
+xterm 5 line (`0.9.0`, peer `^5.0.0`); `0.10.0` declares no peer at all, which
+is the trap the pinning invariant above describes.
 
 **A multi-line prompt reports its end twice.** The line editor redraws the
 prompt's last line after the first paint — measured against starship, `A B B
@@ -350,11 +350,29 @@ so `gateLinks` never sees it and xterm ranks it first. With no `linkHandler`,
 xterm activates one through `window.confirm` — which `tauri-plugin-dialog`
 replaces with a `plugin:dialog|confirm` command the capabilities do not
 grant, so without a handler every such link throws, on every platform. The
-handler opens them in the browser, as a URL is, and opens nothing
-while tracking is on, because there the ⌘-click is `onLinkMouseDown`'s. It
+handler opens them in the browser, as a URL is, on a plain click — a choice
+made knowingly: an agent can make a whole row one hyperlink, so a click meant
+to focus the pane loads its page, and the corner label is what shows where it
+goes. It opens nothing while
+tracking is on, because there the ⌘-click is `onLinkMouseDown`'s. It
 also records the hovered link, since hover is the only way xterm says one is
 under the pointer; `linkUnder` checks that before the ungated providers, as
-xterm does. Two limits follow from xterm, not from us: these links stay
+xterm does — and shows its target at the pane's corner (`linkTarget`), because
+the text an agent draws over a hyperlink need not be where it goes, and the
+target is what a click opens. A web link's label also previews its page —
+`LinkHover`, fetched by `link.rs` after `DWELL_MS` and cached per address by
+`previewCache` — and names the real host whole above the address, since an
+address truncated at the label's edge can read as another host. The label is
+`pointer-events-none` on purpose: the click belongs to the link, whatever the preview has or has not loaded. The
+fetch has no address policy, by the user's choice; SECURITY.md says what
+that costs. A Stack Exchange question is read from the site's API instead of
+its page, because the page is a Cloudflare challenge to anything that is not
+a browser — measured with a browser's user agent too, so a header change
+does not get past it. Every link, from here or a document, reaches the
+opener through `Pane`'s `onUrl`, which opens a web address only, in the form `webHref` parsed it. While the agent reads
+the mouse the gate offers xterm no links, so the web-links addon never hears a
+hover; `onTrackedMove` labels a plain URL itself then, because the ⌘-click
+still opens one. Two limits follow from xterm, not from us: these links stay
 underlined while tracking is on, and a link drawn under a pointer that has
 not moved is not hovered until the pointer moves, so a ⌘-click there finds
 only what the ungated providers can see. Only

@@ -12,7 +12,8 @@ export interface MarkdownViewProps {
   path: string
   /** Changes when the tree may have moved, which re-reads the file. */
   revision: string
-  /** A link was clicked: it goes to the same card the terminal's URLs use. */
+  /** A link was clicked: the system browser opens it, as it opens the
+   *  terminal's URLs. */
   onUrl(url: string): void
 }
 
@@ -188,8 +189,8 @@ const XLINK = 'http://www.w3.org/1999/xlink'
  * The app has one window, so following one would take the whole of it out of
  * the terminal, which is the exact thing `markdown.ts` strips `href`s to
  * prevent. So the anchor keeps its shape and loses its destination: the URL
- * moves to `data-url`, where the click handler hands it to the same preview
- * card every other link in the document goes through.
+ * moves to `data-url`, where the click handler hands it to the system
+ * browser, as every other link in the document is.
  */
 function disarmLinks(slot: Element) {
   for (const link of slot.querySelectorAll('a')) {

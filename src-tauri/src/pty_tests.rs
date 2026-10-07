@@ -94,6 +94,7 @@ fn quitting_ends_every_session_and_empties_the_registry() {
                 killed: Arc::new(AtomicBool::new(false)),
                 output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
                 window: Mutex::new("main".to_string()),
+                hands_back: false,
             }),
         );
 
@@ -178,6 +179,7 @@ fn ending_a_session_reaches_the_children_the_agent_started() {
         killed: Arc::new(AtomicBool::new(false)),
         output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
         window: Mutex::new("main".to_string()),
+        hands_back: false,
     });
 
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -331,6 +333,7 @@ fn re_pointing_a_session_leaves_its_child_running() {
             killed: Arc::new(AtomicBool::new(false)),
             output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
             window: Mutex::new("main".to_string()),
+            hands_back: false,
         }),
     );
 
@@ -446,6 +449,7 @@ fn parked_session() -> (Arc<Session>, i32) {
         killed: Arc::new(AtomicBool::new(false)),
         output: Arc::new(Mutex::new(Output::new(discard(), "main"))),
         window: Mutex::new("main".to_string()),
+        hands_back: false,
     });
     (session, group.expect("group"))
 }

@@ -25,11 +25,12 @@ import {
   onOpenDirectory,
   onPtyExit,
   openWindow,
+  report,
   type Point,
   sendToWindow,
 } from '../shared/ipc'
 import type { Grab } from '../widgets/tab-strip/model/useTabDrag'
-import { stripIndexAt } from '../widgets/tab-strip/model/drag'
+import { stripIndexAt } from '../widgets/tab-strip/ui/TabStrip'
 import {
   detachTerminal,
   resumeTerminal,
@@ -38,7 +39,7 @@ import { adoptHandoffs, writeHandoff } from './handoff'
 import { loadDeck, saveDeck } from '../entities/tab/model/persist'
 import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
-import { SHELL_AGENT } from '../entities/agent/model/agents'
+import { runningAgent } from '../entities/agent/model/agents'
 
 /**
  * Tab ids, which also key the backend's PTY map.
@@ -73,9 +74,10 @@ function announceExit(
 
   if (attention) dispatch({ type: 'attention', id })
   if (!shouldNotify) return
-  const agent = tab.handedBack
-    ? SHELL_AGENT.name
-    : (tabSession(tab)?.agentName ?? 'Session')
+  const session = tabSession(tab)
+  const agent = session
+    ? (runningAgent(session.agentId, tab.handedBack)?.name ?? session.agentName)
+    : 'Session'
   const body =
     code === 0 ? 'Session ended.' : `Session ended with code ${code}.`
   void notify(`${agent} · ${tab.title}`, body, settings.notifySound)
@@ -162,7 +164,8 @@ export function App({ adopted }: AppProps) {
           const handoff = writeHandoff({ tab, terminal, dropX: null })
           await openWindow({ handoff, session, grab: destination.grab })
         }
-      } catch {
+      } catch (error) {
+        report(error)
         resumeTerminal(id)
         return
       }

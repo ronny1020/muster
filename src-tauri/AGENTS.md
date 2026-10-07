@@ -44,10 +44,13 @@ answers `EBADF` to the next spawn. The `sh` is what keeps a session leader
 there throughout.
 
 The agent is the `sh`'s child, not the pty's, so anything that looks an agent
-up by pid looks one level down: the session-id watcher asks
+up by pid looks one level down. The session-id watcher asks
 `platform::children_of` as well, because Claude Code publishes its session
 under its own pid — without that the id is never found, and Resume and the
-transcript rail silently lose the conversation.
+transcript rail silently lose the conversation. The footer's `pty_cwd` does the
+same through `past_wrapper`, which finds the `sh` by the hand-back verb in its
+argv — without it the footer shows the launch directory for as long as the
+agent runs, because the `sh` never changes directory.
 
 The agent shares the `sh`'s process group, so the terminal's Ctrl+C and
 Ctrl+\ reach both — and dash, `/bin/sh` on Debian, Ubuntu and most WSL
@@ -88,7 +91,8 @@ The shell after the agent takes the shell integration a plain shell tab would,
 and on the `sh`'s own command line (`platform::shell_after`) rather than the
 session's environment: a `ZDOTDIR` there would send the agent's own login shell
 through Muster's startup files too. `TerminalView` holds its `OSC 133` off until
-the hand-back is believed, for the reason the gate below gives.
+the hand-back is believed, for the reason the `OSC 133` gate in
+`src/features/terminal/AGENTS.md` gives.
 
 The git writes the drawers make — commit, pull, push, checkout — are not
 sessions, but they run the user's programs too: a husky hook calling `bunx`, a
@@ -220,11 +224,11 @@ all of xterm's scrollback — while the PTYs carry on in Rust, so the sessions
 live and the record of them does not. `tauri-plugin-prevent-default` swallows
 it. The flag set is curated rather than `Flags::debug()`, and two exclusions are
 load-bearing: `FOCUS_MOVE` is `Shift+Tab`, so blocking it breaks backward
-keyboard navigation and the Level AA bar below; `CONTEXT_MENU` is the right
-click the file tree's menu is built on, which is also what makes that menu
-answer the Menu key and `Shift+F10`. `FIND` _is_ swallowed on purpose — the app
-answers that key with its own scrollback search and the webview's find bar must
-not get there first. `config_tests.rs` pins all four.
+keyboard navigation and the Level AA bar in the root AGENTS.md; `CONTEXT_MENU`
+is the right click the file tree's menu is built on, which is also what makes
+that menu answer the Menu key and `Shift+F10`. `FIND` _is_ swallowed on purpose
+— the app answers that key with its own scrollback search and the webview's find
+bar must not get there first. `config_tests.rs` pins all four.
 
 **`single-instance` is registered first, and it has to be.** The plugin's own
 docs require it, and the cost here is higher than in most apps: a second

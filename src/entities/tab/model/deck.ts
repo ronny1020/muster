@@ -365,8 +365,7 @@ function openSettings(deck: Deck, id: string): Deck {
 
 /**
  * Closing focuses the tab that slid into its place, like Chrome. A last tab
- * closed through the reducer is replaced by a fresh one; `App` closes the
- * window instead of reaching this path.
+ * is replaced by a fresh one, since a deck is never empty.
  */
 function closeTab(deck: Deck, id: string, replacementId: string): Deck {
   const index = deck.tabs.findIndex((tab) => tab.id === id)

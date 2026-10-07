@@ -13,8 +13,8 @@ import { grammarFor, highlight, type HighlightedLines } from './highlight'
  * the one place the panel builds markup, and the text it is building from was
  * written by an agent: markdown-it's own tags and ours are the only HTML that
  * can reach the DOM. Links keep no `href` either — they carry the URL as data
- * and go through the same card the terminal's URLs do — so nothing in a
- * document can navigate the window or fetch on its own.
+ * and open in the system browser on a click, as the terminal's URLs do — so
+ * nothing in a document can navigate the window or fetch on its own.
  */
 export interface RenderedMarkdown {
   html: string

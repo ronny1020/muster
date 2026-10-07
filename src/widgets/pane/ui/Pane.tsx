@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { webHref } from '../../../shared/lib/weburl'
 
 import {
   type DeckAction,
@@ -49,7 +50,7 @@ import { GitActions } from '../../../features/sync/ui/GitActions'
 import { useGitRun } from '../../../features/sync/model/useGitRun'
 import {
   type Agent,
-  agentById,
+  runningAgent,
   SHELL_AGENT,
 } from '../../../entities/agent/model/agents'
 import { JournalPanel } from '../../../features/journal/ui/JournalPanel'
@@ -100,11 +101,11 @@ export function Pane({
    * the name on the tab is a shell's. Resuming a record from the journal drawer
    * still ends it, because that is a conversation the user picked by name.
    */
-  const running = session
-    ? tab.handedBack
-      ? SHELL_AGENT
-      : agentById(session.agentId)
-    : null
+  const running = session && runningAgent(session.agentId, tab.handedBack)
+  // An agent no longer in the roster keeps what its session stored, and offers
+  // none of the controls that would relaunch it through another agent's modes.
+  const runningName = running?.name ?? session?.agentName
+  const runningAccent = running?.accent ?? session?.accent ?? SHELL_AGENT.accent
   const { cwd, workspace, tracked, refresh } = useWorkspace(
     session && tab.id,
     session?.cwd ?? null,
@@ -412,9 +413,13 @@ export function Pane({
     [session?.backend],
   )
 
-  /** A URL clicked in the output or a document: the system browser opens it. */
+  /**
+   * A URL clicked in the output or a document: the system browser opens it —
+   * a web page only, whatever scheme the link names.
+   */
   const onUrl = useCallback((url: string) => {
-    void openUrl(url).catch(report)
+    const href = webHref(url)
+    if (href) void openUrl(href).catch(report)
   }, [])
 
   const notifiedAt = useRef<number | null>(null)
@@ -444,7 +449,7 @@ export function Pane({
       if (!shouldNotify) return
       notifiedAt.current = Date.now()
       void notify(
-        `${running?.name ?? 'Session'} · ${tab.title}`,
+        `${runningName ?? 'Session'} · ${tab.title}`,
         body ?? 'Waiting for you.',
         settings.notifySound,
       )
@@ -452,7 +457,7 @@ export function Pane({
     [
       active,
       dispatch,
-      running?.name,
+      runningName,
       settings.notifyOnDone,
       settings.notifyOnlyWhenUnfocused,
       settings.notifySound,
@@ -538,7 +543,7 @@ export function Pane({
               <TerminalView
                 sessionId={tab.id}
                 session={session}
-                accent={(running ?? SHELL_AGENT).accent}
+                accent={runningAccent}
                 active={active}
                 onBell={onBell}
                 onAgentEvent={onAgentEvent}
@@ -653,7 +658,7 @@ export function Pane({
           {tab.exitCode !== null && (
             <SessionEnded
               code={tab.exitCode}
-              agentName={running?.name ?? session.agentName}
+              agentName={runningName ?? session.agentName}
               onRelaunch={() => dispatch({ type: 'relaunch', id: tab.id })}
             />
           )}
@@ -670,7 +675,7 @@ export function Pane({
         cwd={session ? cwd : ''}
         workspace={session ? workspace : null}
         tracked={session ? tracked : false}
-        agentName={running?.name ?? ''}
+        agentName={runningName ?? ''}
         state={tab.exitCode === null ? '' : tab.detail}
         exited={tab.exitCode !== null && tab.exitCode !== 0}
         historyOpen={historyOpen}

@@ -173,8 +173,12 @@ and Scoop routes additionally verify a checksum recorded in their manifests.
 
 ### 🕶️ Privacy
 
-Muster makes no network requests of its own: a link you click opens in your
-browser, which makes the request. It has no telemetry, no update check, and no accounts — it
+Muster makes one kind of network request of its own: resting the pointer on a
+web link fetches that page, and the image it names, for the hover preview —
+any address the link names, `localhost` included. A Stack Exchange question
+is asked of `api.stackexchange.com` instead, and its site's icon of
+`cdn.sstatic.net`. A link you click opens in
+your browser, which makes that request. It has no telemetry, no update check, and no accounts — it
 reads your filesystem and git state, and runs the CLIs you point it at, locally.
 Those CLIs do talk to their own providers, on their own terms, exactly as they
 would in your usual terminal. The drawers' **Pull** and **Push** run your own
@@ -301,11 +305,15 @@ the folder it started in, and the tooltip says so.
 
 ## 🖱️ Clicking things in the output
 
-Agents print paths and URLs constantly, and all of them are live. While the
-program in a tab is reading the mouse — a Clicks tab's agent, or `vim` or
-`tmux` with the mouse on — it takes the plain click, so a link there opens on
-**⌘-click** (**Ctrl-click** on Windows and Linux) instead. Paths and plain URLs
-are not underlined there; a hyperlink the agent drew still is:
+Agents print paths and URLs constantly, and all of them are live: a click opens
+one. Hovering a web link — a URL, or a hyperlink an agent drew — shows where it
+goes, and which click opens it, at the tab's bottom-left corner, along with the
+page's title, summary and picture, and "Loading preview…" until they arrive. The click
+never waits for the preview. While the program in a tab is reading the mouse — a
+Clicks tab's agent, or `vim` or `tmux` with the mouse on — it takes the plain
+click, so a link opens on **⌘-click** (**Ctrl-click** on Windows and Linux)
+there instead. Paths and plain URLs are not
+underlined there; a hyperlink the agent drew still is:
 
 | You click                                                      | Muster does                                                                                                      |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -313,7 +321,7 @@ are not underlined there; a hyperlink the agent drew still is:
 | An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
 | An unchanged file inside the session's directory               | Opens it in the file column beside the terminal, so reading it does not take you out of the tab                  |
 | Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
-| A URL                                                          | Opens it in your browser                                                                                         |
+| A URL                                                          | Opens it in your browser — `http` and `https` only; `mailto:`, `tel:` and other schemes are refused              |
 
 The rows are in the order Muster asks the questions: a path that names a changed
 file opens as a diff before anything else is considered, so an image the agent
@@ -336,8 +344,9 @@ iTerm2's inline-image protocol are both supported, so `imgcat`, `chafa
 A link an agent drew as a hyperlink — Claude Code's `#604` pull-request links,
 or a long URL it breaks across rows — opens the `http` or `https` address it
 carries rather than the text on screen, so the page that opens is not always
-the one the text names — treat a hyperlink an agent drew like a link in an
-email.
+the one the text names. The corner label shows the real host in full, then the
+address, while you hover it — read that, not the text, as you would a link in
+an email.
 
 ## 🪣 Dropping files in
 
@@ -916,9 +925,11 @@ That last test is a comparison of the resolved path against the directory, and
 it is currently a prefix match — a path an agent wrote with `../` in it can
 still satisfy it, so treat it as "where the agent said" rather than a boundary.
 
-Nothing leaves your machine through Muster itself: a URL you click — in the
-terminal or in a rendered document — is handed to your browser, and the agents
-you run are the agents you picked.
+One thing leaves your machine through Muster itself: resting the pointer on a
+web link fetches that page's title and picture for the hover preview (see
+Privacy above). A web address you open — in the terminal or in a rendered
+document — is handed to your browser, and the agents you run are the agents
+you picked.
 
 ## 🤝 Contributing
 

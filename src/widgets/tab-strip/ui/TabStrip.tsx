@@ -3,13 +3,14 @@ import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
+  type RefObject,
   useEffect,
   useRef,
   useState,
 } from 'react'
 
 import { type Tab, tabSession } from '../../../entities/tab/model/deck'
-import { SHELL_AGENT } from '../../../entities/agent/model/agents'
+import { runningAgent } from '../../../entities/agent/model/agents'
 import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
 import { WindowControls } from '../../../shared/ui/WindowControls'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
@@ -21,7 +22,7 @@ import {
   reportStrip,
   showGhost,
 } from '../../../shared/ipc'
-import { stripIndexAt } from '../model/drag'
+import { insertionIndex } from '../model/drag'
 import { ContextMenu, type MenuItem } from '../../../shared/ui/ContextMenu'
 
 export interface TabStripProps {
@@ -243,11 +244,12 @@ function useDropHover() {
   return landing
 }
 
-/** A tab's colour: its agent's, or a shell's once its agent handed back. */
-const accentOf = (tab: Tab) =>
-  tab.handedBack
-    ? SHELL_AGENT.accent
-    : (tabSession(tab)?.accent ?? 'var(--color-faint)')
+/** A tab's colour: what it is running, or faint before it runs anything. */
+const accentOf = (tab: Tab) => {
+  const session = tabSession(tab)
+  if (!session) return 'var(--color-faint)'
+  return runningAgent(session.agentId, tab.handedBack)?.accent ?? session.accent
+}
 
 function TabButton({
   tab,
@@ -269,10 +271,11 @@ function TabButton({
       onPointerDown={onDragStart}
       onContextMenu={onMenu}
       // The active tab takes keyboard focus, so the Menu key and `Shift+F10`
-      // reach its menu; a click must not take it, or focus would leave the
-      // terminal for the strip on every tab switch.
+      // reach its menu.
       tabIndex={active ? 0 : -1}
       onMouseDown={(event) => {
+        // A click must not take that focus, or it would leave the terminal
+        // for the strip on every tab switch.
         event.preventDefault()
         if (event.button === 1) onClose()
         else if (event.button === 0) onSelect()
@@ -369,7 +372,7 @@ function menuPoint(event: MouseEvent<HTMLElement>) {
  * The strip's box changes with the window's width and with zoom, and the
  * backend works out where it sits on screen at the drop itself.
  */
-function useStripReport(header: React.RefObject<HTMLElement | null>) {
+function useStripReport(header: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const element = header.current
     if (!element) return
@@ -387,4 +390,19 @@ function useStripReport(header: React.RefObject<HTMLElement | null>) {
     report()
     return () => observer.disconnect()
   }, [header])
+}
+
+/**
+ * Where a tab dropped `x` CSS pixels along this window's strip joins it, read
+ * from the strip's own tabs.
+ */
+export function stripIndexAt(x: number) {
+  const tabs = document.querySelectorAll<HTMLElement>(
+    '[role="tablist"] [role="tab"]',
+  )
+  const slots = Array.from(tabs, (tab) => {
+    const box = tab.getBoundingClientRect()
+    return { left: box.left, width: box.width }
+  })
+  return insertionIndex(slots, x)
 }

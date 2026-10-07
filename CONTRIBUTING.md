@@ -176,6 +176,7 @@ building.
 | Paths and URLs in terminal output                     | `src/features/terminal/model/termlinks.ts`                         |
 | Which link a click landed on                          | `src/features/terminal/model/termcells.ts`                         |
 | Local image reads                                     | `src-tauri/src/image.rs`                                           |
+| The page preview a hovered link shows                 | `src-tauri/src/link.rs`                                            |
 | Agent session history                                 | `src-tauri/src/sessions.rs`                                        |
 | Recording a session, and what a record remembers      | `src-tauri/src/journal.rs`                                         |
 | Second-launch, window state, swallowed shortcuts      | `src-tauri/src/lib.rs`                                             |

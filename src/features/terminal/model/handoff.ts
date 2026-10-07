@@ -124,7 +124,9 @@ export const CARRIED_MODES = new Set([25, 1005, 1006, 1015])
 
 /** Only ever a run of those modes being set or reset — it is written to a
  *  terminal, so nothing else may pass. */
-const CARRIED_SEQUENCES = /^(?:\x1b\[\?(?:25|1005|1006|1015)[hl])*$/
+const CARRIED_SEQUENCES = new RegExp(
+  `^(?:\\x1b\\[\\?(?:${[...CARRIED_MODES].join('|')})[hl])*$`,
+)
 
 /** The sequences that put `modes` back. */
 export const modeSequences = (modes: ReadonlyMap<number, boolean>) =>

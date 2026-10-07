@@ -53,7 +53,7 @@ behaviour. Update them **in the same change**, not afterwards:
   stale invariant does, and worse: it is copy-pasted rather than read. The
   `mcp-live-test` one describes the terminal surfaces, so a change to how they
   are drawn or measured belongs in it.
-- **SECURITY.md** — what the app promises about the three parties it does not
+- **SECURITY.md** — what the app promises about the four parties it does not
   trust. A new command that reads the filesystem, or a new renderer fed by file
   contents, changes what that document has to claim.
 - **docs/RELEASE.md** — the release runbook. It names `bun run check:all`
@@ -262,13 +262,13 @@ both it and a child.
 
 **An overlay that closes on Escape must claim the key, not share it.** Several
 surfaces listen for Escape on their own, and they stack: the file column, the
-image overlay, and a width drag in progress. Listeners on
-`window` all fire, so dismissing a card also closed the column behind it, and
-cancelling a drag closed the panel being dragged. The rule: a transient surface
-listens in the **capture** phase on `document` and calls `stopPropagation`, so
-the topmost one answers and the rest do not. A surface that is per-tab must also
-gate on `active` — every pane stays mounted, so an Escape typed at a TUI in one
-tab was closing another tab's panel.
+image overlay, and a width drag in progress. Listeners on `window` all fire, so
+dismissing the image overlay also closed the column behind it, and cancelling a
+drag closed the panel being dragged. The rule: a transient surface listens in
+the **capture** phase on `document` and calls `stopPropagation`, so the topmost
+one answers and the rest do not. A surface that is per-tab must also gate on
+`active` — every pane stays mounted, so an Escape typed at a TUI in one tab was
+closing another tab's panel.
 
 ### Where the rest live
 

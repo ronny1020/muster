@@ -35,10 +35,12 @@ import {
   reattachPty,
   report,
   resizePty,
+  type SpawnOptions,
   spawnPty,
   writePty,
 } from '../../../shared/ipc'
 import { IS_MAC } from '../../../shared/lib/platform'
+import { webHref } from '../../../shared/lib/weburl'
 import { covers, flattenLogicalLine, linkAt, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
@@ -74,6 +76,7 @@ import {
   type ShellEvent,
 } from '../model/blocks'
 import { ShellOverlay } from './ShellOverlay'
+import { LinkHover } from './LinkHover'
 import { type ResolvedBlock, useShellBlocks } from './useShellBlocks'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
@@ -211,6 +214,15 @@ export function TerminalView({
    * them had already happened.
    */
   const [alternate, setAlternate] = useState(false)
+  /**
+   * Where the link under the pointer goes and the click that opens it, shown
+   * where a browser shows one: an agent's hyperlink draws any text it likes
+   * over its target, so the target is what the label shows.
+   */
+  const [linkTarget, setLinkTarget] = useState<{
+    uri: string
+    hint: string
+  } | null>(null)
   /**
    * Where the terminal's `OSC 133` route delivers, filled in by the hook that
    * tracks the blocks. Held here because the handler is registered with the
@@ -634,13 +646,20 @@ export function TerminalView({
       },
       hover: (_event, uri, range) => {
         hoveredHyperlink = { uri, range }
+        setLinkTarget({ uri, hint: openHint(term, live.current) })
       },
       leave: () => {
         hoveredHyperlink = null
+        setLinkTarget(null)
       },
     }
-    const linksAddon = new WebLinksAddon((_event, uri) =>
-      link.current!.onUrl(uri),
+    const linksAddon = new WebLinksAddon(
+      (_event, uri) => link.current!.onUrl(uri),
+      {
+        hover: (_event, uri) =>
+          setLinkTarget({ uri, hint: openHint(term, live.current) }),
+        leave: () => setLinkTarget(null),
+      },
     )
     // The addon registers its own provider, so the gate has to meet it at the
     // one call it makes — the same shape as `withoutLocalFonts` below, and for
@@ -808,6 +827,41 @@ export function TerminalView({
       window.addEventListener('blur', endPress)
     }
     screen.addEventListener('mousedown', onLinkMouseDown)
+    /** The plain URL the tracked-mode label shows, so a move along it does
+     *  not set the same label again. */
+    let trackedUri: string | null = null
+    /** The label object this handler put up. xterm's own hover may set one in
+     *  the same event, even for the same address, so clearing compares by
+     *  identity and takes down only this one. */
+    let trackedLabel: { uri: string; hint: string } | null = null
+    const showTracked = (uri: string | null) => {
+      if (uri === trackedUri) return
+      trackedUri = uri
+      const mine = trackedLabel
+      trackedLabel =
+        uri === null ? null : { uri, hint: openHint(term, live.current) }
+      const next = trackedLabel
+      setLinkTarget((shown) => next ?? (shown === mine ? null : shown))
+    }
+    /**
+     * Labels a plain URL while the agent reads the mouse. The gate offers
+     * xterm no links then, so the web-links addon never hears a hover — but
+     * the ⌘-click still opens one, and the label is the only thing that says
+     * so. An agent's hyperlink is xterm's own and labels itself.
+     */
+    const onTrackedMove = (event: MouseEvent) => {
+      if (!agentReadsMouse(term, live.current)) return showTracked(null)
+      const cell = cellAt(term, screen, event)
+      const hyperlink = hoveredHyperlink
+      if (!cell || (hyperlink && covers(hyperlink.range, cell, term.cols))) {
+        return showTracked(null)
+      }
+      const text = linkAt(ungated, cell, term.cols)?.text ?? null
+      showTracked(text && webHref(text) ? text : null)
+    }
+    const onTrackedLeave = () => showTracked(null)
+    screen.addEventListener('mousemove', onTrackedMove)
+    screen.addEventListener('mouseleave', onTrackedLeave)
     // `->`, `=>`, `!==` drawn as the single glyph the font has for them, for
     // the fonts that carry one, through xterm's character-joiner API — which
     // the WebGL renderer honours.
@@ -893,6 +947,16 @@ export function TerminalView({
       const needed = live.current && term.modes.mouseTrackingMode !== 'none'
       if (term.options.macOptionClickForcesSelection !== needed) {
         term.options.macOptionClickForcesSelection = needed
+        // The click that opens a link changed with it, and a label the
+        // tracked-mode handler put up belongs to a mode that just ended.
+        const mine = trackedLabel
+        trackedUri = null
+        trackedLabel = null
+        setLinkTarget((shown) =>
+          !shown || shown === mine
+            ? null
+            : { ...shown, hint: openHint(term, live.current) },
+        )
       }
     }
     term.onWriteParsed(() => {
@@ -1029,6 +1093,25 @@ export function TerminalView({
     let adopting = false
     /** Set once this view is torn down, for work still awaiting when it is. */
     let disposed = false
+    /** Spawns this tab's session and believes what the backend answers. */
+    const startSession = async (options: SpawnOptions) => {
+      try {
+        const started = await spawnPty(options, receiver())
+        epoch.current = started.epoch
+        // Until a hand-back the terminal is the agent's, whose output can
+        // say anything a shell can.
+        const handsBack = started.handbackToken !== null
+        integrated.current = started.shellIntegration && !handsBack
+        integratedAfterHandback.current = started.shellIntegration && handsBack
+        handbackToken.current = started.handbackToken
+        const early = earlyHandbacks.current ?? []
+        earlyHandbacks.current = null
+        early.forEach(acceptHandback)
+      } catch (error) {
+        term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`)
+      }
+    }
+
     const sync = () => {
       if (element.clientHeight === 0 || adopting) return
       fitAddon.fit()
@@ -1040,48 +1123,29 @@ export function TerminalView({
       started = true
       const { agentId, cwd, program, args, backend, distro, scrollback } =
         launch.current
-      void spawnPty(
-        {
-          id: sessionId,
-          cwd,
-          program,
-          args,
-          backend,
-          distro,
-          cols: term.cols,
-          rows: term.rows,
-          loginShell: true,
-          // Read through the ref, like every other setting here: flipping it
-          // must never re-run the spawn effect and start a second PTY.
-          journal: latest.current.journalEnabled,
-          // So a record remembers which agent wrote it, and the panel can
-          // offer that agent's own resume for the conversation.
-          agentId,
-          // Fixed for the life of the session: the agent reads it once, at
-          // start, so a tab changes mode by reopening the conversation.
-          scrollback,
-          // Read through the ref for the same reason as the journal flag.
-          // A plain shell, or the shell an agent hands its tab back to.
-          shellIntegration: latest.current.shellIntegration,
-        },
-        receiver(),
-      )
-        .then((started) => {
-          epoch.current = started.epoch
-          // Until a hand-back the terminal is the agent's, whose output can
-          // say anything a shell can.
-          const handsBack = started.handbackToken !== null
-          integrated.current = started.shellIntegration && !handsBack
-          integratedAfterHandback.current =
-            started.shellIntegration && handsBack
-          handbackToken.current = started.handbackToken
-          const early = earlyHandbacks.current ?? []
-          earlyHandbacks.current = null
-          early.forEach(acceptHandback)
-        })
-        .catch((error) =>
-          term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`),
-        )
+      void startSession({
+        id: sessionId,
+        cwd,
+        program,
+        args,
+        backend,
+        distro,
+        cols: term.cols,
+        rows: term.rows,
+        loginShell: true,
+        // Read through the ref, like every other setting here: flipping it
+        // must never re-run the spawn effect and start a second PTY.
+        journal: latest.current.journalEnabled,
+        // So a record remembers which agent wrote it, and the panel can
+        // offer that agent's own resume for the conversation.
+        agentId,
+        // Fixed for the life of the session: the agent reads it once, at
+        // start, so a tab changes mode by reopening the conversation.
+        scrollback,
+        // Read through the ref for the same reason as the journal flag.
+        // A plain shell, or the shell an agent hands its tab back to.
+        shellIntegration: latest.current.shellIntegration,
+      })
     }
 
     /**
@@ -1186,6 +1250,8 @@ export function TerminalView({
       clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
       screen.removeEventListener('mousedown', onLinkMouseDown)
+      screen.removeEventListener('mousemove', onTrackedMove)
+      screen.removeEventListener('mouseleave', onTrackedLeave)
       endPress()
       // Named by epoch, never by id alone: this tab may already be respawning
       // under the same id, and a kill that arrives after would otherwise end
@@ -1484,6 +1550,7 @@ export function TerminalView({
       {findOpen && search.current && (
         <FindBar search={search.current} accent={accent} onClose={closeFind} />
       )}
+      {linkTarget && <LinkHover {...linkTarget} />}
       {dropping && (
         <div
           aria-hidden="true"
@@ -1913,9 +1980,20 @@ const SEEK_SETTLE_MS = 40
 const agentReadsMouse = (term: Terminal, live: boolean) =>
   live && term.modes.mouseTrackingMode !== 'none'
 
-/** The modifier that turns a click into "open this link". */
+/** The modifier that opens a link while the program is reading the mouse. */
 const opensLink = (event: MouseEvent) =>
   IS_MAC ? event.metaKey : event.ctrlKey
+
+/**
+ * Which click the label says opens a link: a plain one, unless the program
+ * in the tab is reading the mouse and takes the plain click itself.
+ */
+const openHint = (term: Terminal, live: boolean) =>
+  !agentReadsMouse(term, live)
+    ? 'click to open'
+    : IS_MAC
+      ? '⌘-click to open'
+      : 'Ctrl-click to open'
 
 /** The buffer cell under the pointer, 1-based as `ILink.range` counts. */
 function cellAt(term: Terminal, screen: Element, event: MouseEvent) {

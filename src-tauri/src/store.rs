@@ -110,7 +110,7 @@ struct StateChange {
 /// `main` always opens, so when its own list is gone — it was closed while
 /// another window stayed open — one stored window's tabs become `main`'s
 /// rather than opening beside a blank `main`.
-pub fn stored_windows(app: &AppHandle) -> Vec<String> {
+pub fn windows_to_restore(app: &AppHandle) -> Vec<String> {
     let store = app.state::<Store>();
     let mut held = store.0.lock().expect("store poisoned");
     let entries = held.get_or_insert_with(|| load(app));

@@ -14,10 +14,9 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::window::{desktop_position, target_under_cursor, Carry, DropTarget, Point, Strips};
-
-/// The label window's own label, which every list of real windows skips.
-pub const LABEL: &str = "ghost";
+use crate::window::{
+    desktop_position, target_under_cursor, Carry, DropTarget, Point, Strips, DRAG_LABEL,
+};
 
 /// Numbers each drag, so the follow loop of one that has ended stops even if
 /// another has started — and holds what the label last said, for a label
@@ -145,7 +144,7 @@ pub fn ghost_hide(app: AppHandle, ghost: tauri::State<'_, Ghost>, drag: u64) {
         return;
     }
     *ghost.said.lock() = None;
-    if let Some(label) = app.get_webview_window(LABEL) {
+    if let Some(label) = app.get_webview_window(DRAG_LABEL) {
         let _ = label.hide();
     }
 }
@@ -153,7 +152,7 @@ pub fn ghost_hide(app: AppHandle, ghost: tauri::State<'_, Ghost>, drag: u64) {
 /// Closes the label's window, for when the last real window has closed: a
 /// hidden window still keeps the app running.
 pub fn close(app: &AppHandle) {
-    if let Some(label) = app.get_webview_window(LABEL) {
+    if let Some(label) = app.get_webview_window(DRAG_LABEL) {
         let _ = label.destroy();
     }
 }
@@ -211,7 +210,7 @@ fn follow(app: &AppHandle, label: &WebviewWindow, drag: &Drag, request: &GhostRe
             };
             if said.as_ref() != Some(&state) {
                 *ghost.said.lock() = Some(state.clone());
-                let _ = app.emit_to(LABEL, "muster://ghost", state.clone());
+                let _ = app.emit_to(DRAG_LABEL, "muster://ghost", state.clone());
                 // Shown only for a drag that is still on, and checked again
                 // after: a hide that ran while this frame was working out
                 // the target must not be undone by it.
@@ -253,10 +252,10 @@ fn hover(x: Option<f64>, request: &GhostRequest) -> Hover {
 
 /// The label's window, built hidden on first use and kept for the next drag.
 fn label_window(app: &AppHandle) -> Result<WebviewWindow, String> {
-    if let Some(label) = app.get_webview_window(LABEL) {
+    if let Some(label) = app.get_webview_window(DRAG_LABEL) {
         return Ok(label);
     }
-    let label = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::default())
+    let label = WebviewWindowBuilder::new(app, DRAG_LABEL, WebviewUrl::default())
         .title("")
         .inner_size(300.0, 56.0)
         .decorations(false)

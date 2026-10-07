@@ -66,15 +66,15 @@ fn a_drop_just_off_the_strip_still_counts_and_further_off_does_not() {
 }
 
 #[test]
-fn a_drop_over_its_own_window_is_told_apart_from_open_desktop() {
+fn a_drop_over_its_own_window_wants_a_window_of_its_own() {
     let windows = [window("main", 0.0, 1.0, 1)];
     assert_eq!(
         drop_target((500.0, 500.0), "main", &windows, false),
-        DropTarget::Source
+        DropTarget::Outside
     );
     assert_eq!(
         drop_target((500.0, 120.0), "main", &windows, false),
-        DropTarget::Source
+        DropTarget::Outside
     );
 }
 
@@ -109,7 +109,7 @@ fn a_strip_behind_the_dragging_window_cannot_take_the_drop() {
     let windows = [window("main", 0.0, 1.0, 2), window("w-2", 500.0, 1.0, 1)];
     assert_eq!(
         drop_target((700.0, 120.0), "main", &windows, false),
-        DropTarget::Source
+        DropTarget::Outside
     );
 }
 

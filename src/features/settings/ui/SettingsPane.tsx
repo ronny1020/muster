@@ -271,7 +271,7 @@ export function SettingsPane() {
           </Row>
           <Row
             label="Shell integration"
-            hint="Lets a zsh or bash tab offer a copy control per command and complete what you type from its history. Applies to the next shell tab."
+            hint="Lets a zsh or bash tab offer a copy control per command and complete what you type from its history — the shell an agent tab hands back to included. Applies to tabs started after the change."
           >
             <Toggle
               checked={settings.shellIntegration}

@@ -100,18 +100,6 @@ export function insertionIndex(slots: Slot[], x: number) {
   return index < 0 ? slots.length : index
 }
 
-/** Where a tab dropped `x` CSS pixels along this window's strip joins it. */
-export function stripIndexAt(x: number) {
-  const tabs = document.querySelectorAll<HTMLElement>(
-    '[role="tablist"] [role="tab"]',
-  )
-  const slots = Array.from(tabs, (tab) => {
-    const box = tab.getBoundingClientRect()
-    return { left: box.left, width: box.width }
-  })
-  return insertionIndex(slots, x)
-}
-
 const TEAR_PX = 30
 const RETURN_PX = 18
 const EDGE_PX = 32

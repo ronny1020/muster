@@ -14,6 +14,10 @@ export const HANDBACK_VERB = 'muster-handback'
  * `null` for anything else.
  */
 export function parseHandback(data: string, token: string): number | null {
+  // Checked before anything is split: this runs on every `OSC 777` an agent
+  // prints, and one can be megabytes long.
+  if (data.length > MAX_ANNOUNCEMENT || !data.startsWith(`${HANDBACK_VERB};`))
+    return null
   const [verb, carried, status, ...rest] = data.split(';')
   if (verb !== HANDBACK_VERB || carried !== token || rest.length > 0)
     return null
@@ -21,6 +25,9 @@ export function parseHandback(data: string, token: string): number | null {
   const code = Number(status)
   return code <= 255 ? code : null
 }
+
+/** The verb, a 16-digit token and a status, with room to spare. */
+const MAX_ANNOUNCEMENT = 64
 
 /** What a notification says once an agent has handed its tab back. */
 export const handbackNotice = (code: number) =>

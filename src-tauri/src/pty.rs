@@ -57,6 +57,9 @@ struct Session {
     /// The label of the window showing this session, so closing one window
     /// ends its own sessions and leaves every other window's running.
     window: Mutex<String>,
+    /// Whether an `sh` holds the terminal for an agent — `platform::hands_back`
+    /// — so anything that looks the agent up by pid has to look past it.
+    hands_back: bool,
 }
 
 /// Counts every session ever registered, so one can be told apart from
@@ -460,7 +463,7 @@ pub fn pty_spawn(
         via_shell: login_shell,
     };
     let hands_back = platform::hands_back(&launch);
-    let handback_token = hands_back.then(new_token);
+    let handback_token = hands_back.then(random_hex);
 
     // A plain shell, or the one an agent hands back to, and only on the host:
     // a WSL session's shell reads the distro's filesystem, where a path
@@ -579,6 +582,7 @@ pub fn pty_spawn(
         killed: killed.clone(),
         output: output.clone(),
         window: Mutex::new(window.label().to_string()),
+        hands_back,
     });
     // Held weakly by the reader thread, so it can tell "my child exited" from
     // "a newer session has taken this id" — see `Sessions::forget`.
@@ -715,13 +719,13 @@ pub fn pty_spawn(
     })
 }
 
-/// A fresh, unguessable token for one session's hand-back announcement.
+/// Sixteen random hex digits, unpredictable to a program in the session.
 ///
-/// From the standard library's randomly keyed hasher: it needs to be
+/// From the standard library's randomly keyed hasher: they need to be
 /// unpredictable to a program in the session, not cryptographically strong,
 /// and the hasher's keys are secret — seeded from the OS once per thread and
 /// stepped for every `RandomState`.
-fn new_token() -> String {
+pub fn random_hex() -> String {
     use std::hash::{BuildHasher, Hasher};
     let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
     hasher.write_u128(
@@ -798,18 +802,44 @@ pub async fn pty_cwd(
 ) -> Result<Option<String>, String> {
     // An async command holding a `State` reference has to return `Result`, so
     // "no directory to report" is `Ok(None)` rather than an error.
-    let Some(leader) = sessions
+    let Some((leader, hands_back)) = sessions
         .get(&id)
         .ok()
-        .and_then(|session| foreground_of(&session))
+        .and_then(|session| Some((foreground_of(&session)?, session.hands_back)))
     else {
         return Ok(None);
     };
-    // Reading it costs a subprocess on macOS, once per tab per poll, so it
-    // belongs on the blocking pool rather than an async worker.
-    tauri::async_runtime::spawn_blocking(move || platform::process_cwd(leader))
-        .await
-        .map_err(|error| error.to_string())
+    // Reading it costs a subprocess on macOS — and in a session that hands
+    // back, a `ps` on every poll for the life of the tab, plus a `pgrep`
+    // while the `sh` still holds the terminal — once per tab per poll, so it
+    // belongs on the blocking pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        let process = if hands_back {
+            past_wrapper(leader)
+        } else {
+            leader
+        };
+        platform::process_cwd(process)
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+/// The process whose directory the footer shows when `leader` holds the
+/// terminal: the agent, while the `sh` that hands an agent's tab back is the
+/// group's leader — the agent shares its group and the `sh` never changes
+/// directory. The session-id watcher descends the same way.
+fn past_wrapper(leader: i32) -> i32 {
+    let Ok(pid) = u32::try_from(leader) else {
+        return leader;
+    };
+    if !platform::is_wrapper(pid) {
+        return leader;
+    }
+    platform::children_of(pid)
+        .first()
+        .and_then(|child| i32::try_from(*child).ok())
+        .unwrap_or(leader)
 }
 
 /// Ends a session: signals the child's whole process group, then drops the

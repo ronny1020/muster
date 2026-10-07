@@ -53,8 +53,9 @@ export interface Settings {
   scrollback: number
   cursorBlink: boolean
   /**
-   * Whether a plain shell session starts with Muster's own startup file, which
-   * is what reports where each prompt ends and each command's output begins.
+   * Whether a plain shell session — and the shell an agent session hands its
+   * terminal back to — starts with Muster's own startup file, which is what
+   * reports where each prompt ends and each command's output begins.
    * Everything drawn around a command — the copy control, the completion as
    * you type — needs it, and nothing else in a session reports it.
    *

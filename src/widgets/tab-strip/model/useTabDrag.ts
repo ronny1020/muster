@@ -45,7 +45,7 @@ export interface TabDragHandlers {
    * drag holds — the tab out of the strip — until this settles, so it does
    * not flash back into its place while it is being handed over.
    */
-  onTearOff(id: string, grab: Grab): Promise<void> | void
+  onTearOff(id: string, grab: Grab): Promise<void>
   /**
    * The tab left the strip, or came back to it, or the drag ended off it.
    * `grab` places what follows the pointer.
@@ -84,7 +84,6 @@ export function useTabDrag(
     const list = strip.current
     if (event.button !== 0 || !list || abandon.current) return
 
-    const row: HTMLElement = list
     const {
       pointerId,
       clientX: startX,
@@ -116,7 +115,13 @@ export function useTabDrag(
       setDrag({ id, from, to, left, slots: measured, settling: false, torn })
     }
     const grab = (measured: Slot[]) =>
-      grabOf(row, measured, from, startScroll, { x: startX, y: startY })
+      grabOf({
+        list,
+        slots: measured,
+        from,
+        startScroll,
+        press: { x: startX, y: startY },
+      })
 
     const scrollAtEdge = (measured: Slot[]) => {
       if (torn) {
@@ -175,7 +180,7 @@ export function useTabDrag(
       if (up.pointerId !== pointerId) return
       if (!torn || !slots) return settle(to)
       detach()
-      void Promise.resolve(onTearOff(id, grab(slots))).finally(finish)
+      void onTearOff(id, grab(slots)).finally(finish)
     }
 
     function onCancel(cancel: globalThis.PointerEvent) {
@@ -275,13 +280,19 @@ const viewport = () => ({
  * from the slots measured before the drag, since the tab itself is still
  * wherever the drag carried it.
  */
-function grabOf(
-  list: HTMLElement,
-  slots: Slot[],
-  from: number,
-  startScroll: number,
-  press: { x: number; y: number },
-): Grab {
+function grabOf({
+  list,
+  slots,
+  from,
+  startScroll,
+  press,
+}: {
+  list: HTMLElement
+  slots: Slot[]
+  from: number
+  startScroll: number
+  press: { x: number; y: number }
+}): Grab {
   const origin = list.getBoundingClientRect().left
   const tabLeft = origin - startScroll + slots[from]!.left
   return {

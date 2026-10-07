@@ -20,11 +20,42 @@ use crate::pty::Sessions;
 pub struct Handoffs(Mutex<HashMap<String, Vec<String>>>);
 
 impl Handoffs {
+    fn push(&self, label: &str, handoff: String) {
+        self.0
+            .lock()
+            .entry(label.to_string())
+            .or_default()
+            .push(handoff);
+    }
+
+    /// Takes back the newest tab sent to `label`, for a send that failed.
+    fn pop_last(&self, label: &str) {
+        if let Some(queued) = self.0.lock().get_mut(label) {
+            queued.pop();
+        }
+    }
+
+    fn take(&self, label: &str) -> Vec<String> {
+        self.0.lock().remove(label).unwrap_or_default()
+    }
+
     /// What was waiting for a window that closed before taking it — a
     /// serialized scrollback each, which would otherwise be held for the run.
     pub fn forget(&self, label: &str) {
-        self.0.lock().remove(label);
+        self.take(label);
     }
+}
+
+/// The drag label's window — see `ghost.rs`. Not a window anyone works in, so
+/// every list of real windows skips it.
+pub const DRAG_LABEL: &str = "ghost";
+
+/// Every window but the drag label, with its label.
+pub fn real_windows(app: &AppHandle) -> Vec<(String, WebviewWindow)> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, _)| label != DRAG_LABEL)
+        .collect()
 }
 
 /// Every window but `main` is labelled `w-<hex>` — the capability file
@@ -79,12 +110,7 @@ pub async fn window_open(
         sessions.move_to(id, &label);
     }
     if let Some(handoff) = request.handoff {
-        handoffs
-            .0
-            .lock()
-            .entry(label.clone())
-            .or_default()
-            .push(handoff);
+        handoffs.push(&label, handoff);
     }
     let place = Placement {
         // A maximized window's size is the screen's, which is no size for a
@@ -98,7 +124,7 @@ pub async fn window_open(
         }),
     };
     if let Err(error) = open(&app, &label, place) {
-        handoffs.0.lock().remove(&label);
+        handoffs.forget(&label);
         if let Some(id) = &request.session {
             sessions.move_to(id, window.label());
         }
@@ -228,10 +254,8 @@ pub fn target_under_cursor(
 ) -> Option<(DropTarget, (f64, f64))> {
     let cursor = desktop_cursor(app, primary)?;
     let reported = strips.rects.lock().clone();
-    let placed: Vec<Placed> = app
-        .webview_windows()
+    let placed: Vec<Placed> = real_windows(app)
         .into_iter()
-        .filter(|(label, _)| label != crate::ghost::LABEL)
         .filter_map(|(label, other)| {
             let recency = strips.recency(&label);
             placed(label, &other, reported.get(other.label()), recency)
@@ -246,11 +270,8 @@ pub fn target_under_cursor(
 pub enum DropTarget {
     /// Another window's tab strip, at `x` CSS pixels along that window.
     Strip { label: String, x: f64 },
-    /// Over the window it came from. A tab with others beside it gets a new
-    /// window there all the same, as in Chrome; it matters only to a window's
-    /// only tab, which is already where it belongs.
-    Source,
-    /// No window: the tab wants one of its own.
+    /// No other window's strip — open desktop, or the window it came from,
+    /// where a tab gets a window of its own as in Chrome.
     Outside,
 }
 
@@ -291,7 +312,7 @@ pub fn drop_target(
         (left..right).contains(&cursor.0) && (top..bottom).contains(&cursor.1)
     };
     if !carrying && windows.iter().any(|w| w.label == source && inside(w)) {
-        return DropTarget::Source;
+        return DropTarget::Outside;
     }
     let over = windows
         .iter()
@@ -435,18 +456,11 @@ pub fn window_send(
     if let Some(id) = &session {
         sessions.move_to(id, &label);
     }
-    handoffs
-        .0
-        .lock()
-        .entry(label.clone())
-        .or_default()
-        .push(handoff);
+    handoffs.push(&label, handoff);
     if let Err(error) = target.emit_to(&label, "muster://handoff", ()) {
         // Taken back whole: the sender resumes the tab, so nothing of it may
         // stay queued for a window that would adopt it later.
-        if let Some(queued) = handoffs.0.lock().get_mut(&label) {
-            queued.pop();
-        }
+        handoffs.pop_last(&label);
         if let Some(id) = &session {
             sessions.move_to(id, window.label());
         }
@@ -460,12 +474,12 @@ pub fn window_send(
 /// The tabs waiting for the calling window, which it now owns.
 #[tauri::command]
 pub fn window_take(window: tauri::Window, handoffs: tauri::State<'_, Handoffs>) -> Vec<String> {
-    handoffs.0.lock().remove(window.label()).unwrap_or_default()
+    handoffs.take(window.label())
 }
 
 /// Reopens the windows whose tab lists were stored when the app last quit.
 pub fn restore(app: &AppHandle) {
-    for label in crate::store::stored_windows(app) {
+    for label in crate::store::windows_to_restore(app) {
         let _ = open(app, &label, Placement::default());
     }
 }
@@ -473,18 +487,16 @@ pub fn restore(app: &AppHandle) {
 /// The window to answer an app-wide gesture with — a Dock click, a second
 /// launch: the focused one, else `main`, else any.
 pub fn front(app: &AppHandle) -> Option<WebviewWindow> {
-    let windows = app.webview_windows();
-    windows
-        .values()
-        .filter(|window| window.label() != crate::ghost::LABEL)
-        .find(|window| window.is_focused().unwrap_or(false))
-        .or_else(|| windows.get("main"))
-        .or_else(|| {
-            windows
-                .values()
-                .find(|window| window.label() != crate::ghost::LABEL)
-        })
-        .cloned()
+    let windows = real_windows(app);
+    let pick = |wanted: &dyn Fn(&(String, WebviewWindow)) -> bool| {
+        windows
+            .iter()
+            .find(|entry| wanted(entry))
+            .map(|(_, window)| window.clone())
+    };
+    pick(&|(_, window)| window.is_focused().unwrap_or(false))
+        .or_else(|| pick(&|(label, _)| label == "main"))
+        .or_else(|| pick(&|_| true))
 }
 
 fn open(app: &AppHandle, label: &str, place: Placement) -> Result<WebviewWindow, String> {
@@ -521,15 +533,7 @@ fn open(app: &AppHandle, label: &str, place: Placement) -> Result<WebviewWindow,
 /// A label no window has had: the store keys tab lists by label, so a reused
 /// one would open a new window onto a closed window's tabs.
 fn new_label() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-    hasher.write_u128(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or_default(),
-    );
-    format!("w-{:016x}", hasher.finish())
+    format!("w-{}", crate::pty::random_hex())
 }
 
 #[cfg(test)]

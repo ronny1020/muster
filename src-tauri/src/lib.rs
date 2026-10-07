@@ -7,6 +7,7 @@ mod fonts;
 mod ghost;
 mod image;
 mod journal;
+mod link;
 mod output;
 mod platform;
 mod pty;
@@ -84,7 +85,7 @@ pub fn run() {
                 )
                 // The drag label goes wherever the cursor is, and a saved
                 // place for it would restore it there.
-                .with_denylist(&[ghost::LABEL])
+                .with_denylist(&[window::DRAG_LABEL])
                 .build(),
         )
         // The webview's own browser shortcuts, turned off. `Ctrl+R` or `F5`
@@ -151,6 +152,7 @@ pub fn run() {
             editor::editors,
             editor::open_in_editor,
             image::read_image,
+            link::link_preview,
             platform::platform_info,
             platform::drop_paths,
             shell::shell_history,
@@ -256,8 +258,8 @@ fn prevent_default<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// navigation — against the Level AA bar in the root AGENTS.md, and against
 /// `shared/ui/ContextMenu`, which exists to be reachable from the keyboard.
 /// `CONTEXT_MENU` is the right click the file tree's own menu is built on, and
-/// The root AGENTS.md notes that hanging it off `onContextMenu` is what also makes it
-/// answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
+/// the root AGENTS.md notes that hanging it off `onContextMenu` is what also
+/// makes it answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
 /// the native menu away risks taking that with it.
 ///
 /// `DEV_TOOLS` is left alone in a debug build for the obvious reason.
@@ -334,11 +336,9 @@ fn without_dot_segments(path: std::path::PathBuf) -> std::path::PathBuf {
 ///
 /// The drag label is not a window anyone works in, so it never counts.
 fn has_other_windows(window: &tauri::Window) -> bool {
-    window
-        .app_handle()
-        .webview_windows()
-        .keys()
-        .any(|label| label != window.label() && label != ghost::LABEL)
+    window::real_windows(window.app_handle())
+        .iter()
+        .any(|(label, _)| label != window.label())
 }
 
 /// Brings a window back when the Dock icon is clicked.

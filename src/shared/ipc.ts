@@ -302,6 +302,19 @@ export interface ImagePreview {
 export const readImage = (path: string, within?: string) =>
   invoke<ImagePreview>('read_image', { path, within: within ?? null })
 
+export interface LinkMeta {
+  url: string
+  title: string | null
+  description: string | null
+  siteName: string | null
+  /** `data:` URI for the page's preview image, if it published one. */
+  imageDataUrl: string | null
+}
+
+/** Reads what a page says about itself, for the link hover label. */
+export const linkPreview = (url: string) =>
+  invoke<LinkMeta>('link_preview', { url })
+
 export interface Branch {
   /** What a checkout would switch to; for a remote branch, the local name. */
   name: string
@@ -416,9 +429,7 @@ export const reportStrip = (rect: Rect) =>
 
 /** What a tab dragged out of this window would land on, if dropped now. */
 export type DropTarget =
-  | { kind: 'strip'; label: string; x: number }
-  | { kind: 'source' }
-  | { kind: 'outside' }
+  { kind: 'strip'; label: string; x: number } | { kind: 'outside' }
 
 /** `carrying` for a window's only tab, which has been moving its window. */
 export const dropTarget = (carrying: boolean) =>

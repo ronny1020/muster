@@ -14,19 +14,20 @@ you, with your full privileges. **"An attacker who can already run code in the
 webview can run arbitrary commands" is not a vulnerability here** — that is the
 product, and `pty_spawn` grants it by design.
 
-What _is_ in scope is anything that gives one of these five a capability it
+What _is_ in scope is anything that gives one of these four a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                     |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, and a click on the text opens that target in the browser; only `http` and `https` targets are offered. |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                        |
-| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                             |
+| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, so the target is shown at the pane's corner while the pointer is over one, and a click opens it in the browser — which also means a row an agent made one big link opens its page on a click meant only to focus the pane; only `http` and `https` targets are offered. |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-None of those four is you, and none of them should be able to reach the
-network on your behalf, read a file you did not choose, or put an argument in
-front of a program you did not type.
+None of those four is you, and none of them should be able to read a file you
+did not choose or put an argument in front of a program you did not type. The
+network is the one exception, accepted on purpose: hovering a link fetches its
+page for the preview — see "What hovering a link fetches" below.
 
 The last one is worth spelling out, because it is the only inbound channel a
 released build has. A development build asked for with `bun run dev:mcp`
@@ -144,8 +145,10 @@ What bounds it:
   merely carries the sequence — a file the agent prints — is ignored. An agent
   that goes looking can still find the token wherever the OS lets a same-user
   process read another's starting environment — Linux's
-  `/proc/<pid>/environ` does; forged, the announcement ends the tab's agent
-  phase early and raises a false notification, and reaches nothing else.
+  `/proc/<pid>/environ` does, and macOS's `ps -E` likely does too. Forged, the
+  announcement ends the tab's agent phase early, raises a false notification,
+  and opens that tab's `OSC 133` gate — see the shell-integration section
+  below for what that reaches.
   A tab moved to another window carries the token with it, inside the app —
   through Rust, never through the terminal stream — and its screen travels
   as a serialized snapshot: the characters on screen and the colour and
@@ -306,6 +309,34 @@ component with `symlink_metadata` and `O_NOFOLLOW`, refuses anything that is
 not a regular file, refuses a file containing a NUL byte, and stops at 2 MB.
 Treat the directory test as "where the agent said it was", not as a boundary.
 
+## What hovering a link fetches
+
+Resting the pointer on an `http` or `https` link for a quarter of a second
+makes Muster request that page itself (`link.rs`), and then the image the page
+names — or failing that, its icon — to draw the preview in the corner label.
+A Stack Exchange question is the one exception: its pages answer every
+non-browser client with a Cloudflare challenge, so the question's id goes to
+`api.stackexchange.com` instead and the site's icon comes from
+`cdn.sstatic.net`. No click is involved, and the
+link was chosen by whoever printed it — usually an agent.
+
+That is a choice the user made knowingly, and it has no address policy:
+`localhost`, the local network and a cloud metadata address are fetched like
+any other host, so an agent that prints `http://127.0.0.1:8080/admin/reset`
+gets a `GET` sent there when the pointer crosses it. A link-preview request
+also tells the page's server that someone looked, and when. What bounds it is
+small: a `GET` only, with no cookies and no credentials; at most five
+redirects, 8 seconds for the whole preview, 512 KB of page and 1 MB of image;
+an image only of an allowlisted type, returned as a `data:` URI so the webview
+fetches nothing; and one successful fetch per address per window, kept until 64
+others replace it — a failed one is tried again on the next hover. The text
+that comes back is rendered as React text, never as markup, with control
+characters and direction overrides removed so a title cannot reorder itself;
+and the label names the link's real host whole, before the address, because a
+long address cut short can read as a different host.
+
+Opening a link never waits on the preview and never depends on what it said.
+
 ## What the message rail says, and what it does not
 
 The dots down the terminal's right edge have two sources, and they are not
@@ -433,12 +464,15 @@ properties hold, and each has a test:
 - **A diagram cannot navigate the window.** Mermaid's `click` directive becomes
   a real anchor in the SVG and `securityLevel: strict` does not prevent that,
   so the destination is moved to where every other link in a document goes:
-  the system browser, never the app's own window.
+  the system browser, never the app's own window — and only for an `http` or
+  `https` address.
 
 Rendering a document also loads code — markdown-it, and mermaid with DOMPurify
 for a diagram — in response to what a file contains. Markdown is parsed with
 raw HTML disabled, links carry no `href` and are handed to the system browser
-as a terminal URL is, and mermaid runs at `securityLevel: strict`.
+as a terminal URL is — a web address only: `webHref` refuses `mailto:`,
+`tel:` and every other scheme before the opener sees it — and mermaid runs at
+`securityLevel: strict`.
 
 ## Known gaps
 
