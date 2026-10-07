@@ -25,6 +25,11 @@ updates:
       frontend:
         patterns: ['*']
         update-types: [minor, patch]
+    # An xterm addon's 0.x minor is the build for xterm's next major, so it
+    # moves with the core by hand — see src/features/terminal/AGENTS.md.
+    ignore:
+      - dependency-name: '@xterm/addon-*'
+        update-types: ['version-update:semver-minor']
 
   # Actions drift silently: a workflow keeps working on an old major for years
   # until the runner drops it.
