@@ -30,7 +30,7 @@ fn zsh_is_redirected_by_zdotdir_and_told_where_the_users_own_files_are() {
     );
     assert!(it
         .env
-        .contains(&("ZDOTDIR".into(), "/data/shell/zsh".into())));
+        .contains(&("ZDOTDIR".into(), host_path("/data/shell", "zsh"))));
     assert!(it
         .env
         .contains(&("USER_ZDOTDIR".into(), "/home/ada".into())));
@@ -64,7 +64,10 @@ fn bash_takes_an_init_file_in_place_of_its_arguments() {
     );
     assert_eq!(
         it.args,
-        vec!["--init-file".to_string(), "/data/shell/bash.sh".to_string()]
+        vec![
+            "--init-file".to_string(),
+            host_path("/data/shell", "bash.sh")
+        ]
     );
     // bash ignores an init file for a login shell, so `-l` is dropped and the
     // script runs the login chain itself — which it only does when told.
@@ -130,4 +133,10 @@ fn a_command_written_across_lines_is_dropped_rather_than_joined() {
 fn a_command_carrying_a_control_byte_is_refused() {
     let history = "ls\nrm -rf /\u{1b}[200~\n";
     assert_eq!(commands_in(history), vec!["ls"]);
+}
+
+/// The integration hands the shell paths in the host's own form, so the
+/// separator the test expects is the host's too.
+fn host_path(dir: &str, name: &str) -> String {
+    Path::new(dir).join(name).to_string_lossy().into_owned()
 }
