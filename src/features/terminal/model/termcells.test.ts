@@ -3,7 +3,9 @@ import { expect, test } from 'bun:test'
 import {
   type Buffer,
   type BufferLine,
+  covers,
   flattenLogicalLine,
+  linkAt,
   rangeOf,
 } from './termcells'
 
@@ -141,4 +143,37 @@ test('offsets outside the line yield no range rather than a wrong one', () => {
 
 test('a missing row flattens to nothing', () => {
   expect(flattenLogicalLine(buffer([]), 0)).toEqual({ text: '', positions: [] })
+})
+
+const range = (from: [number, number], to: [number, number]) => ({
+  start: { x: from[0], y: from[1] },
+  end: { x: to[0], y: to[1] },
+})
+
+test('a range covers both of its ends', () => {
+  const link = range([5, 2], [9, 2])
+  expect(covers(link, { x: 5, y: 2 }, 80)).toBe(true)
+  expect(covers(link, { x: 9, y: 2 }, 80)).toBe(true)
+  expect(covers(link, { x: 10, y: 2 }, 80)).toBe(false)
+})
+
+test('a range wrapped across rows covers the start of the next row', () => {
+  const link = range([70, 3], [12, 4])
+  expect(covers(link, { x: 1, y: 4 }, 80)).toBe(true)
+  expect(covers(link, { x: 69, y: 3 }, 80)).toBe(false)
+  expect(covers(link, { x: 13, y: 4 }, 80)).toBe(false)
+})
+
+test('the first source with a link under the cell wins', () => {
+  const source = (text: string, from: number, to: number) => ({
+    provideLinks: (
+      row: number,
+      callback: (
+        links?: { text: string; range: ReturnType<typeof range> }[],
+      ) => void,
+    ) => callback([{ text, range: range([from, row], [to, row]) }]),
+  })
+  const sources = [source('url', 5, 30), source('path', 13, 30)]
+  expect(linkAt(sources, { x: 20, y: 7 }, 80)?.text).toBe('url')
+  expect(linkAt(sources, { x: 2, y: 7 }, 80)).toBeUndefined()
 })

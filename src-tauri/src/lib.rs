@@ -7,7 +7,6 @@ mod fonts;
 mod ghost;
 mod image;
 mod journal;
-mod link;
 mod output;
 mod platform;
 mod pty;
@@ -152,7 +151,6 @@ pub fn run() {
             editor::editors,
             editor::open_in_editor,
             image::read_image,
-            link::link_preview,
             platform::platform_info,
             platform::drop_paths,
             shell::shell_history,

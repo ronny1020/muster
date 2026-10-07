@@ -104,8 +104,8 @@ bun test                          # settings, deck, persist, flags, git chips,
                                   # `test/layers`, which
                                   # enforces the import direction
 cd src-tauri && cargo test --lib  # git parsing, shell quoting, cwd reading, WSL
-                                  # paths, image MIME, link metadata and the SSRF
-                                  # guard, session lookup, directory creation,
+                                  # paths, image MIME, session lookup,
+                                  # directory creation,
                                   # editor argv, diff and numstat parsing, drop
                                   # text and what it refuses, literal pathspecs,
                                   # symlink refusal, verbatim patches, ignored
@@ -171,8 +171,8 @@ building.
 | Branch filtering and switch warnings                  | `src/features/workspace/model/branches.ts`                         |
 | Git chips, and the revision everything re-reads on    | `src/features/workspace/model/status.ts`                           |
 | Paths and URLs in terminal output                     | `src/features/terminal/model/termlinks.ts`                         |
+| Which link a click landed on                          | `src/features/terminal/model/termcells.ts`                         |
 | Local image reads                                     | `src-tauri/src/image.rs`                                           |
-| URL metadata fetching                                 | `src-tauri/src/link.rs`                                            |
 | Agent session history                                 | `src-tauri/src/sessions.rs`                                        |
 | Recording a session, and what a record remembers      | `src-tauri/src/journal.rs`                                         |
 | Second-launch, window state, swallowed shortcuts      | `src-tauri/src/lib.rs`                                             |

@@ -20,7 +20,6 @@ security:
   - changed-files:
       - any-glob-to-any-file:
           - 'src-tauri/capabilities/**'
-          - 'src-tauri/src/link.rs'
           - 'src-tauri/src/image.rs'
           - 'src-tauri/tauri.conf.json'
           - 'SECURITY.md'

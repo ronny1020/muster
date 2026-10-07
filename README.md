@@ -173,8 +173,8 @@ and Scoop routes additionally verify a checksum recorded in their manifests.
 
 ### 🕶️ Privacy
 
-Muster makes no network requests of its own beyond fetching a link you click
-for its preview card. It has no telemetry, no update check, and no accounts — it
+Muster makes no network requests of its own: a link you click opens in your
+browser, which makes the request. It has no telemetry, no update check, and no accounts — it
 reads your filesystem and git state, and runs the CLIs you point it at, locally.
 Those CLIs do talk to their own providers, on their own terms, exactly as they
 would in your usual terminal. The drawers' **Pull** and **Push** run your own
@@ -301,7 +301,11 @@ the folder it started in, and the tooltip says so.
 
 ## 🖱️ Clicking things in the output
 
-Agents print paths and URLs constantly, and all of them are live:
+Agents print paths and URLs constantly, and all of them are live. While the
+program in a tab is reading the mouse — a Clicks tab's agent, or `vim` or
+`tmux` with the mouse on — it takes the plain click, so a link there opens on
+**⌘-click** (**Ctrl-click** on Windows and Linux) instead. Paths and plain URLs
+are not underlined there; a hyperlink the agent drew still is:
 
 | You click                                                      | Muster does                                                                                                      |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -309,7 +313,7 @@ Agents print paths and URLs constantly, and all of them are live:
 | An image path it has not changed — `/tmp/shot.png`             | Opens it in a preview overlay                                                                                    |
 | An unchanged file inside the session's directory               | Opens it in the file column beside the terminal, so reading it does not take you out of the tab                  |
 | Any other path — `src/entities/tab/model/deck.ts:187`          | Opens it in your editor; VS Code, Cursor, Antigravity IDE, Windsurf, VSCodium and Insiders also jump to the line |
-| A URL                                                          | Shows a card with the page's title, description and preview image, and a button to open it                       |
+| A URL                                                          | Opens it in your browser                                                                                         |
 
 The rows are in the order Muster asks the questions: a path that names a changed
 file opens as a diff before anything else is considered, so an image the agent
@@ -329,15 +333,11 @@ Tools that emit images as terminal escape sequences work too: Sixel and
 iTerm2's inline-image protocol are both supported, so `imgcat`, `chafa
 --format=sixel` and `timg` render in place.
 
-Muster reads a URL's metadata only when you click it, never as output scrolls
-past — a page fetched automatically would turn any URL an agent printed into a
-tracking pixel. A URL that points straight at a private or loopback address is
-refused.
-
-> Known gap: every hop of a redirect is checked, but the hostname is resolved
-> once to check it and again to connect, so a record that changes between the
-> two remains a theoretical way past it. Treat clicking an untrusted link as a
-> request that may reach your own network.
+A link an agent drew as a hyperlink — Claude Code's `#604` pull-request links,
+or a long URL it breaks across rows — opens the `http` or `https` address it
+carries rather than the text on screen, so the page that opens is not always
+the one the text names — treat a hyperlink an agent drew like a link in an
+email.
 
 ## 🪣 Dropping files in
 
@@ -399,9 +399,8 @@ diagrams. A markdown file opened from the Changes list opens as its diff — you
 asked to see a change — and The header's button switches between them, and says
 where it goes: **Preview** to render, **Raw** or **Diff** to come back. Agents write a lot of markdown, and reading the source of a
 nested table is not reading the document. Nothing in a document can act on its
-own: its own HTML is escaped, links open through the same preview card the
-terminal's URLs use — with the URL in a tooltip, so you read it before you
-commit to it — and images are read off disk rather than fetched, from inside
+own: its own HTML is escaped, links open in your browser, as the terminal's URLs
+do — with the URL in a tooltip, so you read it before you commit to it — and images are read off disk rather than fetched, from inside
 the document's own folder only. One pointing outside says so instead of
 loading.
 
@@ -917,10 +916,9 @@ That last test is a comparison of the resolved path against the directory, and
 it is currently a prefix match — a path an agent wrote with `../` in it can
 still satisfy it, so treat it as "where the agent said" rather than a boundary.
 
-One thing does leave your machine, and only when you ask it to: clicking a URL —
-in the terminal or in a rendered document — fetches that page once for the
-preview card. Nothing else is sent anywhere, and the agents you run are the
-agents you picked.
+Nothing leaves your machine through Muster itself: a URL you click — in the
+terminal or in a rendered document — is handed to your browser, and the agents
+you run are the agents you picked.
 
 ## 🤝 Contributing
 

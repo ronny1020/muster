@@ -7,6 +7,9 @@
  * after it drifts. And a long line is stored as several rows, so a path can
  * start on one row and end on the next.
  *
+ * The same cell arithmetic answers the reverse question too — which link a
+ * click landed on.
+ *
  * Typed structurally rather than against xterm's own interfaces, so the
  * mapping can be tested without a terminal.
  */
@@ -94,4 +97,38 @@ export function rangeOf(
   // Ranges are inclusive at both ends, so the last character is `end - 1`.
   const last = flat.positions[end - 1]
   return first && last ? { start: first, end: last } : null
+}
+
+/** A run of cells, inclusive at both ends, as xterm's link ranges are. */
+export interface CellRange {
+  start: CellPosition
+  end: CellPosition
+}
+
+/** Whether `range` holds `cell`, counting a range across rows `cols` wide. */
+export function covers(range: CellRange, cell: CellPosition, cols: number) {
+  const at = (point: CellPosition) => point.y * cols + point.x
+  return at(range.start) <= at(cell) && at(cell) <= at(range.end)
+}
+
+interface LinkSource<Link> {
+  provideLinks(row: number, callback: (links?: Link[]) => void): void
+}
+
+/**
+ * Asks each source about `cell`'s row and answers the first link holding it,
+ * in the order the sources are given. A source must answer synchronously.
+ */
+export function linkAt<Link extends { range: CellRange }>(
+  sources: LinkSource<Link>[],
+  cell: CellPosition,
+  cols: number,
+) {
+  let found: Link | undefined
+  for (const source of sources) {
+    source.provideLinks(cell.y, (links) => {
+      found ??= links?.find(({ range }) => covers(range, cell, cols))
+    })
+  }
+  return found
 }

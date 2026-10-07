@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 import {
   type DeckAction,
@@ -22,8 +23,6 @@ import {
   dropPaths,
   gitChanges,
   type ImagePreview as Image,
-  type LinkMeta,
-  linkPreview,
   openInEditor,
   pathKind,
   readImage,
@@ -45,7 +44,6 @@ import {
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { isUnder } from '../../../features/terminal/model/termlinks'
 import { ImagePreview } from '../../../features/terminal/ui/ImagePreview'
-import { LinkCard } from '../../../features/terminal/ui/LinkCard'
 import { HistoryPanel } from '../../../features/workspace/ui/HistoryPanel'
 import { GitActions } from '../../../features/sync/ui/GitActions'
 import { useGitRun } from '../../../features/sync/model/useGitRun'
@@ -66,12 +64,6 @@ import { handbackNotice } from '../../../features/terminal/model/handback'
 import { SettingsPane } from '../../../features/settings/ui/SettingsPane'
 import { StatusBar } from '../../../features/workspace/ui/StatusBar'
 import { TerminalView } from '../../../features/terminal/ui/TerminalView'
-
-interface LinkState {
-  url: string | null
-  meta: LinkMeta | null
-  error: string | null
-}
 
 interface ImagePreviewState {
   image: Image | null
@@ -420,18 +412,9 @@ export function Pane({
     [session?.backend],
   )
 
-  const [link, setLink] = useState<LinkState>({
-    url: null,
-    meta: null,
-    error: null,
-  })
-
-  /** A URL clicked in the output: read its metadata, then show the card. */
+  /** A URL clicked in the output or a document: the system browser opens it. */
   const onUrl = useCallback((url: string) => {
-    setLink({ url, meta: null, error: null })
-    void linkPreview(url)
-      .then((meta) => setLink({ url, meta, error: null }))
-      .catch((error) => setLink({ url, meta: null, error: String(error) }))
+    void openUrl(url).catch(report)
   }, [])
 
   const notifiedAt = useRef<number | null>(null)
@@ -662,12 +645,6 @@ export function Pane({
               />
             )}
           </div>
-          <LinkCard
-            url={link.url}
-            meta={link.meta}
-            error={link.error}
-            onClose={() => setLink({ url: null, meta: null, error: null })}
-          />
           <ImagePreview
             preview={preview.image}
             error={preview.error}

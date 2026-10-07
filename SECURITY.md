@@ -17,15 +17,14 @@ product, and `pty_spawn` grants it by design.
 What _is_ in scope is anything that gives one of these five a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                                                                                                             |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A remote web page** you click a link to  | Muster fetches it for the preview card. This is the only request the app makes itself; Pull and Push run your own `git` against the repository's remote.                                                                                                  |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                    |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                       |
-| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                            |
+| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                     |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, and a click on the text opens that target in the browser; only `http` and `https` targets are offered. |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                        |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                             |
 
-None of those five is you, and none of them should be able to reach the
+None of those four is you, and none of them should be able to reach the
 network on your behalf, read a file you did not choose, or put an argument in
 front of a program you did not type.
 
@@ -433,13 +432,13 @@ properties hold, and each has a test:
   resolves to where it really goes before being compared.
 - **A diagram cannot navigate the window.** Mermaid's `click` directive becomes
   a real anchor in the SVG and `securityLevel: strict` does not prevent that,
-  so the destination is moved onto the same preview card every other link in a
-  document uses.
+  so the destination is moved to where every other link in a document goes:
+  the system browser, never the app's own window.
 
 Rendering a document also loads code — markdown-it, and mermaid with DOMPurify
 for a diagram — in response to what a file contains. Markdown is parsed with
-raw HTML disabled, links carry no `href` and are activated through the same
-preview card a terminal URL uses, and mermaid runs at `securityLevel: strict`.
+raw HTML disabled, links carry no `href` and are handed to the system browser
+as a terminal URL is, and mermaid runs at `securityLevel: strict`.
 
 ## Known gaps
 
@@ -483,10 +482,6 @@ Named rather than hidden, because the code carries the same notes:
   `ESC[201~` ends paste mode early and the rest arrives as typed keys. It
   requires the user to copy hostile content, and it predates the journal work.
 
-- **Redirects in the link preview.** The private-address check validates every
-  hop of a redirect chain, but DNS is resolved twice — once to validate and
-  once to connect — so a short-TTL rebinding record remains a theoretical
-  bypass. Resolving once and connecting to that address is the fix.
 - **Unsigned binaries.** No Apple Developer membership and no Windows
   certificate, so macOS builds are ad-hoc signed and Windows builds are
   unsigned. Every release is built in public by GitHub Actions from the tag it

@@ -302,23 +302,6 @@ export interface ImagePreview {
 export const readImage = (path: string, within?: string) =>
   invoke<ImagePreview>('read_image', { path, within: within ?? null })
 
-export interface LinkMeta {
-  url: string
-  title: string | null
-  description: string | null
-  siteName: string | null
-  /** `data:` URI for the page's preview image, if it published one. */
-  imageDataUrl: string | null
-}
-
-/**
- * Reads a page's Open Graph metadata. The only request Muster makes itself
- * (pull and push run the user's own git), so it runs on an explicit click
- * rather than on hover — terminal output is written by an agent, and a URL it
- * prints must not fetch itself.
- */
-export const linkPreview = (url: string) =>
-  invoke<LinkMeta>('link_preview', { url })
 export interface Branch {
   /** What a checkout would switch to; for a remote branch, the local name. */
   name: string

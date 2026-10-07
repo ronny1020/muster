@@ -899,6 +899,35 @@ hands its terminal back is reset by the hand-back instead (`MODE_RESET`), which
 is why the check can stay on `live` — the shell after it never sees tracking
 the agent armed.
 
+What stands down is the plain click. A ⌘-click (Ctrl-click off macOS) still
+opens a link, as in iTerm2 and VS Code's terminal, with no underline to show
+it. `onLinkMouseDown` claims the press only over a link, and listens on
+`.xterm-screen` — after xterm's `Linkifier`, which listens there too, and
+below the root where xterm reports the click — so stopping it there keeps the
+agent from hearing the press, and xterm never arms the document listener that
+would report the release. The link opens on the **release**, over the same
+link, and that release is claimed wherever it lands: the `Linkifier` may still
+hold a link it offered before tracking began and would open that one too. A
+⌘-click on anything else is still the agent's.
+
+**An agent's hyperlinks are xterm's, not ours, and they need a handler.**
+`OSC 8` links — Claude Code's PR links, and a long URL it breaks across rows
+with the full target on each — come from a provider xterm registers itself,
+so `gateLinks` never sees it and xterm ranks it first. With no `linkHandler`,
+xterm activates one through `window.confirm` — which `tauri-plugin-dialog`
+replaces with a `plugin:dialog|confirm` command the capabilities do not
+grant, so without a handler every such link throws, on every platform. The
+handler opens them in the browser, as a URL is, and opens nothing
+while tracking is on, because there the ⌘-click is `onLinkMouseDown`'s. It
+also records the hovered link, since hover is the only way xterm says one is
+under the pointer; `linkUnder` checks that before the ungated providers, as
+xterm does. Two limits follow from xterm, not from us: these links stay
+underlined while tracking is on, and a link drawn under a pointer that has
+not moved is not hovered until the pointer moves, so a ⌘-click there finds
+only what the ungated providers can see. Only
+`http` and `https` targets are offered, which is xterm's default and keeps a
+`file://` or `vscode://` target from reaching the opener.
+
 **`macOptionClickForcesSelection` is toggled, never set.** It is what hands a
 macOS user a drag a tracking CLI would otherwise take — but xterm reads the
 same option in `shouldColumnSelect`, so it is also the switch that turns
@@ -1396,7 +1425,7 @@ nothing an agent wrote can reach the DOM as markup.
 `MarkdownView` is the one exception, and it is only safe because of three
 things in `markdown.ts`: markdown-it runs with `html: false`, so the file's own
 HTML is escaped into text; links are rendered with **no `href`**, carrying the
-URL as `data-url` for the same preview card the terminal uses, because the
+URL as `data-url` for the system browser, as a terminal URL goes, because the
 webview has one window and a link would navigate the whole app out of it; and
 images become `data-src` paths that Rust reads, never URLs the webview fetches.
 Any change there is a change to what a file an agent wrote can do to the
@@ -1407,7 +1436,7 @@ Mermaid is the fourth thing, and it is not markdown-it's doing: a `click`
 directive in a diagram becomes a real `<a xlink:href>` inside the SVG, and
 `securityLevel: 'strict'` does not prevent that — it only picks the anchor's
 `target`. `disarmLinks` moves the destination to `data-url` after every render,
-so a diagram's links reach the same preview card as the document's. Anything
+so a diagram's links reach the browser the way the document's do. Anything
 that replaces `innerHTML` with mermaid's output has to keep calling it.
 
 **`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV`
@@ -1570,7 +1599,7 @@ anything whose whitespace is content.
 
 **An overlay that closes on Escape must claim the key, not share it.** Several
 surfaces listen for Escape on their own, and they stack: the file column, the
-link card, the image overlay, and a width drag in progress. Listeners on
+image overlay, and a width drag in progress. Listeners on
 `window` all fire, so dismissing a card also closed the column behind it, and
 cancelling a drag closed the panel being dragged. The rule: a transient surface
 listens in the **capture** phase on `document` and calls `stopPropagation`, so

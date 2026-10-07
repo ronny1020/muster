@@ -14,7 +14,12 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { type ILink, type ILinkProvider, Terminal } from '@xterm/xterm'
+import {
+  type IBufferRange,
+  type ILink,
+  type ILinkProvider,
+  Terminal,
+} from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import type { Turn } from '../../../shared/ipc'
@@ -34,7 +39,7 @@ import {
   writePty,
 } from '../../../shared/ipc'
 import { IS_MAC } from '../../../shared/lib/platform'
-import { flattenLogicalLine, rangeOf } from '../model/termcells'
+import { covers, flattenLogicalLine, linkAt, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
 import { findPaths, resolvePath } from '../model/termlinks'
 import { surfacesFor } from '../model/surfaces'
@@ -604,16 +609,43 @@ export function TerminalView({
           ? callback(undefined)
           : provider.provideLinks(row, callback),
     })
-    // A click opens a preview card rather than the browser: the card is what
-    // makes the network fetch deliberate, and it carries the Open button.
+    /** Every provider before gating, for `linkUnder`. */
+    const ungated: ILinkProvider[] = []
+    const register = term.registerLinkProvider.bind(term)
+    const registerGated = (provider: ILinkProvider) => {
+      ungated.push(provider)
+      return register(gateLinks(provider))
+    }
+    /** The OSC 8 hyperlink under the pointer, which xterm reports by hover. */
+    let hoveredHyperlink: { uri: string; range: IBufferRange } | null = null
+    /**
+     * Sends an agent's own hyperlinks — Claude Code's PR links, a long URL it
+     * breaks across rows — to the browser as a URL is, since their target need
+     * not match their text. xterm draws them from a provider of its own, and
+     * its fallback is `window.confirm`, which the dialog plugin replaces with
+     * a command this app does not grant.
+     *
+     * While tracking is on the plain click is the agent's and the ⌘-click is
+     * `onLinkMouseDown`'s, so activation there opens nothing.
+     */
+    term.options.linkHandler = {
+      activate: (_event, uri) => {
+        if (!agentReadsMouse(term, live.current)) link.current!.onUrl(uri)
+      },
+      hover: (_event, uri, range) => {
+        hoveredHyperlink = { uri, range }
+      },
+      leave: () => {
+        hoveredHyperlink = null
+      },
+    }
     const linksAddon = new WebLinksAddon((_event, uri) =>
       link.current!.onUrl(uri),
     )
     // The addon registers its own provider, so the gate has to meet it at the
     // one call it makes — the same shape as `withoutLocalFonts` below, and for
     // the same reason: the addon offers no hook of its own.
-    const register = term.registerLinkProvider.bind(term)
-    term.registerLinkProvider = (provider) => register(gateLinks(provider))
+    term.registerLinkProvider = registerGated
     try {
       term.loadAddon(linksAddon)
     } finally {
@@ -631,9 +663,7 @@ export function TerminalView({
     // What a tab moving to another window carries its screen in.
     const serializeAddon = new SerializeAddon()
     term.loadAddon(serializeAddon)
-    term.registerLinkProvider(
-      gateLinks({ provideLinks: pathLinks(term, link) }),
-    )
+    registerGated({ provideLinks: pathLinks(term, link) })
     // Windows and Linux have no menu accelerator for copy, and Ctrl+C has to
     // stay SIGINT — so the Ctrl+Shift+C/V convention is ours to implement.
     /**
@@ -721,6 +751,63 @@ export function TerminalView({
       return false
     })
     term.open(element)
+    const screen = element.querySelector<HTMLElement>('.xterm-screen')!
+    /** The link under the pointer, hyperlinks first as xterm ranks them. */
+    const linkUnder = (event: MouseEvent) => {
+      const cell = cellAt(term, screen, event)
+      if (!cell) return null
+      const hyperlink = hoveredHyperlink
+      if (hyperlink && covers(hyperlink.range, cell, term.cols)) {
+        return {
+          range: hyperlink.range,
+          open: () => link.current!.onUrl(hyperlink.uri),
+        }
+      }
+      const found = linkAt(ungated, cell, term.cols)
+      return (
+        found && {
+          range: found.range,
+          open: (up: MouseEvent) => found.activate(up, found.text),
+        }
+      )
+    }
+    /** The release a claimed press is waiting for, so cleanup can drop it. */
+    let pendingRelease: ((up: MouseEvent) => void) | null = null
+    const endPress = () => {
+      if (pendingRelease)
+        window.removeEventListener('mouseup', pendingRelease, true)
+      window.removeEventListener('blur', endPress)
+      pendingRelease = null
+    }
+    /**
+     * Opens the link under a ⌘-click (Ctrl-click off macOS) while the agent
+     * owns the plain click, as iTerm2 and VS Code's terminal do — on release
+     * over the same link, like any click. Claimed only over a link, so a
+     * ⌘-click anywhere else still reaches the agent.
+     */
+    const onLinkMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0 || !opensLink(event)) return
+      if (!agentReadsMouse(term, live.current)) return
+      const target = linkUnder(event)
+      if (!target) return
+      event.stopPropagation()
+      event.preventDefault()
+      endPress()
+      const release = (up: MouseEvent) => {
+        // Another button's release belongs to the press xterm reported.
+        if (up.button !== 0) return
+        // Claimed wherever it lands: xterm's `Linkifier` may still hold a
+        // link it offered before tracking began, and would open that too.
+        up.stopPropagation()
+        endPress()
+        const cell = cellAt(term, screen, up)
+        if (cell && covers(target.range, cell, term.cols)) target.open(up)
+      }
+      pendingRelease = release
+      window.addEventListener('mouseup', release, true)
+      window.addEventListener('blur', endPress)
+    }
+    screen.addEventListener('mousedown', onLinkMouseDown)
     // `->`, `=>`, `!==` drawn as the single glyph the font has for them, for
     // the fonts that carry one, through xterm's character-joiner API — which
     // the WebGL renderer honours.
@@ -1098,6 +1185,8 @@ export function TerminalView({
       observer.disconnect()
       clearTimeout(quiet)
       element.removeEventListener('paste', onDomPaste, true)
+      screen.removeEventListener('mousedown', onLinkMouseDown)
+      endPress()
       // Named by epoch, never by id alone: this tab may already be respawning
       // under the same id, and a kill that arrives after would otherwise end
       // the session that replaced this one.
@@ -1823,6 +1912,19 @@ const SEEK_SETTLE_MS = 40
  */
 const agentReadsMouse = (term: Terminal, live: boolean) =>
   live && term.modes.mouseTrackingMode !== 'none'
+
+/** The modifier that turns a click into "open this link". */
+const opensLink = (event: MouseEvent) =>
+  IS_MAC ? event.metaKey : event.ctrlKey
+
+/** The buffer cell under the pointer, 1-based as `ILink.range` counts. */
+function cellAt(term: Terminal, screen: Element, event: MouseEvent) {
+  const box = screen.getBoundingClientRect()
+  const x = Math.floor(((event.clientX - box.left) / box.width) * term.cols)
+  const y = Math.floor(((event.clientY - box.top) / box.height) * term.rows)
+  if (x < 0 || y < 0 || x >= term.cols || y >= term.rows) return null
+  return { x: x + 1, y: y + 1 + term.buffer.active.viewportY }
+}
 
 /**
  * Underlines the file paths in one row and hands a click back to the pane.

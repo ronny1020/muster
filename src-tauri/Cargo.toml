@@ -23,7 +23,6 @@ portable-pty = "0.9"
 parking_lot = "0.12"
 tauri-plugin-notification = "2"
 base64 = "0.23.1"
-ureq = "3.2.1"
 tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 # Pinned exactly: it is the only dependency that injects script into

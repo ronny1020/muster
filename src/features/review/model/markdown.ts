@@ -77,7 +77,7 @@ md.renderer.rules.fence = (tokens, index, _options, env) => {
  *
  * The webview has one window: a plain link would navigate the whole app out of
  * the terminal it is sitting next to. The URL travels as data and the view
- * hands it to the same preview card the terminal uses.
+ * hands it to the system browser, as the terminal does.
  */
 md.renderer.rules.link_open = (tokens, index) => {
   const href = md.utils.escapeHtml(String(tokens[index]!.attrGet('href') ?? ''))
