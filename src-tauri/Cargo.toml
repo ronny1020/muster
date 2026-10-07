@@ -3,7 +3,7 @@ name = "muster"
 version = "0.5.0"
 description = "Tabbed desktop runner for AI agent CLIs"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.90"
 license = "Apache-2.0"
 
 [lib]
@@ -28,7 +28,7 @@ tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 # Pinned exactly: it is the only dependency that injects script into
 # this app's own webview, so a floating minor is a channel for page code.
-tauri-plugin-prevent-default = "=5.0.2"
+tauri-plugin-prevent-default = "=6.0.1"
 # Enumerates installed font families, which neither webview can do: Chromium's
 # `queryLocalFonts` needs a permission prompt and WKWebView lacks it entirely.
 # `source-fontconfig-dlopen` loads libfontconfig at runtime rather than linking
@@ -38,10 +38,9 @@ font-kit = { version = "0.14", features = ["source-fontconfig-dlopen"] }
 
 # A debugging aid, never shipped. It opens a local socket that executes
 # arbitrary JavaScript in this app's webview and simulates input, which is a
-# capability no release build should carry — and the crate is unlicensed and
-# `edition = "2024"`, so compiling it would also raise this crate's stated
-# `rust-version` of 1.77. Optional and default-off keeps all three out of every
-# build but the one that asks: `bun run dev:mcp`.
+# capability no release build should carry — and the crate is unlicensed.
+# Optional and default-off keeps both out of every build but the one that
+# asks: `bun run dev:mcp`.
 [features]
 mcp = ["dep:tauri-plugin-mcp"]
 
@@ -61,7 +60,7 @@ strip = true
 # `preventDefault` from a page listener does not reliably stop WebView2's own
 # `F5`/`Ctrl+R`; this feature disables the browser accelerator keys natively,
 # which is the entire reason the plugin is here.
-tauri-plugin-prevent-default = { version = "=5.0.2", features = [
+tauri-plugin-prevent-default = { version = "=6.0.1", features = [
   "platform-windows",
 ] }
 
