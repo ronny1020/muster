@@ -1,7 +1,6 @@
-use std::{
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::path::Path;
+#[cfg(unix)]
+use std::process::{Command, Stdio};
 
 use super::*;
 
