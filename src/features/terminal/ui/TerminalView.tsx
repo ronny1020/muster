@@ -724,7 +724,7 @@ export function TerminalView({
         // Stopped as well as prevented: several surfaces close on Escape and
         // `FileViewer` listens on `window`, which this event would reach on
         // the way up — so dismissing the list would also close the file
-        // column behind it. Same rule as the Escape invariant in AGENTS.md,
+        // column behind it. Same rule as the Escape invariant in the root AGENTS.md,
         // met from xterm's own handler on the textarea, which is below
         // `window` in the bubble.
         event.stopPropagation()
@@ -1626,7 +1626,7 @@ function ScrollPath({
  * not, so on Windows alone activating the addon would raise a font permission
  * dialog at startup — something the user did nothing to cause, and a reflexive
  * "Don't Allow" is remembered. Fonts are answered natively for exactly that
- * reason; see AGENTS.md's font-enumeration note. Taking the fallback on every
+ * reason; see the root AGENTS.md's font-enumeration note. Taking the fallback on every
  * platform also makes one host's ligatures the same as another's.
  */
 function withoutLocalFonts(activate: () => void) {

@@ -12,25 +12,14 @@ Practical setup, commands and file map: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Before you claim a change works
 
-All seven, in this order — the first three from the repo root, the last four
-from `src-tauri`:
-
-```bash
-bun run check
-bun run format:check
-bun test
-(cd src-tauri && cargo fmt --check)
-(cd src-tauri && cargo check --all-targets)
-(cd src-tauri && cargo clippy --all-targets -- -D warnings)
-(cd src-tauri && cargo test --lib)
-```
-
-`bun run check:all` runs all seven in that order, and `bun run check:rust` the
-last four — the shortcut exists so "I ran the checks" means the same thing
-every time. `cargo check` earns its place ahead of the other two: a plain
-compile error reported as rustc's own diagnostic is easier to read than the
-same error arriving through clippy or a test binary that failed to build. Note it passes clippy `-D warnings`, as CI does: a warning that
-passes locally and fails in CI is the whole reason the two ever disagree.
+Run `bun run check:all`: seven checks, the frontend's three from the repo root
+and then `bun run check:rust`'s four from `src-tauri`. The script is the list,
+so "I ran the checks" means the same thing every time. `cargo check` runs ahead
+of clippy and the tests because a plain compile error reported as rustc's own
+diagnostic is easier to read than the same error arriving through clippy or a
+test binary that failed to build. Clippy runs with `-D warnings`, as CI does: a
+warning that passes locally and fails in CI is the whole reason the two ever
+disagree.
 
 `bun run format` and `cargo fmt` fix what the two format checks report.
 
@@ -54,8 +43,11 @@ report what you saw.
 A change is not finished while one of these files still describes the old
 behaviour. Update them **in the same change**, not afterwards:
 
-- **AGENTS.md** — the invariants, the layer table, the conventions. The layer
-  table is meant to be what exists, so a new slice or segment belongs in it.
+- **AGENTS.md**, this one and the three beside the code (`src/features/terminal`,
+  `src-tauri`, `src/features/review`) — the invariants, the layer table, the
+  conventions. A new invariant goes in the file beside the code it governs,
+  and its title into this file's index. The layer table is meant to be what
+  exists, so a new slice or segment belongs in it.
 - **`.agents/skills/*/SKILL.md`** — the procedures an agent loads instead of
   reading this file end to end. A skill nobody maintains rots the same way a
   stale invariant does, and worse: it is copy-pasted rather than read. The
@@ -81,130 +73,11 @@ Say in your report which of these you changed, and why.
 
 ## Invariants that break silently
 
-Each of these was a real bug. None of them fail loudly.
-
-**Strip agent session markers from every spawned process.**
-`INHERITED_SESSION_MARKERS` in `src-tauri/src/pty.rs` is removed from each PTY's
-environment. Launching this app from inside an agent CLI otherwise leaks them
-into every tab: a nested Claude Code sees `CLAUDE_CODE_CHILD_SESSION`, stops
-writing a transcript, and `--continue` and `--resume` then find nothing.
-
-Add to that list when a new agent brings its own markers. To find them: open a
-session of that CLI in your own terminal and diff its environment against a
-plain shell's — `env | sort` in both, or `env | grep -i <agent>`. Do not guess
-variable names; a wrong guess strips nothing and looks exactly like success.
-
-**Sessions run through a login shell — and where they cannot, they imitate
-one.** A GUI app inherits a bare `PATH` — from launchd on macOS, from the
-desktop session on Linux — so a CLI installed by the user's profile (`mise`,
-`nvm`, `~/.local/bin`) is invisible until the shell's rc files have run. On
-Windows the reason differs: PowerShell resolves the `.cmd` and `.ps1` shims
-npm-installed CLIs ship as, which `CreateProcess` alone will not find.
-
-The one exception is a **bash** session with shell integration on, because
-bash ignores `--init-file` for a login shell: `-l` is dropped and the script
-sources `/etc/profile` and the first profile itself. What must stay true is
-the `PATH`, not the flag — see the shell-integration invariant below.
-
-**An agent tab hands its terminal to a shell, and the agent never learns.**
-Quitting an agent lands on a prompt in the same terminal and directory, as
-quitting it anywhere else does. The agent runs `exec`ed over the login shell,
-as every agent session does, and a small `/bin/sh` above it holds the
-terminal: when the agent exits, that `sh` resets the modes and the tty settings a
-crashed TUI leaves armed, announces `OSC 777;muster-handback;<token>;<status>`,
-and `exec`s the login shell in place (`platform::hands_back`, `handback_line`).
-Six things about that shape break silently.
-
-The pty's child has to outlive the agent. Spawning a second child on the same
-pty does not work — when the first child, the terminal's session leader,
-exits, the kernel hangs the terminal up and portable-pty's slave descriptor
-answers `EBADF` to the next spawn. The `sh` is what keeps a session leader
-there throughout.
-
-The agent is the `sh`'s child, not the pty's, so anything that looks an agent
-up by pid looks one level down: the session-id watcher asks
-`platform::children_of` as well, because Claude Code publishes its session
-under its own pid — without that the id is never found, and Resume and the
-transcript rail silently lose the conversation.
-
-The agent shares the `sh`'s process group, so the terminal's Ctrl+C and
-Ctrl+\ reach both — and dash, `/bin/sh` on Debian, Ubuntu and most WSL
-distros, dies of one even when the agent catches it, ending the session
-instead of handing it back. `trap : INT QUIT` is what keeps it; a handler
-rather than `trap ''`, because an ignored signal is inherited by the agent.
-The test that pins it runs the signal in a process group of its own — in the
-runner's group, `kill -INT 0` interrupts the runner.
-
-The reset saves the cursor before it leaves the alternate screen, which
-restores one, in xterm.js even when that screen was never entered, so without
-the save a Scrollback session — which never enters it — would have its prompt
-drawn over the top of the output. And it is written `\00337`, not `\0337`,
-which `printf %b` reads as one octal escape.
-
-The announcement is ordinary bytes, so it carries a token only the `sh` has:
-`pty_spawn` hands it over in `MUSTER_HANDBACK`, the `sh` unsets it before the
-agent starts, and `TerminalView` believes nothing without it — otherwise an
-agent, or a file it printed, could end the tab's agent phase while it ran. A
-WSL session gets the token through `WSLENV` and runs its line with
-`wsl.exe --exec`, because after `--` the line reaches the distro user's
-default shell as text, which expands `$code` too early and fails outright
-under fish. A believed announcement sets the tab's `handedBack`, and from then on `Pane`
-resolves what the tab runs as the shell: the Clicks/Scrollback control and the
-⟳ go, since both end the session to reopen the conversation and would take the
-user's shell and whatever it is running with them, the transcript is no longer
-read, the status bar, its notifications and a later ended bar say Shell, the
-tab takes a shell's colour, and the journal drawer offers the tab's own
-record, since the conversation in it has ended. In a session that hands back, a
-`pty://exit` means the shell ended, never the agent. PowerShell gets no
-hand-back at all — with nothing to announce it, the tab could not stop treating
-the prompt as the agent's, so there the session ends with the agent. The kill
-signals the terminal's foreground group as well as the spawn group: the agent
-shares the spawn group, but the shell after it runs each command as a job in a
-group of its own.
-
-The shell after the agent takes the shell integration a plain shell tab would,
-and on the `sh`'s own command line (`platform::shell_after`) rather than the
-session's environment: a `ZDOTDIR` there would send the agent's own login shell
-through Muster's startup files too. `TerminalView` holds its `OSC 133` off until
-the hand-back is believed, for the reason the gate below gives.
-
-The git writes the drawers make — commit, pull, push, checkout — are not
-sessions, but they run the user's programs too: a husky hook calling `bunx`, a
-git-lfs `pre-push`, `gh` as a credential helper. So `sync::login_path` borrows
-the login shell's `PATH`, read on the first click that needs it and bounded by
-a deadline, because it runs the user's startup files; a success is kept and a
-failure retried after a minute. Without it the same commit
-passes under `bun run dev`, which inherits a terminal's `PATH`, and fails from
-the Dock.
-
-**A git write is stopped by the thread that waits for it.** `finish` polls its
-own child rather than handing a pid to `git_cancel`, because a pid another
-thread signals may have been reaped and reused. The child leads a process group
-of its own (`without_terminal`'s `setsid`), and `terminate` sends that group
-`SIGTERM` before `SIGKILL`: the hook or `ssh` git is waiting on is what has to
-stop, and git removes its `index.lock` on `SIGTERM` but not on `SIGKILL`, which
-would leave every later command in the tree refused. Windows has no group
-signal, so `taskkill /T` there is forcible, and a lock can be left.
-
-The output is drained on threads that `Drain::finish` waits for only briefly,
-and that is load-bearing: a hook's background job inherits the pipe, and
-joining the reader until it closes would hold every later git write in the app
-— the login-`PATH` read sits in front of all of them — behind a
-process that may run for hours.
-
-**No git the app runs may take its repository from the environment.**
-`workspace::git_in` removes `REPOSITORY_OVERRIDES` from every git child, and the
-login shell above loses them too, since its prompt runs git. Git exports
-`GIT_INDEX_FILE` to its hooks and this repository's pre-commit hook runs the
-Rust tests — so a test's `git add --all` in a scratch repository would have
-written the scratch tree over the commit being made, and nothing would have
-failed until that commit landed.
-
-**Paths are stored in the host's own form.** A WSL session keeps the Windows
-path the picker returned — a `\\wsl$\Ubuntu\...` share or a drive letter — and
-translates to `/home/...` or `/mnt/c/...` only at launch, for `wsl.exe --cd`.
-One representation is what keeps `git`, the folder picker and the file-manager
-button agreeing with each other.
+Each of these was a real bug. None of them fail loudly. The ones below cross
+every layer; the rest live beside the code they govern, in an `AGENTS.md` that
+loads when you work in that directory. **Before changing code that one of the
+titles in the index names, read its file** — a change made from elsewhere does
+not load it, and the cost of missing one is a bug nothing reports.
 
 **Panes stay mounted while hidden.** `Pane` renders every tab and hides the
 inactive ones with `hidden`. Unmounting would kill the PTY and the scrollback,
@@ -221,11 +94,6 @@ in _every_ tab, forever, visible or not. `useWorkspace` already git-polls on
 that basis, at a user-set interval. Anything ticking faster — a per-second
 clock, an animation — needs to check whether its pane is active first.
 
-**Terminals blur when their pane hides.** A hidden pane keeps DOM focus in
-xterm's helper textarea, which then swallows typing meant for the tab now on
-screen. `TerminalView` calls `blur()` on deactivation; the launcher claims focus
-when it comes forward.
-
 **No `StrictMode`.** Its double-invoked effects spawn two PTYs per tab in
 development. `src/app/main.tsx` says so — leave it.
 
@@ -233,40 +101,6 @@ development. `src/app/main.tsx` says so — leave it.
 resolved relative to that file — so moving the stylesheet breaks it. The dev server and
 the production build resolve their scan root differently, and without it the dev
 build silently emits no custom utilities.
-
-**Output is recorded before it is sent, and every bound on it is load-bearing.**
-The reader thread writes to the journal before `Channel::send`, because a
-frontend that has gone away is exactly when the record is the only copy left.
-The file is the pty stream verbatim, so it holds whatever the agent printed —
-which is why recording is a setting, why one session is capped at 4 MB with the
-older half dropped rather than rotated, why a sweep expires records on startup,
-and why `file_stem` refuses any tab id that is not a bare name. Retention lives
-in the frontend because it is a user setting and settings are in
-`localStorage`; the cap lives in Rust because only the writer can enforce it.
-Loosen any one of those and the feature becomes an unbounded, permanent copy of
-everything every agent ever printed.
-
-**An oversized paste is caught in two places, because macOS has no third.**
-`Cmd+V` is a native menu accelerator, so `attachCustomKeyEventHandler` never
-sees it and `clipboardIntent` returns `null` on macOS by design — the DOM
-`paste` listener is the only route there. `Ctrl+Shift+V` goes through the key
-handler on Windows and Linux, and every other paste gesture on those platforms
-(`Ctrl+V`, right-click, middle-click) reaches the DOM listener too, which is
-registered on every platform. Both funnel into one `deliverPaste`, and the DOM
-listener claims the event **only** when the text is going to become a file:
-taking an ordinary paste would override bracketed-paste handling xterm already
-has right.
-
-The call that matters there is **`stopPropagation`, not `preventDefault`**.
-xterm registers its own paste listener on both its textarea and its element —
-both descendants of the host this listener sits on — and that handler never
-consults `defaultPrevented`: it reads the clipboard and sends it to the pty
-itself. With `preventDefault` alone an oversized paste is delivered twice, once
-as the giant keystroke run the feature exists to prevent, and nothing fails
-loudly. Stopping propagation in the capture phase is what keeps the event from
-reaching it at all. The path is delivered through `dropPaths`, never formatted
-here — the quoting is the session's shell's, and a WSL session needs the
-translation `--cd` does at launch.
 
 **Two tabs in one working tree are not a collision.** `collisionsByTab` groups
 tabs by `--git-common-dir`, so every worktree of a repository is compared — that
@@ -283,10 +117,6 @@ thing is: a hook called inside `Pane` runs in every mounted tab, and each copy
 would poll every _other_ tab's directory. It also polls at a multiple of the
 user's git interval, because "another tab is editing this" changes on the scale
 of an agent finishing an edit rather than of a keystroke.
-
-**`Channel` payloads must be owned.** PTY output goes over
-`Channel<InvokeResponseBody>` and sends `InvokeResponseBody::Raw(...)`. A
-borrowed `&[u8]` cannot outlive the command, and the reader thread needs it to.
 
 **Never document `brew tap` as a step of its own.** `brew install --cask
 <tap>/<cask>` is the only form that taps, trusts and installs in a working
@@ -310,914 +140,10 @@ resolving it while everything that _displays_ a selection goes through
 settings pane read `defaultAgentId`, so both need it; guarding only one leaves a
 `<select>` on a value no option carries, which renders blank.
 
-**Closing the last window exits the app; minimizing it does not.** Closing
-the last _tab_ closes its window, as in Chrome, through the same close prompt
-— so on the last window it quits. `tauri-runtime-wry` emits `ExitRequested` when the window list empties and
-nothing here calls `prevent_exit`, so there is no window-less state to rebuild
-from — anything written against one is unreachable. `RunEvent::Reopen` is still
-worth handling, because a _minimized_ window keeps the app alive and the Dock
-click arrives there with `has_visible_windows: false`, which suppresses
-AppKit's own deminiaturize. `unminimize` is the call that restores it: tao's
-`set_focus` is a no-op while miniaturized and `show` will not restore one
-either, so without it the click does nothing at all. The `show` and
-`set_focus` beside it are not redundant — a window can also be hidden or
-merely unfocused, and they are what answers the click then.
-
-**A blocked directory is not a missing one, and `metadata` cannot tell you
-which.** It only stats, so an unreadable directory still answers
-`is_dir() == true` — the first version of this gated the check on `!is_dir()`
-and therefore skipped every case it existed for, silently. `is_unreadable` asks
-`read_dir`, and `Workspace::denied` is the answer — but only when the caller
-asks for it, for the reason the `workspace_info` invariant below gives. The
-launcher's response to _missing_ is to offer to create it, which for a
-directory full of someone's work reads as the app having lost it.
-
-**Blocked warns; it does not refuse.** `read_dir` answers "cannot be listed",
-which is not the same question as "cannot be worked in": a directory with
-search permission and no read permission (`0311`) takes a `cd` and opens every
-path already known, so refusing there blocks a session that would have run.
-The warning has to survive the click that raised it, though — `onLaunch`
-replaces the whole launcher with the terminal — so the first click on a
-blocked directory only warns, and the second goes through. The `warned` ref
-records which directories have been warned about, kept apart from the
-`blocked` notice so that dismissing the notice leaves the acknowledgement
-standing, and a ref rather than state so a second click sees the first one's
-answer without waiting for a render.
-
-The hint that follows is per-host because the hosts differ in kind, not wording
-— `blocked.ts` holds the three, and its tests pin that only macOS blames a
-prompt. That macOS case is not hypothetical here: the app is ad-hoc signed, so
-TCC keys its grants to the binary's hash and every release is new code with no
-permissions.
-
-**An empty list of past conversations means "let the CLI pick", never "there is
-nothing".** Two commands read the same store and answer differently on purpose.
-`agent_sessions` counts, and is three-valued, because a caller hides a control
-on a zero. `agent_session_list` lists, and is not: it answers empty for a store
-this process does not read, for a WSL distro, and for a directory with no
-history alike. That is only safe because of what the caller does with it — the
-start screen falls back to launching the agent's own `--resume`, which is what
-every agent did before the list existed, so an unreadable store costs the
-picker rather than the mode. Disable the mode on an empty list and Codex, the
-only other agent with a `resume`, silently loses it — while Claude Code, the
-one store that is read, goes on working. The count is what greys the button
-out, and it is the one that can tell "unknown" from "empty".
-
-Two consequences. The list is read on the **click**, never beside the count:
-the count is re-read on every keystroke in the directory field, while each row
-of the list costs a bounded read of a transcript's head for the line it
-carries. And whether history was left out is answered by the **listing**, which
-is the only thing that knows what it dropped — the count applies none of the
-list's filters, so comparing the two offers a picker for a directory with
-nothing more in it.
-
-**Window state is saved on `RunEvent::Exit` too, and for the same reason.**
-`tauri-plugin-window-state` saves from its own window hooks, which `Cmd+Q`
-never reaches — so the most common quit gesture on macOS would restore the
-window to wherever it was two quits ago, silently. `save_window_state` is
-called beside `end_all` for that reason. The flags are explicit rather than
-`all()`: `DECORATIONS` would let a saved state fight
-`tauri.windows.conf.json`, which turns the frame off on purpose, and `VISIBLE`
-could restore a hidden window, which leaves no way to get it back.
-
-**A reload is the one browser shortcut this app cannot survive.** `Ctrl+R` or
-`F5` reaching WebView2 reloads the page, which remounts every pane and discards
-all of xterm's scrollback — while the PTYs carry on in Rust, so the sessions
-live and the record of them does not. `tauri-plugin-prevent-default` swallows
-it. The flag set is curated rather than `Flags::debug()`, and two exclusions are
-load-bearing: `FOCUS_MOVE` is `Shift+Tab`, so blocking it breaks backward
-keyboard navigation and the Level AA bar below; `CONTEXT_MENU` is the right
-click the file tree's menu is built on, which is also what makes that menu
-answer the Menu key and `Shift+F10`. `FIND` _is_ swallowed on purpose — the app
-answers that key with its own scrollback search and the webview's find bar must
-not get there first. `config_tests.rs` pins all four.
-
-**`single-instance` is registered first, and it has to be.** The plugin's own
-docs require it, and the cost here is higher than in most apps: a second
-instance would restore the same tab list, spawn its own PTYs for every one of
-them, and record into and sweep the same per-directory journal folders as the
-first. Its callback also carries the second launch's `argv`, which is how
-`muster ~/proj` reaches an app that is already open — and that only ever opens
-a **pre-filled launcher**, never a spawned session, because the gesture asked
-for a place to work rather than for an agent to be running in it. It answers in
-the focused window (`window::front`), and only there.
-
-**Cleanup runs on `RunEvent::Exit`, not on a window event.** `Cmd+Q` and the
-app menu's Quit reach tao as `terminate:`, which emits only `LoopDestroyed` — so
-no window ever sees `CloseRequested` or `Destroyed`, and anything hung off those
-is skipped on the most common quit gesture on macOS. The confirmation prompt can
-live on `CloseRequested`; ending the sessions cannot.
-
-`Destroyed` still ends sessions, but only the closing window's:
-`Sessions::end_window`, by the label each session records at spawn and
-re-records when it is adopted. Ending them all there killed every other
-window's agents whenever one window closed. A window closed while others stay
-open also forgets its stored tab list, as Chrome forgets a closed window's
-tabs; the last one keeps it, which is what makes a relaunch restore it.
-
-**A tab moves between windows; its process does not.** Rust owns the PTY, so
-the move re-points the session's output (`pty_reattach`) instead of spawning
-— `pty_spawn` on a live id ends what was there. The screen cannot move that
-way, because xterm's buffer lives in the old webview, so it travels as an
-`@xterm/addon-serialize` snapshot. Three things keep the seam exact:
-
-- The snapshot carries `offset`, the bytes of output it already shows, and
-  every terminal counts what it was sent. `output.rs` numbers the stream the
-  same way and keeps a bounded backlog, and `redirect` swaps the channel and
-  replays everything after `offset` that it still holds **under the lock the
-  reader thread sends under** — so no chunk falls between the swap and the
-  replay, or arrives twice. The backlog keeps the last 512 KB of every live
-  session, so a burst larger than that during a move is lost from the screen.
-- The old view stops drawing at the moment it takes `offset`, and its unmount
-  then skips `pty_kill`: a detached tab leaves its session running. A move
-  that fails calls `resume`, which reattaches to itself from the same offset.
-- A session tab that arrives without its terminal is refused (`readHandoff`),
-  never repaired. Adopted without one, it would spawn the agent a second time
-  in the new window while the original kept running.
-
-The window a session moves to owns it from the moment the move is asked for —
-`window_open` and `window_send` re-record the label before the target has even
-loaded — because the old window may close at once, and its `Destroyed` ends
-what it owns. For the same reason a failed send does not end the reader
-loop: the window it failed to is either closing, which ends the session
-anyway, or handing it over, and the session must stay drained and its backlog
-filling until the new window attaches. A session that ends during the move is
-remembered in `Exits`, so the adopting tab shows how it ended.
-
-**A tab dragged off the strip lands where the backend says the cursor is.**
-While the button is held no other window receives a single event, and the
-page itself stops hearing `pointermove` once the pointer leaves it under
-WebKitGTK (the release still arrives) — so the drop is decided at release, by
-`window_drop_target`, from `cursor_position()` against the strip each window
-reported (`window_strip`). Another window's strip merges the tab there, by
-`insertionIndex`'s half-width rule; anywhere else — its own window included,
-as in Chrome — gets a new window with the grabbed point under the cursor. A
-point inside the dragging window's own frame is over that window whatever
-strip lies behind it, since the dragging window is the one in front. A
-window's only tab carries its whole window from the first move (`Carry`, moved
-by the label's thread each frame), so for it only another strip changes
-anything. Escape, or bringing the tab back onto the strip, is how to keep it.
-Pointer events, never HTML drag and drop: the native file drop this app relies
-on keeps WebView2 from ever seeing `dragover`.
-
-The units are the trap. macOS scales the cursor by the **primary** display's
-factor but each window's position by **its own**, so on a Retina laptop beside
-a 1x display a comparison in physical pixels misses by a factor of two;
-`desktop_per_physical` compares in points there and in physical pixels on
-Windows and X11, where both are already physical. A window is placed by its
-frame while the grab is measured in its client area, so `Carry` subtracts the
-frame between them — a title bar on Linux, nothing on macOS or frameless
-Windows. Wayland reports the cursor and every window's position as `(0, 0)`,
-which would put every strip under the cursor, so `on_wayland` withholds the
-cursor altogether: a drag there still opens a new window, but shows no label,
-carries no lone tab's window and merges nowhere. A tab is torn off past `TEAR_PX` above or below the strip and comes back
-only within `RETURN_PX`, closer, so a hand wavering at the threshold does not
-toggle it every move. Windows have no z-order API, so of overlapping strips the
-most recently focused window's wins.
-
-**The label that follows a torn-off tab is a window, and it must never count as
-one.** A page cannot draw outside itself, so `ghost.rs` keeps a borderless,
-transparent, click-through window labelled `ghost`, built on the first drag and
-reused. While a tab is torn off a thread moves it to the cursor every frame
-and asks `target_under_cursor` what a release would do, which is also how the
-hovered window gets its landing mark (`muster://drop-hover`) — that window
-hears nothing of the drag itself. Five things keep it out of the way: every
-list of real windows skips the label (`has_other_windows`, `front`, the drop's
-own hit-test), or closing the last real window would neither quit nor keep its
-tabs; the last window's `Destroyed` closes it, because a hidden window still
-keeps the app running; window-state's denylist names it, or it would be
-restored wherever a drag last left it; it has a capability of its own
-(`capabilities/ghost.json`) granting the event API alone among the core and
-plugin APIs, since it draws a title an agent chose — the app's own commands
-are not capability-gated (there is no app manifest), so that is where the
-narrowing stops; and it hides itself a second after the
-dragging page's heartbeat stops, because a page that reloads or dies mid-drag
-never sends the hide and the label would follow the pointer for the rest of
-the run. Its page asks for the current state on mount as well as listening,
-since the first drag's first word is sent while that page is still loading,
-and the thread checks the drag is still on after showing it, because a hide
-can run while a frame is working out its target. Each tear-off is numbered by
-the page and a hide quotes the number: `ghost_show` is async and `ghost_hide`
-is not, so a quick tear-and-release can deliver the hide first, and the show
-that follows must not bring the label back. The landing mark is in the
-dragged tab's agent colour; the label's own "Add to this window" in `primary`.
-
-The serialize addon is pinned at `0.13.0`, the last on the xterm 5 line, for
-the reason the ligatures invariant below gives: `0.14.0` declares no peer.
-
-What the snapshot cannot hold is carried beside it. xterm keeps mouse
-encoding (`?1006`) and cursor visibility (`?25`) out of the state the
-serializer reads, so a clicks tab would arrive reporting the wheel in an
-encoding the agent does not parse; `CARRIED_MODES` watches them and the
-handoff writes them back. The shell reports its history file once, so that is
-carried too. Prompt boundaries before the move are not: the snapshot has no
-`OSC 133` marks, so the copy control and `⌘⇧O` reach only commands run after
-it. And a move cut mid-escape-sequence prints the sequence's tail once, since
-the offset is a chunk boundary and xterm does not expose its parser state.
-
-**A kill names a registration, not a tab.** `pty_kill` and `pty_spawn` are
-separate async commands with no ordering between them, and a tab reopening
-its conversation posts both for the **same id** in one commit — so a kill
-meant for the session being torn down can arrive after its replacement is
-registered. Removing by id alone then ends the child that just started, and
-because `end` sets `killed` the reader thread reads it as deliberate and
-reports no exit: the tab keeps its terminal, shows no ended bar and no way
-back, and has nothing running behind it. `EPOCHS` numbers every registration,
-`pty_spawn` answers with the one it took, and `pty_kill` refuses an epoch that
-is not the one currently registered. Same shape as `Sessions::forget`'s
-`Arc::ptr_eq`, and for the same reason.
-
-**A session must be forgotten when its child exits.** The pane stays mounted
-behind the "session ended" overlay, so `pty_kill` never runs on a natural exit.
-Without `Sessions::forget` in the reader thread the registry keeps dead entries,
-and then the quit prompt counts tabs with nothing running and `end_all` signals
-pids the OS may already have recycled. For the same reason `end_all` drains into
-a vec before ending anything — `end` sleeps between `SIGHUP` and `SIGKILL`, and
-holding the map guard across those sleeps blocks the event loop.
-
-**But it must forget its own session, not whatever holds the id now.** A tab
-reopening its conversation respawns under the **same id** — the mode control,
-the width repair and a record from the journal all do — and `pty_spawn`
-registers the new session _before_ it ends the previous child. So the old
-reader thread reaches `forget` with a live session already in its place, and
-removing by id alone drops that one: every later `pty_write` answers
-`no session <id>`. Nothing about the tab looks wrong when it happens, which is
-what makes it expensive — the reader thread owns the output channel rather
-than the registry, so the terminal goes on drawing, the status stays
-"waiting for you", and only typing is dead. `forget` therefore takes a `Weak`
-to the session the caller owns and removes only on `Arc::ptr_eq`;
-`pty_tests.rs` pins both directions.
-
 **Tab ids must be unique across runs.** They key the backend's PTY map, and
 `pty_spawn` reads a reused id as "end that session and take its place". A
 per-run counter restarts at 1, so a restored tab and a later `⌘T` would collide;
 `crypto.randomUUID` is what makes restore safe.
-
-**`allowTransparency` is set once and never changed.** xterm requires it before
-`open()` and it cannot be changed without calling `open()` again — which would
-respawn the PTY. So it is always on, and whether the grid is actually
-transparent is decided by the theme's alpha. For the same reason every theme's
-`background` must stay an opaque `#rrggbb`: the pane paints it behind the grid.
-
-**Dispose every addon before the terminal, and hold a handle to each so you
-can.** `Terminal.dispose()` tears `_core` down and only _then_ lets its addon
-manager dispose whatever is still registered — so an addon that reaches through
-`_terminal._core` dereferences what was just freed and throws
-`undefined is not an object`. The image addon reads `_renderService`,
-`_inputHandler`, `screenElement` and more; fit reads the render service. This
-cost a crash on closing a tab, because the image addon was loaded anonymously
-(`term.loadAddon(new ImageAddon({…}))`) and there was no handle to dispose
-first.
-
-TypeScript cannot see any of it: `dispose()` is typed `(): void` on both sides,
-so the whole failure is invisible until a tab closes. Disposing an addon
-explicitly is safe — `loadAddon` replaces `addon.dispose` with a wrapper that
-early-returns when already disposed and splices the addon out of the manager's
-list, so nothing is disposed twice.
-
-The renderer keeps its place at the front of that queue: WebGL has to release
-its GPU context first, and `onContextLoss` must null the handle so cleanup
-cannot double-dispose. A lost context with no fallback stops the terminal
-painting entirely rather than dropping back to the DOM renderer.
-
-**Three addons are pinned exactly — webgl, ligatures and serialize — and the
-rest keep ranges.** The same reach through `terminal._core` is why: the addons ship on their
-own version lines, none declares a peer range tight enough to catch a
-mismatch, and a field renamed upstream reads as `undefined` rather than
-failing. `@xterm/addon-webgl@0.19.0` is built for xterm 6, where `Disposable`
-holds a `_store`; beside xterm 5.5.0, which still calls it `_disposables`, the
-only line that reads it is the addon's own dispose callback — so every
-terminal rendered correctly and closing a tab threw, on every close, whatever
-the dispose order. So the pin is `0.18.0` — the build that pairs with xterm
-5.5.0 — exactly rather than ranged; ligatures and serialize are pinned for
-the peer-range trap the ligatures invariant below describes. The other four
-addons and the core keep `^` ranges, and `test/xterm.test.ts`
-is what stands behind them — it fails when an addon names a core field this
-xterm does not have. Read its doc comment before trusting a green run: the
-bundles are minified, so it sees only the literal `_core.x` spelling and not
-the aliased reads that most of them compile to.
-
-**Ligatures are activated with the Local Font Access API hidden.** The addon
-reads a font's real ligature set through `queryLocalFonts` where the browser
-has it and falls back to a fixed programming set where it does not — and
-WebView2 has it while WKWebView does not, so activating it plainly would raise
-a font permission dialog on Windows alone, at startup, for something the user
-did nothing to ask for. `withoutLocalFonts` deletes the property for the
-duration of `loadAddon` and puts it back, which is the same stance as the
-native font enumeration below and has the side effect of making one host's
-ligatures match another's. The version is the last on the xterm 5 line
-(`0.9.0`, peer `^5.0.0`); `0.10.0` declares no peer at all, which is the trap
-the pinning invariant above describes.
-
-**`workspace_info` does not add a `read_dir` unless it is asked to.** `denied`
-costs one, and `read_dir` is enumeration where `metadata` is a stat — on macOS
-enumeration is what raises the TCC prompt. This does not make the command
-prompt-free: `git_status` runs `git status` on the same path either way, and
-that walks the tree in a child process. What the gate removes is the app's
-_own_ enumeration, on a timer, of a directory nobody asked about. The status footer polls this
-same command on a timer _and_ on window focus, in every mounted pane, against
-the directory the **agent** has since `cd`-ed into; the only caller that reads
-`denied` is the launcher, on a click. So `probe` defaults to off, and the
-first version of this — which computed it unconditionally — put a permission
-dialog on screen at a moment the user did nothing to cause, where a reflexive
-"Don't Allow" is remembered and unrecoverable. That is the state `blocked.ts`
-exists to explain, so causing it would have been the feature defeating itself.
-Same shape and the same reason as `git_changes(counts)`.
-
-**A shell reports its own command boundaries, and nothing else can.** The
-prompt is just characters in the stream: no cell attribute marks it the way an
-agent's tinted block does — measured, no shell on this machine emits `OSC 133`
-on its own. So a **plain shell** session, and the shell an agent session hands
-back to, is started with a startup file of Muster's own (`src-tauri/shell/`), which sources the user's and then adds
-`precmd`/`preexec` hooks that print the standard marks. The copy control and
-the completion list both read them, and a session that reports none simply has
-neither surface.
-
-Three things about the injection break silently.
-
-**zsh moves `HISTFILE` when `ZDOTDIR` moves.** The injection is `ZDOTDIR`
-pointing at Muster's own directory, and zsh derives the default history file
-from it — so without the line that puts `HISTFILE` back, a Muster session
-writes its history where no other terminal reads it, and starts every first
-run with none. The four shims there (`.zshenv`, `.zprofile`, `.zshrc`,
-`.zlogin`) each hand `ZDOTDIR` back before sourcing the user's own file,
-because that file may look beside itself for the rest of their configuration
-— and the last one hands it back for good, so a shell started _inside_ the
-session is the user's own.
-
-**bash cannot be given both `-l` and `--init-file`.** It reads the init file
-only for an interactive **non**-login shell, so a login bash ignores it
-entirely — which is why `Integration::args` _replaces_ the session's arguments
-rather than adding to them, and why the script sources `/etc/profile` and the
-first of the three profiles itself. Drop that and a GUI-launched session is
-back to the bare `PATH` launchd gave it, with every CLI installed by the
-user's profile invisible. It is also why the DEBUG trap is chained rather than
-set: starship and bash-preexec both hold it already, and taking it would stop
-their prompt working.
-
-**A multi-line prompt reports its end twice.** The line editor redraws the
-prompt's last line after the first paint — measured against starship, `A B B
-C` for every command — so the **latest** `B` before a `C` is where typing
-actually starts, and treating the first as final puts the completion's
-anchor a row too high. `promptEnd` therefore replaces the open block rather
-than keeping the first one.
-
-**The command a block ran is the shell's answer, never the row it was drawn
-on.** zsh draws `RPROMPT` on the command's own row, so the rendered row is the
-command, then padding, then the right prompt — measured under a pty,
-`\x1b[70C[12:04]` on the same line. Built from that row, this session's own
-suggestions carried the right prompt with them, and accepting one typed all
-three back into the shell. Both scripts report `OSC 133;P;Cmd=<command>` from
-`preexec` instead, and the rendered row is only the fallback for a shell that
-reports none. bash's DEBUG trap fires for this file's own functions too, so
-the report skips anything named `__muster_*` — without that the session's
-first command was the terminal's own plumbing.
-
-**Only a session Muster injected into is believed, and the backend is what
-says so.** `OSC 133` is ordinary bytes: an agent CLI, a command's output, or a
-remote host printing into an `ssh` session can report a prompt boundary and a
-history file as easily as a shell can — and what it reports chooses a file for
-`shell_history` to open and text for `accept` to type back into that same
-session. So `pty_spawn` answers with `shellIntegration`, and the `OSC 133`
-handler drops everything until that is true — and in a session that hands
-back, until the hand-back is believed as well, because before it the terminal
-is the agent's. Every surface here is fed through that one call, which is what
-makes one check the whole gate.
-
-Answered by the backend rather than re-derived in the frontend for two
-reasons: the same rule computed in two places drifts, and only that side knows
-whether the scripts could be written at all. Re-deriving it from the tab's
-agent, backend and the _current_ setting would also be wrong after the setting
-is toggled — the session keeps whatever it was started with.
-
-**A block's rows are markers, never row numbers.** A row number is right until
-the scrollback is trimmed, at which point every row above shifts and the number
-names someone else's output — so the copy control would copy the wrong command,
-which looks exactly like it working. `useShellBlocks` holds xterm's own
-`IMarker`s and disposes them with the terminal; `MAX_BLOCKS` is what stops a
-day-long session carrying one per command it ever ran.
-
-`MAX_BLOCKS` only bounds the blocks that became commands, though, and a prompt
-that never does is the common case: a multi-line prompt reports its end twice
-per command, so the block the second report replaces has to be released where
-it is dropped. Every path that discards an open prompt calls `forget`.
-
-The rows a marker names can also leave the scrollback, and then it answers
-`-1`. That is not a row to read from: xterm's `getLine` has no bounds check,
-and its circular buffer resolves `-1` to a real stale row once it has wrapped
-— so `textBetween` refuses a negative row, and every caller that walks a
-block checks the same thing. Without it, `⌘⇧O` on a command whose start had
-been trimmed copied the entire session.
-
-**Accepting a completion types it into a live shell.** That is the whole
-reason for every refusal around it: `commands_in` drops a zsh history entry
-spanning lines and one carrying a control byte — bash marks no continuation,
-so its halves are offered as commands of their own — `matchesFor` drops a candidate
-whose remainder is not typeable, and a line starting with a space — which is how a shell is asked not to
-record one — is refused on both sides: in `commands_in`, which has to read the
-space before it trims it away, and in `matchesFor`, because a session reports
-its own commands verbatim and the file never sees them. A newline
-in accepted text is a command submitted by the keystroke that promised to
-complete one. The same hazard `drop_text` refuses a path for.
-
-Accepting also **fills the line in and stops**: running it is still a press of
-Enter the reader makes, having read it.
-
-**The completion keys are claimed only while there is something to claim.**
-`→` at the end of a line, `↓` into the list, `↑` back up it, Enter on a chosen
-row, Escape to dismiss — each answers `false` when no list is showing, and the
-key then reaches the shell untouched. A chord carrying **any** modifier answers
-`false` before that switch is reached: `⌥→` is `forward-word` and `⇧Enter` is a
-newline in several CLIs, and a list that took them would claim a key the reader
-has always had. `↑` out of the **first** row also answers
-`false`, which is what keeps the shell's own history recall on the key it has
-always been on: the list is an offer, never a mode to escape.
-
-**A control drawn over the grid must not sit on the grid's own listener.** The
-copy control is the overlay's child, so a pointer moving onto it _leaves_ the
-element xterm was opened in — and a `pointerleave` there took the control away
-as the pointer reached it, every time. The pointer is followed on the pane,
-which contains both.
-
-**The history file's path is the shell's answer, not a guess.** It is reported
-over `OSC 133;P;HistFile` once per session, after the user's startup files have
-had their say, because `~/.zsh_history` is wrong for anyone who moved it and
-for every session whose `ZDOTDIR` is not their home. It is read through
-`open_tail` — the same bounded, link-refusing read the transcript takes, and
-for the same reason: it happens on a keystroke with no click behind it.
-
-**A user's own messages are found by cell attribute, not by text.** A CLI
-draws the prompt you typed as a tinted block, and that tint is the only thing
-in the stream that marks it: the prompt characters differ per agent and change
-between releases, so matching them dates immediately. `findMessageRows` reads
-`isBgDefault()` off the buffer instead, so it needs to know nothing about any
-particular CLI.
-
-Only Claude Code has been measured, though: of 93 recorded sessions on this
-machine 76 carry a background SGR and all 9 shell sessions carry none, and no
-other agent has ever been run here. "Works for any CLI that tints its prompt"
-is the design, not a result — do not write it as one.
-
-It reads the **buffer**, never the DOM — the WebGL renderer paints the grid
-onto a canvas, so there are no nodes to query, which is the same reason
-`pathLinks` walks `term.buffer.active`. It recomputes on `onWriteParsed`
-coalesced into a frame, gated on `active`: every pane stays mounted, so a
-hidden tab would otherwise walk its own scrollback on every write for a rail
-nobody is looking at.
-
-**Two surfaces mark your messages, and they answer different questions.**
-`useRulerMarks` puts a decoration in xterm's overview ruler, which overlays the
-scrollbar and is drawn against the same scroll extent — so those marks carry
-each message's **true position** in the session. `Rail` draws its own
-bars **evenly spaced**, because proportional marks put every message of a long
-session into the same few pixels and read as one smudge: the rail is a list of
-places, not a map of them.
-
-The rail exists because the ruler cannot do its job. `OverviewRulerRenderer`
-registers decoration, buffer and dimension listeners and **no pointer
-handler**, so a mark there can never take a click; and xterm sets that canvas
-to `display: none` whenever the alternate buffer is active.
-
-That second clause is what `SCROLLBACK_ENV` in `pty.rs` exists to answer, and
-it is worth being exact about: a full-screen TUI holds the alternate buffer,
-which is `rows` tall and keeps no scrollback, so there is nothing to mark, no
-ruler to mark it in, and one screen for the find bar to search. Neither
-surface has anything to show in an agent tab unless the agent is kept out of
-that buffer — the same session went from one screen to 24,000px of scroll
-extent and the rail filled.
-
-**But the mouse is on the other side of that trade, so it is a choice, not a
-constant.** A session started with this variable emits no `CSI ?1000h` at all,
-so its own prompts, its subagent picker and its running-shell list stop
-answering a click. Measured across 187 recorded sessions here: 54 armed
-`?1000h`/`?1002h`/`?1003h`/`?1006h`, all 54 carry an alternate-buffer marker,
-and no session in the normal buffer armed any of them.
-
-Be exact about what that evidence is, because one recording looks like a
-counter-example and is not. The journal holds **output**, so it shows what the
-CLI asked the terminal for and can never show what the terminal sent back —
-"reports no mouse" here means "requests no mouse reporting", which is the
-thing that decides it. And the one recording with tracking but no `?1049h`
-(`179a52e0-…`, 3.0 MB) carries `?1049l` and begins mid-UTF-8-character: it is
-a session the 4 MB cap trimmed, and the `?1049h` was in the half that was
-dropped. Grep both markers, or a trimmed record reads as a normal-buffer
-session that took the mouse.
-
-What could still overturn it is a release, not a recording: if Claude Code's
-classic renderer starts reporting mouse events, the trade dissolves and the
-setting should go with it. Check a fresh record for `?1000h` before assuming
-it still holds.
-
-So the mode is carried per session, on `SpawnOptions::scrollback` from
-`Session.scrollback`, and it is chosen in three places that must stay in this
-order: the `terminalMode` **setting** is the default a launch takes, and a
-`LaunchRequest` that names a mode **overrides** it. Three callers name one —
-the start screen's own control, a resume that carries the tab's current mode,
-and the status bar, which flips the tab through the agent's own `continue`,
-because the variable is read once at spawn and the conversation is the only
-thing worth carrying across the restart. The setting
-defaults to `scrollback`, which is what every session did before it existed.
-The rails can read the agent's transcript instead, but nothing else can: the
-scrollbar and the marks on it, the path strip, the find bar and the width
-repair all read the terminal's own history, and the alternate buffer has
-none. So a clickable tab is the deliberate case.
-
-Which is also why `Agent.scrollbackMode` gates that control rather than every
-tab getting one: the variable is undocumented and read by Claude Code alone,
-so any other agent holds the alternate buffer whatever it is told, has no rail
-and no path strip, and would get a button that reopened the session and
-changed nothing. And it must never join `INHERITED_SESSION_MARKERS`: the
-strip loop runs after the environment is set, so a variable in both lists is
-removed by the line that follows the one setting it, which reads exactly like
-working.
-
-**The mode control draws both modes, never just the current one.** A single
-button labelled with the mode you are in reads as "press for this", which is
-the opposite of what it does — and the mode someone is looking for is the one
-it does not show. `MODES` in `StatusBar` is the pair, the tab's own carries
-`aria-pressed`, and only the other one takes a click.
-
-**And it is offered only where there is a conversation to reopen.** Having a
-`continue` mode is not the same as having something to continue: both this
-control and the ⟳ respawn through the agent's own `continue`, so a tab whose
-first turn has not been written yet reopens onto `No conversation found to
-continue`, the agent exits at once, and a tab that was working is dropped to a
-shell prompt — or, under PowerShell, left at `exited 1` — by a button that
-promised to change its mode. `usePastSessions` counts what
-the store holds and `canReopen` decides, on the quiet edge the deck already
-tracks rather than a timer — a count taken at spawn would read zero for a
-conversation that exists moments later. `null` means unknown and still
-offers: hiding a working control leaves the tab no way to change mode at all,
-which is the worse error.
-
-**Clicks mode only clears the way; the CLI still chooses its own renderer.**
-The variable forces the classic renderer, so removing it is necessary — and it
-is not sufficient. Claude Code's fullscreen renderer is a setting of its own
-(`/tui default | fullscreen`) that it also **turns off by itself** after
-repeated failures to start, and once off, no environment this app controls
-brings it back: measured on 2.1.276, launches with the variable absent, with it
-set, and with `CLAUDE_CODE_NO_FLICKER=1` produced byte-identical output, none
-of it entering the alternate buffer or arming `?1000h`. So a clicks tab whose
-clicks do nothing is the expected state after that, and `/tui fullscreen` in
-the session is the only cure. Say that wherever the control is explained —
-without it the tab reads as broken.
-
-**A clicks session removes the variable; declining to set it is not enough.**
-`apply_mode` strips it, and that direction is the one that breaks silently.
-`CommandBuilder` seeds every child from Muster's own environment, and a shell
-tab is itself a session run in the tab's mode — so a Muster started from a
-shell tab in scrollback mode inherits the variable, which is the ordinary dev
-loop here. Every session it then spawns would keep the classic renderer
-whatever the tab said, including one the control had just switched to clicks:
-the status bar reads Clicks, the conversation reopens, and nothing about it
-changes. This is the mirror of the marker invariant above, and `pty_tests.rs`
-pins both directions.
-
-What it cannot reach is the shell's own startup files. A session runs through
-a login shell, so a profile that exports the variable sets it again after
-`apply_mode` has removed it, and the tab is back in the state above with
-nothing in Rust able to see it. `INHERITED_SESSION_MARKERS` has the same hole
-for the same reason.
-
-**The app's own links stand down while the agent is reading the mouse.** xterm
-forwards the click to the child as soon as tracking is on, and its `Linkifier`
-activates a link from the same `mouseup` without consulting that — so one
-click on a path both opened the file column and reached the agent.
-`agentReadsMouse` in `TerminalView` reads `term.modes.mouseTrackingMode`, the
-platform's own answer rather than a guess about which mode the tab is in.
-
-Two things about it are load-bearing. It gates **`provideLinks`, not the
-activation** — a link that is still offered keeps xterm's underline and
-pointer cursor, so the output would go on claiming to be clickable while
-ignoring the click; the web-links addon registers its own provider, so
-`gateLinks` meets it at that one call, the same shape as `withoutLocalFonts`.
-And it is `false` once the session has ended, because xterm clears the mode
-only when the child asks it to: a TUI that is killed rather than closed leaves
-tracking armed forever, and the output stays on screen under the ended-session
-bar with every path in it dead until the tab is closed. An agent session that
-hands its terminal back is reset by the hand-back instead (`MODE_RESET`), which
-is why the check can stay on `live` — the shell after it never sees tracking
-the agent armed.
-
-What stands down is the plain click. A ⌘-click (Ctrl-click off macOS) still
-opens a link, as in iTerm2 and VS Code's terminal, with no underline to show
-it. `onLinkMouseDown` claims the press only over a link, and listens on
-`.xterm-screen` — after xterm's `Linkifier`, which listens there too, and
-below the root where xterm reports the click — so stopping it there keeps the
-agent from hearing the press, and xterm never arms the document listener that
-would report the release. The link opens on the **release**, over the same
-link, and that release is claimed wherever it lands: the `Linkifier` may still
-hold a link it offered before tracking began and would open that one too. A
-⌘-click on anything else is still the agent's.
-
-**An agent's hyperlinks are xterm's, not ours, and they need a handler.**
-`OSC 8` links — Claude Code's PR links, and a long URL it breaks across rows
-with the full target on each — come from a provider xterm registers itself,
-so `gateLinks` never sees it and xterm ranks it first. With no `linkHandler`,
-xterm activates one through `window.confirm` — which `tauri-plugin-dialog`
-replaces with a `plugin:dialog|confirm` command the capabilities do not
-grant, so without a handler every such link throws, on every platform. The
-handler opens them in the browser, as a URL is, and opens nothing
-while tracking is on, because there the ⌘-click is `onLinkMouseDown`'s. It
-also records the hovered link, since hover is the only way xterm says one is
-under the pointer; `linkUnder` checks that before the ungated providers, as
-xterm does. Two limits follow from xterm, not from us: these links stay
-underlined while tracking is on, and a link drawn under a pointer that has
-not moved is not hovered until the pointer moves, so a ⌘-click there finds
-only what the ungated providers can see. Only
-`http` and `https` targets are offered, which is xterm's default and keeps a
-`file://` or `vscode://` target from reaching the opener.
-
-**`macOptionClickForcesSelection` is toggled, never set.** It is what hands a
-macOS user a drag a tracking CLI would otherwise take — but xterm reads the
-same option in `shouldColumnSelect`, so it is also the switch that turns
-Option-drag block selection off. Left permanently on, every session loses block
-selection to buy an escape hatch only a clicks session needs;
-`syncSelectionModifier` therefore follows `mouseTrackingMode` on the write
-batch that changes it. Verified against xterm 5.5.0's own defaults:
-`altClickMovesCursor` is `true`, `rightClickSelectsWord` is `isMac`, and
-`macOptionClickForcesSelection` is `false` — this is the only one the app
-moves.
-
-Every surface the app floats over the grid answers to the same question, and
-two of them are controls rather than marks. `MessageSteps` — the step arrows
-and the ⟳ — is a real element over the bottom-right corner, and it is drawn
-for whichever list the tab has, the transcript's as readily as the scan's.
-The ⟳ inside it is the part that is conditional, and two gates decide it:
-`Pane` offers `onReplay` where the agent has a `continue` **and** `canReopen`
-says a conversation exists to reopen — see the mode-control invariant above,
-which the ⟳ shares — and `TerminalView` passes
-it on only where `surfaces.replay` says the live buffer has a scrollback for
-a width change to ruin.
-
-**A clickable session reads its places from the agent, not from the grid.**
-The alternate buffer keeps no scrollback, so the scan finds nothing there —
-and the agent has kept a structured record of the same conversation all
-along. `agent_turns` in `transcript.rs` reads Claude Code's own
-`~/.claude/projects/<dir>/<session>.jsonl`, resolved through the journal
-sidecar's published session id, and `TerminalView` switches the rail to it
-whenever the buffer is alternate and the transcript has turns.
-
-Finding that directory takes **two** spellings of the tab's own path, because
-two things can differ. The launcher sends tilde paths where the store's names
-are absolute; and the CLI files a project under the path its own process
-resolved to, which is not the one the user typed whenever a link stands
-between them — `/tmp` is a symlink to `/private/tmp` on macOS, so a tab opened
-at `/tmp/x` matched nothing, and the Continue button, the session count and
-the rail all reported empty for a conversation that was there. `store_keys`
-keeps both, and keeps the unresolved one too, because resolving needs the
-directory to exist and a record outlives the directory it was made in.
-
-Three things about that source are better than the scan, and one is worse.
-It reports the turns the person actually typed — `promptSource == "typed"`,
-the CLI's own distinction, where the scan infers from a tint that a diff
-gutter also carries; and it holds the history a `--continue` printed before this
-terminal existed, which the scan measured at five marks out of a 977-row
-transcript. What it cannot do is move the viewport by itself: the agent owns
-scrolling inside the alternate buffer, so `scrollToLine` does nothing there
-and a transcript place has to be sought instead. The step buttons walk
-either list; only the scan's marks are jumped to directly. Past the newest
-place, ↓ goes to the live bottom in both — `scrollToBottom` in a scrollback
-tab, a sweep the other way in a clickable one — because the output after the
-last message is where the agent is working, and a walk that rests on the
-newest message cannot reach it.
-
-**There is no scrollbar over that buffer, and there is nothing to draw one
-from.** The alternate buffer is exactly `rows` tall, so xterm has no extent
-to size a thumb against, and the agent never reports where its own view sits
-— nothing in the pty stream says how far back it has scrolled or how much it
-kept. A bar there could only be an estimate counted from the notches this
-app sent, and an estimate is what a scrollbar must not be: the agent pins its
-view to the bottom on every repaint, so it drifts from the first turn
-onwards. `surfacesFor` answers `scrollbar: false` for that buffer, and a tab
-that wants a real one is a scrollback tab — which is the default, and the
-reason the choice is offered at launch rather than assumed.
-
-**A dot seeks only while the agent is reading the mouse, and that guard is
-not tidiness.** xterm answers a wheel on a buffer with no scrollback, with
-tracking off, by **typing**: it turns each line the notch would have scrolled
-into `ESC[A` or `ESC[B` and writes them to the pty. A burst is eight notches
-of roughly seven lines, so one stalled seek is about a hundred arrow presses
-into a live agent — and Up recalls the previous prompt in Claude Code, so a
-click meant to scroll overwrites a draft and nothing about the tab looks
-wrong afterwards. `seekTo` therefore returns unless `agentReadsMouse` says
-tracking is armed, and re-checks after every await, because a TUI can drop
-tracking mid-seek. The rail is drawn from the buffer and the turns, neither
-of which knows about tracking, so the check cannot live there — and for the
-same reason the transcript rail is not drawn at all when the seek could not
-work, since a dot that ignores a click is the thing `gateLinks` exists to
-prevent.
-
-**A dot seeks instead, and the stall check is the whole feature.** The wheel
-is the one thing that moves a view the agent owns, and xterm forwards it —
-measured, `CSI <64` on every notch — so `sweep` sends bursts and reads the
-screen between them until the message is there. The first version had no
-stall check and was unusable: the agent pins its view to the bottom while it
-is **printing**, so 60 notches at a working session moved the top row not one
-line, and two attempts spent 48 and 52 seconds finding nothing. `moved` in
-`seek.ts` now ends it after two bursts that changed nothing, and the view goes
-back exactly as far as it came.
-
-The stall is also what the return to the bottom is built on. `seekToBottom`
-runs the same loop downward with nothing to look for and keeps what it sent,
-because nothing reports where the bottom is — arriving _is_ the stall. Both
-go through `wheelOver`, which is where the tracking check lives: a sweep that
-sends notches to a session not reading the mouse types a hundred arrow
-presses into it instead.
-
-Judging "changed nothing" is the part that needs care. An exact comparison
-says _moved_ on a frozen view, because the agent repaints its own spinner,
-token count and timer between frames — so `moved` calls a screen unchanged
-when three quarters of its rows match, and a test pins that case. A message
-shorter than eight characters is not sought at all: `do that` appears all over
-a conversation, and landing on the wrong one is worse than not moving.
-
-It is another program's private file, so every field check in
-`transcript.rs` is the feature: a line that does not parse costs one turn,
-never the rail, and a release that renames something leaves an empty list
-that falls back to reading the terminal.
-
-Three things about reading it were got wrong first, and each was measured
-against this machine's records rather than reasoned about:
-
-- **The bound has to be taken from the end.** The file is append-only and
-  oldest first, so capping the read at the first 20,000 lines kept the start
-  of a long session and dropped the rest: on a 23,796-line record that was
-  105 turns whose newest was three hours stale, against 120 for the whole
-  file — and since the rail shows the newest dozen of what it is handed, a
-  stale turn was presented as the current one. `open_tail` takes the last
-  `MAX_BYTES` and drops the partial line the seek lands in; bytes rather than
-  lines because one line can carry a pasted attachment.
-- **`typed` is not the only thing a person writes.** `queued` is the same
-  prompt submitted while the agent was still working — 38 here, reading
-  `btw, check out branch first`. `suggestion_accepted` stays out: those are an
-  offered action chosen from a list, so the words may be the CLI's own.
-- **A published session id is not a promise of a transcript.** 111 of 172
-  ids on this machine name no file, a session having ended before the CLI
-  wrote one, so `session_ids_for` answers with every id the tab published and
-  the reader takes the newest that resolves.
-
-Two things the corpus could not settle, so do not write them down as settled:
-no record here has ever carried `isSidechain`, and no tool call has used
-`notebook_path`. The sidechain skip and that key are insurance, not results.
-
-The read is reached through the journal sidecar, so it inherits that feature's
-switch: with recording off there is no sidecar, no published id and no rails
-in a clicks tab. `Pane` asks for turns only where they can be drawn — a
-Claude tab in clicks mode — because every pane stays mounted and an ungated
-read would parse a transcript per idle edge in every other one.
-
-The same buffer that costs the mouse costs the marks, so `useBufferMarks`
-scans the **normal buffer only**. An agent's frame paints tinted cells in the
-alternate buffer too, and the rail and the step buttons are app DOM rather
-than xterm's ruler canvas — which xterm hides there — so they would draw dots
-whose `scrollToLine` is a no-op on a buffer with no scroll extent.
-
-`MessageSteps` walks the identical list the rail beside it draws — the scan's
-marks in a scrollback tab, `messagesIn(turns)` in a clickable one — so the
-number of dots and the number of presses always agree. That is the property to
-preserve if either surface changes, and it is why the count is passed in
-rather than recomputed. The rail sits clear of the scrollbar rather than
-over it, and `pointer-events-none` on its column with `auto` on each dot keeps
-the gaps inert either way.
-
-**The filled dot answers a different question on each rail, and only one of
-them can be measured.** A scrollback rail fills the mark the **viewport** is
-inside. A clickable one fills the place the **walk** is on, because the agent
-owns its own scrolling inside the alternate buffer and reports nothing about
-where its view sits — so where the buttons are is the only position anything
-here knows. That makes it state rather than a ref: it is the only thing the
-rail has to draw from, and a ref redraws nothing, so every dot looks the same
-however many times the buttons are pressed. The walk itself is `walk.ts`, out
-of the component so a test can reach it — `walkTo` is where ↓ past the newest
-message becomes the live bottom, and `placeKey` is what keeps the filled key
-one the rail actually drew.
-
-The list is capped at `MAX_MARKS`, derived from the shortest pane the window's
-420px floor allows: past that the oldest dot would be clipped while the step
-buttons still walked it, so "one press per dot" would quietly stop being true.
-
-What the list cannot hold is history the tint never marked, and a **resumed
-session is mostly that**. Measured on a `--continue` of a 977-row transcript:
-the stream carried 1,206 background SGRs spread evenly through it, and the scan
-found five marks — the banner and the last four prompts. Claude Code redraws
-older turns without the tinted prompt block, and most of those SGRs are diff
-gutters rather than prompts. So the marks describe the live part of a session,
-not its history; a plain shell, whose prompt carries no tint at all,
-contributes nothing at any point. Matching the prompt glyph instead is the
-thing that dates immediately, so there is no cheap fix here — only a different
-signal, and `OSC 777`'s `prompt_submit` arrives for live turns alone. And what it _can_ be made to hold is anything
-tinted: `isTinted` reads a cell attribute, so a coloured diff gutter, a
-line-number column or an agent's own banner produces an entry indistinguishable
-from a message you typed — which is why the label is presented as what was
-found rather than as something you wrote. Measured across 91 recorded sessions
-on this machine, no shell emitted `OSC 133` semantic prompt markers on its own,
-so there is no standard signal here to fall back on: what a **plain shell** tab
-has is the pair Muster injects for it (see the shell-integration invariant
-above), and no agent CLI emits them at all.
-
-`overviewRulerWidth` is still set on the terminal and is load-bearing there.
-Left unset it defaults to 0, and every decoration asking for a ruler mark is
-silently dropped — including the search addon's `matchOverviewRuler`, which is
-what puts a find result on the scrollbar.
-
-**xterm only writes the scroll area's height when its own record disagrees
-with it.** `Viewport` caches the height it last wrote in
-`_lastRecordedBufferHeight` and skips the write when that still matches — so an
-inline height reset behind its back is never repaired, and the scrollbar keeps
-the size it had when the session was one screen tall. Measured on a real
-session, the cache read 8137 rows while the element's inline style read 657px,
-and the thumb was full height over a 20,000-line scrollback. `resyncScrollbar`
-in `TerminalView` re-asserts the height xterm already computed, from the
-screen's own layout rather than a cell metric — the WebGL renderer draws to a
-canvas and leaves no per-row element to measure. It is a normal-buffer fix and
-only ever raises the height, so a shrink is left to xterm's own next write.
-
-It is not free, though: it runs per write batch rather than per frame, and the
-two `querySelector`s and the `offsetHeight` read force a layout each time. That
-is why it returns immediately unless its pane is on screen.
-
-**A turn ending is announced two ways, and Claude Code never uses the bell.**
-`onBell` was the only signal wired to notifications, and measured across 24
-recorded sessions the bell fired **zero** times — every `0x07` in the stream
-was an `OSC` string terminator, not a bell. A Claude Code session broadcasts
-`OSC 777;notify;warp://cli-agent;<json>` instead, carrying `session_start`,
-`prompt_submit`, `tool_complete`, `idle_prompt`, `stop` and `stop_failure` —
-and `permission_request`, which `NAMES` does not list, so it answers `null`
-and is dropped. `stop` is the turn boundary, and `stop_failure` is the same
-boundary reached through an API error; `endsTurn` treats them alike, because
-a rate limit is exactly when the person who walked away needs telling. Their
-payload carries the agent's own closing words — which become the notification
-body — alongside fields `parseAgentEvent` deliberately drops, its transcript
-path among them.
-`parseAgentEvent` reads it and `Pane`'s `signalAttention` is where both routes
-meet, so an agent that rings _and_ broadcasts notifies once — the cooldown in
-`decideBellResponse` is what makes that true.
-
-The broadcast is not the CLI's own, and that is the part that breaks
-silently. It comes from a hook plugin the user installs, and the plugin stays
-quiet until the terminal advertises that it can render the events —
-`CLI_AGENT_ENV` in `pty.rs` is what advertises it, and `advertise_protocol`
-beside it carries the rest of the reasoning. Without it every hook exits
-without printing and no tab notifies. Before `advertise_protocol` existed
-that read as a release-only fault, because `CommandBuilder` seeds each child
-from this process's environment: only a Muster that had itself inherited the
-variables passed them on, so a build started from a terminal worked and the
-same build started from the Dock did not. Measured then, across one day's
-records here, 11 sessions under the installed app carried **zero** events
-against 8 under `bun run dev` that carried them.
-
-A **WSL** session gets none of it unless the user's own `WSLENV` lists both
-variables. `cmd` there is `wsl.exe`, and only what `WSLENV` names crosses
-into the distro — the one name this app adds to it is the hand-back token
-(`pass_token`), so `TERM`, `COLORTERM` and `SCROLLBACK_ENV` do not cross
-either, and what else crosses is whatever a `WSLENV` inherited from the user's
-own environment happens to list. What a WSL tab loses is the turn boundary:
-the bell, the hand-back and `announceExit` are read from the session itself and
-still notify.
-
-The other cost is that the payload is **agent-authored JSON arriving over a
-terminal escape sequence**, which is why `parseAgentEvent` answers `null` for
-anything unexpected rather than throwing inside xterm's parser, and why it
-caps the text it carries — an unbounded `response` becomes the body of a
-desktop notification. Treat the field checks as the feature, not as detail.
-
-**A width change destroys a TUI's scrollback, so the scrollback is dropped
-rather than shown.** This is the price of scrollback mode above, and it has to
-be stated next to it: the normal buffer is the only one xterm reflows, so
-keeping an agent out of the alternate buffer is also what exposes its history
-to re-wrapping. An agent pads every frame to the full width, so a narrower grid
-spills each padded row into a second one and the transcript above the live
-frame becomes offset blocks. Measured: narrowing a pane from 1883px to 1120px
-took one session's scroll extent from 21,060px to 30,096px, and widening it
-back gave 21,870 — reflow is lossy, so even the round trip does not undo it.
-
-Nothing can repair those rows. xterm's buffer holds cells with no memory of
-where the original breaks were, and the journal is not a transcript but a
-width-specific render log — one recorded session holds 14,628 absolute column
-moves, so replaying it into a different width would misplace every one of
-them. So `sync` clears on a `cols` change and the ⟳ beside the step buttons reopens
-the session with the agent's own `continue`, which is the only thing that can
-print the conversation again at the width it now has. Verified: a clear took a
-tab to one screen and the button brought it back to 15,066px with its marks.
-
-`reflowRuins` is what decides, and it excludes two sessions for one reason:
-`Terminal.clear()` keeps **only the cursor's line**, not the visible screen. A
-plain shell's wraps are genuine, so its scrollback reflows correctly and has
-nothing to repair — clearing it would throw away good history and blank the
-screen of the one session that does not repaint on `SIGWINCH`. An agent still
-in the alternate buffer has no scrollback to damage, so its `rows` of frame
-are all there is to lose. Note that a clicks tab is not the same thing: the
-CLI chooses its own renderer, so one whose fullscreen renderer is off runs in
-the normal buffer and builds real history — which is why the ⟳ is gated on
-the live buffer type and never on the tab's mode. The control is passed only where a `continue` mode
-exists, so a shell is not offered a button whose click would do nothing.
-
-What survives a clear is the machinery, and that is worth knowing because it
-is not obvious: the scan is subscribed to `onWriteParsed` for the life of the
-mount, so output written after a resize is marked as usual — a cleared tab
-still painted 702 pixels of file marks from the agent's repaint. Only the
-history is gone.
 
 **Tabs and settings belong to the app, not to a window.** They live in
 `state.json` beside the journal, written by `store.rs`, because `localStorage`
@@ -1251,92 +177,6 @@ Per-window preferences stay in `localStorage` on purpose: a panel width dragged
 in one window must not move in another. That is the test for where a value
 belongs — is it the app's, or this window's?
 
-**The path beside the scrollbar is searched upward, never scanned.** Agent
-CLIs announce each file they touch on its own line, so `fileAbove` walks _up_
-from the viewport to the nearest one and stops, bounded by `LOOK_BACK`. It runs
-on every scroll, so a full-buffer scan of the kind `findMessageRows` does would
-be the wrong shape here: only the nearest match matters and it is usually a few
-rows away.
-
-**Which line that is was guessed wrong once, and the guess cost the whole
-feature.** `TOUCHED` began as `Update(path)`, `Write(path)`, `Read(path)` —
-the shape a tool call reads as — and the label then stayed blank for a whole
-session while looking exactly like a layout bug. Measured over 4.1 MB of
-recorded sessions here, Claude Code names the file **after** the fact and with
-a space: `Updated` 320 times, `Created` 44, `Deleted` 7, and `Read(…)`,
-`Write(…)` or `Update(…)` not once. So the past-tense form is first and the
-parenthesised one is kept only for the CLIs that write it. Two consequences
-to preserve: `Bash(…)` — the one parenthesised header Claude Code does print,
-25 times — must stay out of the verbs, because it names a command; and the
-past-tense form must require an extension on the path, or a sentence about
-having updated something reads as a filename. Verify a change here against a
-journal file, never against what a tool call looks like.
-
-It reads the rendered row, not the pty stream. The stream interleaves cursor
-moves mid-path — the same recordings hold `Updaed`, `Updatd` and `Udated`,
-which are one word torn by a cursor move — so matching the raw bytes would
-find a truncated path; the buffer holds what was actually drawn. What it drew
-is not always a path, though: an agent elides one too long for its column to
-`Read(…)`, so a capture with no letter or digit in it is skipped and the walk
-carries on upward.
-
-The label rides the scrollbar rather than sitting still, at
-`viewportRow / baseY` of the pane's height — the ratio the bar draws itself
-from — so it reads as a label on the bar. It keeps `STEPS_RESERVE` of the
-bottom edge clear, because the one place it must never come to rest is on top
-of the step buttons. Clicking it opens the file through the same `onPath` a
-path clicked in the output goes through, which is why `fileAbove` answers with
-both forms: the tail is what fits beside the bar, and the printed path is what
-`resolvePath` can turn into a file.
-
-**`findFileBlocks` scans where `fileAbove` walks, and the two are not
-interchangeable.** The label answers "what am I looking at" for one position,
-so it stops at the first match above the viewport; the ruler marks answer
-"where did the work happen" for the whole session, so they need every match and
-scan like `findMessageRows` does, on the same `MAX_SCANNED` bound and for the
-same reason. A file touched twice is two marks — deduping would hide the second
-edit, which is a place in the session.
-
-File marks take the ruler's **left** lane and messages keep the full width.
-That is what tells the two apart by shape as well as by colour, which the
-accessibility bar asks for; it is _not_ what protects the message marks —
-`_refreshDecorations` draws every non-`full` zone and then every `full` one
-over the top with an opaque fill, so a message mark wins a shared row whatever
-lane the file mark takes. Both go through `useBufferMarks`, whose identity
-preservation is load-bearing rather than tidy — a fresh array per write batch
-would dispose and re-register every decoration in the ruler on every frame of
-output.
-
-**A file mark is a span, and both of its bounds were got wrong once.** The
-ruler has no tall mark: `ColorZoneStore.addDecoration` reads `marker.line` and
-ignores a decoration's `height`, so a span is drawn by sampling it at the
-padding the store merges within — `floor(bufferLines / (canvasHeight - 1) *
-markHeight)`, which `strideFor` reproduces rather than estimates. Estimating
-it as one row per drawn pixel made the stride ten times finer than needed, the
-newest block spent the whole decoration budget, and every older mark vanished
-from the bar; the budget is now shared per mark for the same reason.
-
-At the other end, a block left to run to the next header tiled the scrollback
-and painted 93% of the bar one colour. `MAX_BLOCK_ROWS` is small because the
-ruler is already generous: its minimum mark is
-`clamp(canvasHeight / bufferLines, 6, 12)` device pixels, so one row is
-already a band and the span's only job is to make a large edit read taller
-than a one-line one. This is where the bar and the label part company on
-purpose — the label attributes every row to the nearest header above it, and
-the mark covers only where the file was touched.
-
-**A tab's status is measured, not announced.** `isWorking` reads one thing:
-whether the session has printed in the last `QUIET_MS`. Every CLI writes to
-the pty while it thinks and goes quiet when it wants you, so this needs nothing
-from the agent — which matters, because on this machine only Claude Code has
-ever been observed announcing anything about itself, and eight of the nine
-agents in the roster have never been run at all.
-
-`TerminalView` reports the two edges rather than every chunk: a busy session
-would otherwise dispatch a deck action per write batch. `unknown` is the state
-before a tab has printed anything, and it is not the same as idle — a tab that
-has said nothing must not claim to be idle.
-
 **Nothing an agent names may reach a session as keystrokes.** `drop_text`
 refuses any path carrying a control byte, because quoting is not the only
 boundary in play: the text is delivered through xterm's bracketed paste, which
@@ -1346,98 +186,6 @@ bytes, and an agent picks its own filenames — ends paste mode early, and the
 rest arrives as typed keys with a carriage return to submit them. Balanced
 quoting does not help, because the shell's line editor never sees quotes at
 all.
-
-**A pathspec must be literal.** `:(top,literal)<path>` in `review.rs`, never
-`:/<path>`: the second leaves the rest as pathspec language, so a file an agent
-named `:setup.sh` resolved to the tracked `setup.sh` beside it — an empty diff
-for a new file — and `!x` inverted the match to the whole repository. Verify a
-change here against a real name: `git ls-files -- ':/:AGENTS.md'` prints
-`AGENTS.md`, and the literal form prints nothing.
-
-**Nothing is read through a symlink, and the automatic reads are bounded.**
-`read_capped` uses `symlink_metadata` and refuses a link, the same stance and
-the same reason as `image.rs`: a repository can ship
-`docs/notes.md -> ~/.ssh/id_ed25519`, and the line count for an untracked file
-is read with no click at all. `MAX_COUNTED` bounds how many of those reads a
-single revision can cause, and `git_changes` takes a `counts` flag so a caller
-that will not show a number reads nothing at all — the click that opens a diff
-from the terminal asks only which files differ, because a read is what raises a
-filesystem permission prompt and asking for one before the panel is even open
-is asking too early. Confinement lives at the callers that have no click,
-not in the commands — `read_image` must stay unconfined, because the terminal's
-overlay and the background picker legitimately point anywhere, while
-`resolveAgainst` refuses a markdown image that climbs out of its document's own
-folder.
-
-The transcript read holds to the same stance, and it has to: it happens on a
-status edge with **no click at all**, so it is the automatic kind. The final
-component goes through `open_without_following` — `review.rs`'s, rather than a
-second copy — because `symlink_metadata` alone is check-then-open and the
-program that writes the file is the one being defended against, so it can
-replace its own transcript with a link between the two. A project directory
-that is itself a link is skipped in `claude_project_dir` before anything under
-it is opened; `~/.claude` above it is not, for the reason `links_above` gives
-about a root — that is the user's own home, not something an agent chose.
-
-**An id another program published is checked once, for two hazards.**
-`is_session_id` is the only copy, and both callers need both halves: the
-journal sidecar's id reaches an **argv** through the Resume button, and a
-**path** through `transcript.rs`. The alphabet alone covers neither. A leading
-`-` is spelled from it — `--dangerously-skip-permissions` is thirty ASCII
-letters and hyphens — and would put a flag in front of a program nobody typed;
-a Windows device name is too, and `CON.jsonl` opens the console whatever
-directory it is joined under. `.`, `/`, `\` and `:` are outside the alphabet
-already, so the traversal half needs nothing more.
-
-**An editor installed on macOS usually has no shell command.** A bundle in
-`/Applications` puts nothing on `PATH`: VS Code's `code` arrives only if the
-user ran "Shell Command: Install 'code' command" from the palette. Probing the
-command alone therefore reported one editor on a machine with three, and looked
-like a working list rather than a broken one. `editor.rs` looks for the bundle
-too, and launches through the tool inside it — `Contents/Resources/app/bin/…`,
-which is what the shell command is a symlink to, so the flags are the same. The
-tool is not always named after the command: Antigravity's editor is
-`Antigravity IDE.app` with `antigravity-ide`, and the `Antigravity.app` beside
-it is a language server that opens nothing. A bundle with no such tool falls
-back to `open -a`, which takes no flags, so a line number is dropped there.
-
-**A file drop is a window event, not an element's.** Tauri intercepts the drop
-before the DOM sees it — `dragDropEnabled` is on by default — so there is no
-target to hang a handler on and `onDragDropEvent` is the only way to see one.
-Every mounted pane would otherwise answer the same drop, so only the active one
-subscribes; the effect is keyed on `active` for exactly that reason. The text it
-inserts is built in `platform::drop_text`, not in the webview: the quoting is
-the session's shell's, and a WSL session needs the path translated the way
-`--cd` translates it at launch.
-
-**Nothing in the review panel may need WASM.** The content security policy has
-no `wasm-unsafe-eval`, so Shiki runs on `createJavaScriptRegexEngine` — widening
-the policy to colour some text would be a bad trade. `forgiving: true` skips the
-few TextMate patterns that engine cannot express instead of throwing away the
-file's colours, and every failure in `highlight()` answers `null`, because
-uncoloured code is a perfectly good diff and an unreadable one is not.
-
-**Highlighted code is rendered as elements, never as markup.** Shiki can emit
-HTML directly and `dangerouslySetInnerHTML` would be shorter, but the code being
-coloured was written by an agent. `TokenLine` renders tokens as `<span>`s so
-nothing an agent wrote can reach the DOM as markup.
-
-`MarkdownView` is the one exception, and it is only safe because of three
-things in `markdown.ts`: markdown-it runs with `html: false`, so the file's own
-HTML is escaped into text; links are rendered with **no `href`**, carrying the
-URL as `data-url` for the system browser, as a terminal URL goes, because the
-webview has one window and a link would navigate the whole app out of it; and
-images become `data-src` paths that Rust reads, never URLs the webview fetches.
-Any change there is a change to what a file an agent wrote can do to the
-window — treat the escaping, the missing `href` and the `data-src` as the
-feature, not as detail.
-
-Mermaid is the fourth thing, and it is not markdown-it's doing: a `click`
-directive in a diagram becomes a real `<a xlink:href>` inside the SVG, and
-`securityLevel: 'strict'` does not prevent that — it only picks the anchor's
-`target`. `disarmLinks` moves the destination to `data-url` after every render,
-so a diagram's links reach the browser the way the document's do. Anything
-that replaces `innerHTML` with mermaid's output has to keep calling it.
 
 **`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV`
 to `false`, and without it Bun leaves that expression in the bundle — where
@@ -1455,19 +203,6 @@ parses before it can draw anything; split, the entry chunk is 1.3 MB and a
 grammar is fetched when a file needs one. Nothing fails if the flag is dropped
 — the app just starts slowly, which is the kind of regression nobody bisects.
 
-**The review surfaces re-read on a revision derived from the tree, never on a
-clock.** `treeRevision` in `features/workspace/model/status.ts` builds it from
-git's own counts, and the changed-file list, an open diff and every expanded
-folder key on it. A timestamp is what this started as, and because
-`useWorkspace` polls every few seconds it tore an open diff down on every tick —
-clearing it to a "Reading…" notice, losing the scroll position and re-tokenising
-both sides through Shiki on the thread that draws the window, in every mounted
-pane at once. The trade is that a second edit to an already-modified file moves
-no count, which is what the panel's Re-read button is for. No timer here at all:
-see the hidden-pane invariant, and note the panel is mounted only while open —
-which is also why the click that opens it asks git directly rather than reading
-a list that does not exist yet.
-
 **Material icons ship as path data, not a webfont.** `src/shared/ui/icons.ts`
 holds the `d` attributes traced from Material Symbols. A webfont would need a
 `font-src` the policy does not grant, and an icon font that fails to load
@@ -1475,28 +210,6 @@ renders tofu boxes rather than nothing — a failure that looks like a bug in th
 app. The three `window_*` glyphs are the exception to the tracing: Material's
 window icons are several times the weight of the hairline squares a titlebar
 draws, so those are drawn to the same 960 grid rather than copied.
-
-**Windows has no frame, and the two window configs must say the same things.**
-`tauri.windows.conf.json` sets `decorations: false` — the tab strip is that
-platform's titlebar, and a native caption above it reads as two stacked title
-bars. macOS keeps its frame, because `titleBarStyle: Overlay` already puts the
-tabs inside it and dropping the frame there would lose window snapping and
-tiling; Linux keeps its desktop's decorations, because a GTK window with none
-loses whatever its window manager alone provides, and nobody has run this on
-enough of them to know what that costs.
-
-Windows pays a smaller version of that cost knowingly: tao still hit-tests the
-borders itself, so edge-drag resizing and `Win`+arrow snapping survive, but the
-Windows 11 Snap Layouts flyout does not — it needs `WM_NCHITTEST` to answer
-`HTMAXBUTTON`, which no `<button>` can. One row of chrome instead of two was
-judged the better trade.
-
-The trap is the merge. Tauri merges the platform file over `tauri.conf.json`
-with JSON Merge Patch (RFC 7396) semantics, which **replaces** an array rather
-than merging its entries — and `app.windows` is an array. So the Windows file cannot say only
-"turn the frame off": it restates the whole window, and a size or a background
-changed in one file would silently apply on two platforms out of three.
-`config_tests.rs` fails when the two disagree.
 
 **Nothing may put a control at the strip's far right.** That corner is close —
 drawn by Windows before this app took the frame off, and by `WindowControls`
@@ -1506,33 +219,6 @@ renders on every tab: a launcher tab has no session, and would otherwise have no
 way to reach settings but the shortcut. The bar's own last item needs
 `flex-none`, and something before it needs `min-w-0`, or a long branch name
 pushes settings past the edge at the window's 620px floor.
-
-**The review panels mark their own scrollbars, and they measure rows rather
-than compute them.** `ChangeRuler` reads `offsetTop` off the rendered
-`[data-change]` rows, because a diff's rows are real elements whose height
-depends on the font, the wrap setting and the width — none of which a model can
-predict. It takes a `revision` for exactly that reason: nothing about the DOM
-announces a re-read, a context change or a new file, so the measure has to be
-told.
-
-Two things there are the same shape as the terminal's own surfaces. The first
-measure is synchronous, because an occluded window gets no animation frames and
-a ruler that waited for one stayed empty in a way that reads as "nothing
-changed". And only the changed rows carry `data-change`: a diff is mostly
-context, and marking every row would have the ruler filtering thousands of
-attributes that say nothing. The plain file view marks the same way, from
-`changedLines` over the same patch the diff view reads — reading a file says
-nothing about what changed in it, and a file opened from outside a working tree
-gets no marks rather than wrong ones.
-
-**A panel's close button may never be the control that clips.** Every `Action`
-in `FileViewer`'s header is `flex-none`, so a narrow panel overflowed the row
-and pushed the last item — the close button — out of sight, leaving Escape as
-the only way back. The optional controls sit in their own `min-w-0 shrink
-overflow-hidden` group and close sits outside it, so the row clips the things
-you can do without and keeps the one you cannot. The panel is draggable down
-to a few pixels, so this is reachable by ordinary use rather than only at the
-window's floor.
 
 **A styled scrollbar uses the `-webkit-` pseudo-elements, never
 `scrollbar-color`.** WKWebView
@@ -1567,35 +253,12 @@ every time, and it is direct manipulation rather than a row in the settings
 pane. `storedWidth` repairs what it reads, because a panel three pixels wide
 leaves no edge to drag it back with.
 
-**The file column never covers the terminal.** Reading a diff and typing the
-next instruction are one activity, so the column is a sibling of the terminal in
-the flex row, not an overlay on it. That is also why the drawer holds no reader:
-it lists and the column reads, and what is being read lives in `Pane` — the two
-are siblings, so neither can own it.
-
-**Code in the review panel is the terminal's own type.** `codeStyle` hands the
-font family, size, line height and letter spacing from settings to the diff and
-the file view, so a column of code matches the output beside it. Tailwind's
-preflight then undoes half of that: it sets `code { font-family: var(--font-mono) }`,
-which beats an inherited family, so the elements that actually show code would
-ignore the font the user chose. `[&_code]:[font-family:inherit]` on the
-container is what puts it back, and the gutters are sized in `ch` rather than
-pixels so the columns follow the font instead of clipping at 20px.
-
 **A scroll needs a bounded box.** `overflow-y-auto` on a child of an
 `overflow-hidden` parent never becomes a scroll container: the child grows to
 its content and the parent clips it, so the list looks truncated and the wheel
 does nothing. Put the overflow on the element that has the height — the
 `min-h-0 flex-1` box that the drawer's list and the reader both are — never on
 both it and a child.
-
-**A patch must come back from git verbatim.** `workspace::git` ends in
-`trim_end`, which is right for a fact — a sha, a branch name — and wrong for a
-diff: a unified diff's blank context line is a single space, so trimming
-deletes the diff's last rows for any file ending in blank lines, while its `@@`
-header still promises them. That is exactly the region a reviewer reads when an
-agent may have eaten a trailing newline. `git_verbatim` is the one to use for
-anything whose whitespace is content.
 
 **An overlay that closes on Escape must claim the key, not share it.** Several
 surfaces listen for Escape on their own, and they stack: the file column, the
@@ -1607,10 +270,94 @@ the topmost one answers and the rest do not. A surface that is per-tab must also
 gate on `active` — every pane stays mounted, so an Escape typed at a TUI in one
 tab was closing another tab's panel.
 
-**Keep command-line building platform-independent.** POSIX, PowerShell and WSL
-argv construction in `src-tauri/src/platform.rs` compiles on every target so
-`cargo test` covers all three from any host. `cfg`-gate the _choice_ between
-them and the process inspection, never the string building.
+### Where the rest live
+
+**In [`src/features/terminal/AGENTS.md`](src/features/terminal/AGENTS.md)** — the terminal:
+
+- Terminals blur when their pane hides.
+- An oversized paste is caught in two places, because macOS has no third.
+- `allowTransparency` is set once and never changed.
+- Dispose every addon before the terminal, and hold a handle to each so you can.
+- Three addons are pinned exactly — webgl, ligatures and serialize — and the rest keep ranges.
+- Ligatures are activated with the Local Font Access API hidden.
+- A multi-line prompt reports its end twice.
+- The command a block ran is the shell's answer, never the row it was drawn on.
+- Only a session Muster injected into is believed, and the backend is what says so.
+- A block's rows are markers, never row numbers.
+- Accepting a completion types it into a live shell.
+- The completion keys are claimed only while there is something to claim.
+- A control drawn over the grid must not sit on the grid's own listener.
+- The history file's path is the shell's answer, not a guess.
+- A user's own messages are found by cell attribute, not by text.
+- Two surfaces mark your messages, and they answer different questions.
+- But the mouse is on the other side of that trade, so it is a choice, not a constant.
+- The mode control draws both modes, never just the current one.
+- And it is offered only where there is a conversation to reopen.
+- Clicks mode only clears the way; the CLI still chooses its own renderer.
+- A clicks session removes the variable; declining to set it is not enough.
+- The app's own links stand down while the agent is reading the mouse.
+- An agent's hyperlinks are xterm's, not ours, and they need a handler.
+- `macOptionClickForcesSelection` is toggled, never set.
+- A clickable session reads its places from the agent, not from the grid.
+- There is no scrollbar over that buffer, and there is nothing to draw one from.
+- A dot seeks only while the agent is reading the mouse, and that guard is not tidiness.
+- A dot seeks instead, and the stall check is the whole feature.
+- The filled dot answers a different question on each rail, and only one of them can be measured.
+- xterm only writes the scroll area's height when its own record disagrees with it.
+- A turn ending is announced two ways, and Claude Code never uses the bell.
+- A width change destroys a TUI's scrollback, so the scrollback is dropped rather than shown.
+- The path beside the scrollbar is searched upward, never scanned.
+- Which line that is was guessed wrong once, and the guess cost the whole feature.
+- `findFileBlocks` scans where `fileAbove` walks, and the two are not interchangeable.
+- A file mark is a span, and both of its bounds were got wrong once.
+- A tab's status is measured, not announced.
+- A file drop is a window event, not an element's.
+
+**In [`src-tauri/AGENTS.md`](src-tauri/AGENTS.md)** — the Rust backend:
+
+- Strip agent session markers from every spawned process.
+- Sessions run through a login shell — and where they cannot, they imitate one.
+- An agent tab hands its terminal to a shell, and the agent never learns.
+- A git write is stopped by the thread that waits for it.
+- No git the app runs may take its repository from the environment.
+- Paths are stored in the host's own form.
+- Output is recorded before it is sent, and every bound on it is load-bearing.
+- `Channel` payloads must be owned.
+- Closing the last window exits the app; minimizing it does not.
+- A blocked directory is not a missing one, and `metadata` cannot tell you which.
+- Blocked warns; it does not refuse.
+- An empty list of past conversations means "let the CLI pick", never "there is nothing".
+- Window state is saved on `RunEvent::Exit` too, and for the same reason.
+- A reload is the one browser shortcut this app cannot survive.
+- `single-instance` is registered first, and it has to be.
+- Cleanup runs on `RunEvent::Exit`, not on a window event.
+- A tab moves between windows; its process does not.
+- A tab dragged off the strip lands where the backend says the cursor is.
+- The label that follows a torn-off tab is a window, and it must never count as one.
+- A kill names a registration, not a tab.
+- A session must be forgotten when its child exits.
+- But it must forget its own session, not whatever holds the id now.
+- `workspace_info` does not add a `read_dir` unless it is asked to.
+- A shell reports its own command boundaries, and nothing else can.
+- zsh moves `HISTFILE` when `ZDOTDIR` moves.
+- bash cannot be given both `-l` and `--init-file`.
+- A pathspec must be literal.
+- Nothing is read through a symlink, and the automatic reads are bounded.
+- An id another program published is checked once, for two hazards.
+- An editor installed on macOS usually has no shell command.
+- Windows has no frame, and the two window configs must say the same things.
+- A patch must come back from git verbatim.
+- Keep command-line building platform-independent.
+
+**In [`src/features/review/AGENTS.md`](src/features/review/AGENTS.md)** — the review panel:
+
+- Nothing in the review panel may need WASM.
+- Highlighted code is rendered as elements, never as markup.
+- The review surfaces re-read on a revision derived from the tree, never on a clock.
+- The review panels mark their own scrollbars, and they measure rows rather than compute them.
+- A panel's close button may never be the control that clips.
+- The file column never covers the terminal.
+- Code in the review panel is the terminal's own type.
 
 ## Architecture
 
@@ -1694,8 +441,7 @@ the signal to move it into a `model` segment first.
   Intention-revealing names; no `Manager`, `Data`, `Info`, `Helper`.
 - **Do not name a self-evident literal.** A constant earns its name by being
   computed, repeated, or opaque.
-- **Prettier owns the formatting**, at 80 columns, with single quotes and no
-  semicolons (`.prettierrc`). Do not hand-format around it, and do not argue
+- **Prettier owns the formatting** (`.prettierrc`). Do not hand-format around it, and do not argue
   with it in review — run `bun run format`. JSX attributes stay double-quoted,
   which is Prettier's own default and reads as the HTML it resembles.
 - **Tailwind classes inline**, no `@apply` outside `src/app/index.css`'s base layer.
@@ -1711,8 +457,7 @@ the signal to move it into a `model` segment first.
 
 ## TypeScript
 
-`strict` is on, with `noUnusedLocals`, `noUnusedParameters` and
-`noFallthroughCasesInSwitch` (`tsconfig.json`). There is no ESLint, so the
+`strict` and its companion flags are on (`tsconfig.json`). There is no ESLint, so the
 compiler is the only automatic check there is — which makes every escape from
 it worth more scrutiny than usual.
 
@@ -1733,7 +478,8 @@ it worth more scrutiny than usual.
   are two halves of one wire format that nothing checks against each other, so
   a field added on one side must be added on the other in the same change.
 - **None of this catches a lie told by a dependency's types.** `dispose(): void`
-  is honestly typed and still throws — see the addon invariant above. Where a
+  is honestly typed and still throws — see the addon invariant in
+  `src/features/terminal/AGENTS.md`. Where a
   library's contract is about _order_ rather than shape, only a comment and a
   test protect it.
 
@@ -1888,7 +634,8 @@ These are the seams for common asks:
   attacker-plantable bytes (`~/Library/Fonts` and `~/.local/share/fonts` are
   writable by anything running as the user) happen with no user action, in the
   process that owns every PTY, through CoreText, DirectWrite or FreeType. That
-  is what the "automatic reads are bounded" invariant above exists to prevent,
+  is what the "automatic reads are bounded" invariant in `src-tauri/AGENTS.md`
+  exists to prevent,
   and `panic = "abort"` meant a malformed font could not degrade to the
   fallback list — it took the app down before any window existed, symbols
   stripped. `CANDIDATES` in

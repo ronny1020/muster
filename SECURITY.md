@@ -463,7 +463,7 @@ Named rather than hidden, because the code carries the same notes:
   `sessions.rs`'s `published_session_id` reads `~/.claude/sessions/<pid>.json`
   without the check. All three are dominated by the fact that an agent with a
   pty can run `rm` itself, which is why they are gaps rather than
-  vulnerabilities — but the invariant AGENTS.md states is not currently kept,
+  vulnerabilities — but the invariant `src-tauri/AGENTS.md` states is not currently kept,
   and the fixes are one `symlink_metadata` call, one `create_new(true)`, and
   one more `symlink_metadata`.
 - **The transcript read has no kernel-side no-follow on Windows.** `O_NOFOLLOW`

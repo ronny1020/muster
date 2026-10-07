@@ -179,7 +179,7 @@ pub struct JournalEntry {
 ///
 /// Our record is keyed on the **tab**, which outlives any one session, so the
 /// id the CLI published is the only thing that names the conversation — see
-/// the session-record seam in AGENTS.md. Read from the sidecar rather than
+/// the session-record seam in the root AGENTS.md. Read from the sidecar rather than
 /// tracked in memory because a tab that was restored, or moved between
 /// windows, never told this process anything.
 pub fn session_ids_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<String> {

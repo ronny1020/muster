@@ -424,7 +424,7 @@ export function Pane({
    *
    * `body` is the agent's own closing words where it published them. The two
    * ways a session says this arrive differently — see the `OSC 777` invariant
-   * in AGENTS.md — so both funnel here, and `decideBellResponse`'s cooldown is
+   * in `src/features/terminal/AGENTS.md` — so both funnel here, and `decideBellResponse`'s cooldown is
    * what keeps an agent that does both from notifying twice.
    */
   const signalAttention = useCallback(

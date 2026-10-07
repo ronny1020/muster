@@ -30,7 +30,7 @@ pub struct FontFamily {
 /// The `catch_unwind` holds only in dev and test: `[profile.release]` sets
 /// `panic = "abort"`, so a platform source that panics — font-kit's fontconfig
 /// backend unwraps a failed `dlopen` — aborts the app. Every check in
-/// AGENTS.md's list runs under `panic = "unwind"`.
+/// the root AGENTS.md's list runs under `panic = "unwind"`.
 #[tauri::command]
 pub async fn font_families() -> Vec<FontFamily> {
     tauri::async_runtime::spawn_blocking(|| std::panic::catch_unwind(families).unwrap_or_default())

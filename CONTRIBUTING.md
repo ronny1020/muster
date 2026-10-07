@@ -4,7 +4,10 @@ Thanks for looking. This is a small codebase and a small surface — most change
 touch one or two files.
 
 The conventions this repo expects, and the invariants that break quietly if you
-miss them, live in [AGENTS.md](AGENTS.md). Read that before your first change;
+miss them, live in [AGENTS.md](AGENTS.md), with the invariants for the
+terminal, the Rust backend and the review panel in an `AGENTS.md` beside that
+code. Claude Code reads them directly (v2.1.277 or later), as Codex does, so
+there is no `CLAUDE.md`. Read the root one before your first change;
 it applies to people and coding agents alike. This file is the practical part:
 how to run it, how to check it, and where things are.
 
@@ -310,7 +313,7 @@ component needs touching. The other places that follow:
 - **`package.json`**'s `keywords`, which name the supported agents.
 - **`src-tauri/src/pty.rs`**, _if_ the new CLI exports session-scoped
   environment variables of its own — the marker invariant in
-  [AGENTS.md](AGENTS.md) says how to find out.
+  [src-tauri/AGENTS.md](src-tauri/AGENTS.md) says how to find out.
 - **`src-tauri/src/sessions.rs`**, which decides whether the new agent's
   Continue and Resume modes are offered at all. An agent whose session store it
   does not know returns `None`, which leaves both modes enabled. The same file
@@ -343,7 +346,7 @@ the 80-unit stroke those three use, and say in a comment that it is not traced.
 ## Reviewing a change
 
 `.claude/agents/muster-reviewer.md` is a read-only reviewer that knows this
-repository: it freezes the diff, reads AGENTS.md's invariants as the
+repository: it freezes the diff, reads the AGENTS.md invariants as the
 specification, and checks the documents this repo requires a change to update
 in the same commit. Ask for it by name, or just ask for a review in a session
 that has it.
@@ -371,8 +374,8 @@ to test something is the wrong trade. The point of the split is that
 that ship hard to read.
 
 `config_tests.rs` began as the odd one out — two JSON files rather than any
-Rust, holding `tauri.windows.conf.json` to what AGENTS.md's "Windows has no
-frame" invariant requires of it. It now also covers `lib.rs`'s own helpers:
+Rust, holding `tauri.windows.conf.json` to what `src-tauri/AGENTS.md`'s
+"Windows has no frame" invariant requires of it. It now also covers `lib.rs`'s own helpers:
 which webview shortcuts are swallowed, and how a second launch's argv resolves. It hangs off `lib.rs`, which owns neither file
 but is the only module above both.
 

@@ -1,5 +1,5 @@
 //! Where the app's own state lives: one JSON file beside the journal, read
-//! once and written whole. See AGENTS.md's "Tabs and settings belong to the
+//! once and written whole. See the root AGENTS.md's "Tabs and settings belong to the
 //! app" invariant for why it is not the webview's `localStorage`.
 
 use std::collections::BTreeMap;

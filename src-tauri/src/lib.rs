@@ -253,10 +253,10 @@ fn prevent_default<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// would break promises this app makes elsewhere.
 ///
 /// `FOCUS_MOVE` is `Shift+Tab`, and blocking it breaks backward keyboard
-/// navigation — against the Level AA bar in AGENTS.md, and against
+/// navigation — against the Level AA bar in the root AGENTS.md, and against
 /// `shared/ui/ContextMenu`, which exists to be reachable from the keyboard.
 /// `CONTEXT_MENU` is the right click the file tree's own menu is built on, and
-/// AGENTS.md notes that hanging it off `onContextMenu` is what also makes it
+/// The root AGENTS.md notes that hanging it off `onContextMenu` is what also makes it
 /// answer the Menu key and `Shift+F10` — so it is not a 2.1.1 failure. Taking
 /// the native menu away risks taking that with it.
 ///
