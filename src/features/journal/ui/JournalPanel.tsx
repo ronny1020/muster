@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   AGENTS,
@@ -56,6 +57,7 @@ export function JournalPanel({
   onNew,
   onClose,
 }: JournalPanelProps) {
+  const { t } = useTranslation(['workspace', 'settings'])
   const { settings } = useSettings()
   const size = usePanelWidth('muster.journalWidth', DEFAULT_WIDTH)
   const [entries, setEntries] = useState<JournalEntry[] | null>(null)
@@ -80,15 +82,15 @@ export function JournalPanel({
       // preference and the flex row is what keeps the terminal a column.
       className="relative flex min-h-0 flex-col border-l border-line bg-chrome"
     >
-      <DragEdge size={size} label="Resize the earlier-sessions drawer" />
+      <DragEdge size={size} label={t('journal.resize')} />
       <header className="flex h-8 flex-none items-center gap-2 border-b border-line px-2.5">
         <span className="flex-1 truncate text-[11px] tracking-[0.06em] text-muted uppercase">
-          Earlier sessions
+          {t('journal.title')}
         </span>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close earlier sessions"
+          aria-label={t('journal.close')}
           className="rounded px-1.5 text-muted hover:bg-surface hover:text-ink"
         >
           ✕
@@ -101,17 +103,15 @@ export function JournalPanel({
             type="button"
             onClick={onNew}
             title={
-              busy
-                ? 'Ends the session running in this tab, then opens its start screen'
-                : 'Opens the start screen for this tab'
+              busy ? t('journal.newSessionBusy') : t('journal.newSessionIdle')
             }
             className="w-full rounded border border-line px-1.5 py-1 text-[11px] text-ink hover:bg-surface"
           >
-            New session here
+            {t('journal.newSession')}
           </button>
           {busy && (
             <span className="mt-1 block text-[10px] text-faint">
-              Ends the session running here.
+              {t('journal.endsRunning')}
             </span>
           )}
         </div>
@@ -119,13 +119,19 @@ export function JournalPanel({
 
       <div role="status" className="flex-none">
         {entries === null && (
-          <p className="px-2.5 py-2 text-[11px] text-faint">Reading…</p>
+          <p className="px-2.5 py-2 text-[11px] text-faint">
+            {t('journal.reading')}
+          </p>
         )}
         {entries?.length === 0 && (
           <p className="px-2.5 py-2 text-[11px] text-faint">
             {recording
-              ? `Nothing recorded here yet. Sessions are kept for ${settings.journalRetentionDays} days.`
-              : 'Recording is switched off, so nothing new is being kept. Settings → Session records.'}
+              ? t('journal.emptyRecording', {
+                  count: settings.journalRetentionDays,
+                })
+              : t('journal.emptyOff', {
+                  where: `${t('settings:title')} → ${t('settings:groups.sessionRecords')}`,
+                })}
           </p>
         )}
       </div>
@@ -155,6 +161,8 @@ interface RowProps {
  * here — and a control that cannot act is worse than no control.
  */
 function Row({ entry, busy, onResume }: RowProps) {
+  const { t } = useTranslation('workspace')
+  const { t: common } = useTranslation('common')
   const agent = AGENTS.find((candidate) => candidate.id === entry.agentId)
   const args = agent ? resumeArgs(agent, entry.sessionId) : null
 
@@ -162,8 +170,10 @@ function Row({ entry, busy, onResume }: RowProps) {
     <li className="flex flex-col gap-1 border-b border-line px-2.5 py-2">
       <div className="flex items-baseline gap-2 text-[11px]">
         <span className="flex-1 truncate text-muted">
-          {agent ? agent.name : 'Session'} · last printed{' '}
-          {agoLabel(entry.endedAt, Date.now())}
+          {t('journal.lastPrinted', {
+            who: agent ? agent.name : t('journal.session'),
+            ago: agoLabel(entry.endedAt, Date.now(), common),
+          })}
         </span>
         <span className="flex-none text-faint">{formatBytes(entry.bytes)}</span>
       </div>
@@ -171,25 +181,21 @@ function Row({ entry, busy, onResume }: RowProps) {
         <button
           type="button"
           onClick={() => onResume(agent, args)}
-          title={
-            busy
-              ? 'Ends the session running in this tab, then reopens this conversation'
-              : 'Reopens this conversation in this tab'
-          }
+          title={busy ? t('journal.resumeBusy') : t('journal.resumeIdle')}
           className="self-start rounded border border-line px-1.5 py-0.5 text-[11px] text-ink hover:bg-surface"
         >
-          Resume in this tab
+          {t('journal.resume')}
         </button>
       ) : (
         <span className="text-[10px] text-faint">
           {agent
-            ? `${agent.name} did not publish an id for this one — reopen it from its own picker`
-            : 'Recorded before this tab remembered which agent wrote it'}
+            ? t('journal.noId', { agent: agent.name })
+            : t('journal.noAgent')}
         </span>
       )}
       {busy && agent && args && (
         <span className="text-[10px] text-faint">
-          Ends the session running here.
+          {t('journal.endsRunning')}
         </span>
       )}
     </li>

@@ -1,10 +1,12 @@
+import type { TFunction } from 'i18next'
+
 /**
  * Supported agent CLIs. Entries here are all the UI needs to gain another one.
  */
 export interface LaunchMode {
   id: string
-  label: string
-  hint: string
+  /** Which of the catalog's mode texts its button shows. */
+  text: 'new' | 'continue' | 'continueConversation' | 'resume' | 'shell'
   /**
    * What the CLI is started with. The first mode's arguments are whatever
    * starts a plain session in that CLI's own spelling — usually nothing, but
@@ -45,20 +47,17 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
       {
         id: 'continue',
-        label: 'Continue',
-        hint: 'Reopen the most recent session',
+        text: 'continue',
         args: ['--continue'],
       },
       {
         id: 'resume',
-        label: 'Resume…',
-        hint: 'Pick from past sessions',
+        text: 'resume',
         args: ['--resume'],
       },
     ],
@@ -73,20 +72,17 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
       {
         id: 'continue',
-        label: 'Continue',
-        hint: 'Reopen the most recent session',
+        text: 'continue',
         args: ['resume', '--last'],
       },
       {
         id: 'resume',
-        label: 'Resume…',
-        hint: 'Pick from past sessions',
+        text: 'resume',
         args: ['resume'],
       },
     ],
@@ -101,14 +97,12 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
       {
         id: 'continue',
-        label: 'Continue',
-        hint: 'Reopen the most recent session',
+        text: 'continue',
         args: ['--continue'],
       },
     ],
@@ -123,8 +117,7 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
     ],
@@ -141,14 +134,12 @@ export const AGENTS: Agent[] = [
         // `goose` alone configures and prints help; `goose session` is the
         // plain start, which is why the first mode is not argument-free.
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: ['session'],
       },
       {
         id: 'continue',
-        label: 'Continue',
-        hint: 'Reopen the most recent session',
+        text: 'continue',
         args: ['session', '--resume'],
       },
     ],
@@ -163,8 +154,7 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
     ],
@@ -179,8 +169,7 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
     ],
@@ -195,8 +184,7 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
     ],
@@ -211,14 +199,12 @@ export const AGENTS: Agent[] = [
     modes: [
       {
         id: 'new',
-        label: 'New session',
-        hint: 'Start fresh in this directory',
+        text: 'new',
         args: [],
       },
       {
         id: 'continue',
-        label: 'Continue',
-        hint: 'Reopen the most recent conversation',
+        text: 'continueConversation',
         args: ['--continue'],
       },
       // No picker flag: past conversations are reached with `/resume` in the TUI.
@@ -237,9 +223,7 @@ export const SHELL_AGENT: Agent = {
   accent: '#7f8794',
   acceptsFlags: false,
   scrollbackMode: false,
-  modes: [
-    { id: 'new', label: 'Open shell', hint: 'Your default shell', args: [] },
-  ],
+  modes: [{ id: 'new', text: 'shell', args: [] }],
 }
 
 /**
@@ -290,3 +274,9 @@ export function resumeArgs(agent: Agent, sessionId: string): string[] | null {
   const mode = agent.modes.find((candidate) => candidate.id === 'resume')
   return mode ? [...mode.args, sessionId] : null
 }
+
+/** A mode's button text in the caller's language. */
+export const modeText = (mode: LaunchMode, t: TFunction<'launch'>) => ({
+  label: t(`modes.${mode.text}.label`),
+  hint: t(`modes.${mode.text}.hint`),
+})

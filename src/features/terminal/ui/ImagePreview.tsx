@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
@@ -18,6 +19,7 @@ export interface ImagePreviewProps {
  * than in a separate window, so it closes as easily as it opened.
  */
 export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
+  const { t } = useTranslation('terminal')
   // Panes stay mounted for every tab, so an unconditional listener would put
   // one per tab on the window and fire them all on any Escape.
   const open = Boolean(preview) || Boolean(error)
@@ -49,7 +51,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
       >
         <header className="flex flex-none items-center gap-3 border-b border-line px-3 py-2">
           <span className="flex-1 truncate font-mono text-[11px] text-muted">
-            {preview?.path ?? 'Could not open image'}
+            {preview?.path ?? t('imagePreview.couldNotOpen')}
           </span>
           {preview && (
             <>
@@ -61,13 +63,13 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
                 onClick={() => void revealItemInDir(preview.path).catch(report)}
                 className="flex-none rounded px-1 text-[11px] text-muted hover:bg-surface-hover hover:text-ink"
               >
-                Reveal
+                {t('imagePreview.reveal')}
               </button>
             </>
           )}
           <button
             type="button"
-            aria-label="Close preview"
+            aria-label={t('imagePreview.close')}
             onClick={onClose}
             className="h-5 w-5 flex-none rounded text-muted hover:bg-surface-hover hover:text-ink"
           >
@@ -89,7 +91,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
         )}
       </div>
       <p className="m-0 text-[11px] text-faint">
-        Esc or click outside to close
+        {t('imagePreview.dismissHint')}
       </p>
     </div>
   )

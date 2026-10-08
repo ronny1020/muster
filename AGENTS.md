@@ -62,7 +62,9 @@ behaviour. Update them **in the same change**, not afterwards:
   procedures. A new module or command gets a row.
 - **README.md** — anything a user can see. A new setting, a new shortcut, a new
   thing that is clickable: the settings list and the shortcut table are the two
-  that go stale first.
+  that go stale first. `README.zh-TW.md`, `README.zh-CN.md` and `README.ja.md`
+  are its translations, and change with it: a translation that describes last
+  release's app misleads exactly the readers who cannot check the English.
 
 The same applies to an instruction you are given that disagrees with what is
 written here: the instruction wins, and this file gets the correction as part of
@@ -219,6 +221,17 @@ renders on every tab: a launcher tab has no session, and would otherwise have no
 way to reach settings but the shortcut. The bar's own last item needs
 `flex-none`, and something before it needs `min-w-0`, or a long branch name
 pushes settings past the edge at the window's 620px floor.
+
+**A language switch re-renders; it never remounts.** Remounting the tree is
+the easy way to apply a new language, and it would end every session in the
+window — the pane invariant above. So `setLanguage` calls i18next's
+`changeLanguage`, and a component re-renders only if it reads its strings
+through `useTranslation`. `i18n.t` returns the same words without
+subscribing: right for a notification built when a turn ends, wrong in render,
+where it leaves that surface in the old language until something unrelated
+re-renders it. Translated text kept in state goes stale the same way, so state
+holds which message, and render picks the words. Nothing reports either, and
+English, the language every test runs in, never shows it.
 
 **A styled scrollbar uses the `-webkit-` pseudo-elements, never
 `scrollbar-color`.** WKWebView
@@ -407,7 +420,9 @@ CONTRIBUTING.md's "Where the tests live" covers it.
 `shared` earns its name by never importing from above. Anything that needs a
 domain type is not shared. `shared/lib` holds contained libraries with one focus
 each, not a `utils` drawer; `shared/ui` holds presentation with no domain in it
-at all — the icon set and the component that draws one.
+at all — the icon set and the component that draws one. `shared/i18n` holds
+the catalogs and the i18next instance; it sits in `shared` because every
+layer renders text, and its catalogs carry words, never a domain type.
 
 **`test/layers.test.ts` enforces all of this**, because there is no ESLint here
 and a rule nothing checks is a comment. It fails on an upward import, a
@@ -610,7 +625,8 @@ These are the seams for common asks:
   a script, a `Shell` variant and the arguments or environment it needs — and
   measuring what it emits under a pty, never reasoning about it.
 - **A new user-facing preference** is one field in `src/entities/preferences/model/settings.ts` — with its
-  fallback in `normalizeSettings` — plus one row in `SettingsPane`.
+  fallback in `normalizeSettings` — plus one row in `SettingsPane`, whose
+  label and hint are catalog keys like every other string.
 - **A new font choice** is not a code change any more, and the monospace
   decision belongs in Rust. `src-tauri/src/fonts.rs` enumerates the installed
   families and marks each one, because neither half can be answered in the
@@ -652,6 +668,12 @@ These are the seams for common asks:
   behind the `allSystemFonts` setting rather than dropping them — Warp answers
   that with the same checkbox.
 
+- **A new string** is a key in `src/shared/i18n/locales/en-US/<namespace>.json`
+  and the same key in `zh-TW`, `zh-CN` and `ja`; `tsc` checks the key against
+  `en-US` and `i18n.test.ts` checks the other three carry it. CONTRIBUTING.md's
+  "Adding a string, or a language" has the conventions, including the one a
+  model function must follow: it takes a `TFunction` rather than calling
+  `i18n.t`.
 - **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
   "Adding an icon" has where the path data comes from. A new file-type icon is
   one more line in `src/shared/ui/fileicon.ts`, and its test asserts every

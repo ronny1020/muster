@@ -1,0 +1,57 @@
+{
+  "tab": {
+    "newSession": "新会话",
+    "settings": "设置",
+    "working": "运行中",
+    "waiting": "等待你的回复",
+    "newTab": "新标签页",
+    "newTabHint": "新标签页（{{shortcut}}）",
+    "close": "关闭标签页",
+    "moveToNewWindow": "移到新窗口",
+    "exited": "已退出",
+    "exited_failed": "已退出 {{code}}"
+  },
+  "ghost": {
+    "strip": "添加到此窗口",
+    "window": "移动此窗口",
+    "new": "在新窗口中打开"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭"
+  },
+  "session": {
+    "fallbackName": "会话",
+    "waiting": "等待你的回复。",
+    "noEditor": "PATH 中找不到编辑器。",
+    "ended": "会话已结束。",
+    "ended_failed": "会话已结束，退出码 {{code}}。"
+  },
+  "dragEdge": "拖动以调整大小 · 双击以重置",
+  "noMatch": "没有匹配项。",
+  "dialog": {
+    "chooseDirectory": "选择工作目录",
+    "chooseImage": "选择背景图片",
+    "images": "图片"
+  },
+  "fonts": {
+    "systemDefault": "系统默认",
+    "notInstalled": "{{name}}（未安装）"
+  },
+  "reveal": {
+    "macos": "在访达中显示",
+    "windows": "在资源管理器中显示",
+    "linux": "在文件管理器中显示"
+  },
+  "closeDialog": {
+    "quitTitle": "要退出 Muster 吗？",
+    "closeTitle": "要关闭此窗口吗？",
+    "quit": "退出",
+    "close": "关闭",
+    "cancel": "取消",
+    "quitBody_other": "仍有 {{count}} 个会话在运行。退出会一并终止它们及其启动的所有程序。",
+    "closeBody_other": "仍有 {{count}} 个会话在运行。关闭此窗口会一并终止它们及其启动的所有程序。"
+  }
+}

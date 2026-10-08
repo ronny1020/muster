@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 export interface SessionEndedProps {
   /** Exit code of the process that ended. */
   code: number
@@ -15,6 +17,7 @@ export function SessionEnded({
   agentName,
   onRelaunch,
 }: SessionEndedProps) {
+  const { t } = useTranslation('terminal')
   const failed = code !== 0
 
   return (
@@ -27,15 +30,15 @@ export function SessionEnded({
     >
       <span className="min-w-0 flex-1">
         {failed
-          ? `${agentName} exited with code ${code}. Its own output above says why.`
-          : `${agentName} ended.`}
+          ? t('sessionEnded.failed', { agent: agentName, code })
+          : t('sessionEnded.ended', { agent: agentName })}
       </span>
       <button
         type="button"
         onClick={onRelaunch}
         className="h-6 flex-none rounded-lg border border-line bg-surface px-2.5 hover:bg-surface-hover hover:text-ink"
       >
-        Back to start
+        {t('sessionEnded.backToStart')}
       </button>
     </div>
   )

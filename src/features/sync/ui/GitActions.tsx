@@ -1,3 +1,6 @@
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
+
 import {
   commitControl,
   commitWarning,
@@ -5,7 +8,7 @@ import {
   pushControl,
   type SyncControl,
 } from '../model/sync'
-import type { GitRun } from '../model/useGitRun'
+import type { Done, GitRun, Notice } from '../model/useGitRun'
 import {
   type GitStatus,
   gitCommit,
@@ -29,28 +32,28 @@ export interface GitActionsProps {
  * to do next, so it is shown as it came rather than summarised.
  */
 export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
+  const { t } = useTranslation('workspace')
   const { draft: message, setDraft: setMessage } = gitRun
   const busy = gitRun.running !== null
-  const commit = commitControl(git)
-  const warning = withCommit ? commitWarning(git) : null
-  const pull = pullControl(git)
-  const push = pushControl(git)
+  const commit = commitControl(git, t)
+  const warning = withCommit ? commitWarning(git, t) : null
+  const pull = pullControl(git, t)
+  const push = pushControl(git, t)
   const canCommit = !busy && !commit.blocked && message.trim() !== ''
 
   const submit = async () => {
     if (!canCommit) return
     const sent = message
-    const committed = await gitRun.run(
-      (op) => gitCommit(cwd, sent, op),
-      'Committed.',
-    )
+    const committed = await gitRun.run((op) => gitCommit(cwd, sent, op), {
+      key: 'sync.committed',
+    })
     // Anything typed while git ran is the next message, not this one.
     if (committed) setMessage((now) => (now === sent ? '' : now))
   }
 
   return (
     <section
-      aria-label={withCommit ? 'Commit and sync' : 'Sync'}
+      aria-label={withCommit ? t('sync.commitAndSync') : t('sync.syncLabel')}
       className="flex flex-none flex-col gap-1.5 p-2"
     >
       {withCommit && (
@@ -64,8 +67,8 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
             }
           }}
           rows={2}
-          placeholder="Commit message"
-          aria-label="Commit message"
+          placeholder={t('sync.message')}
+          aria-label={t('sync.message')}
           spellCheck={false}
           className="w-full resize-y rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none placeholder:text-faint focus:border-primary"
         />
@@ -82,7 +85,7 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
         )}
         {busy && (
           <Action
-            control={{ label: 'Cancel', blocked: null }}
+            control={{ label: t('sync.cancel'), blocked: null }}
             disabled={false}
             onClick={gitRun.cancel}
           />
@@ -91,12 +94,16 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
         <Action
           control={pull}
           disabled={busy || Boolean(pull.blocked)}
-          onClick={() => void gitRun.run((op) => gitPull(cwd, op), 'Pulled.')}
+          onClick={() =>
+            void gitRun.run((op) => gitPull(cwd, op), { key: 'sync.pulled' })
+          }
         />
         <Action
           control={push}
           disabled={busy || Boolean(push.blocked)}
-          onClick={() => void gitRun.run((op) => gitPush(cwd, op), 'Pushed.')}
+          onClick={() =>
+            void gitRun.run((op) => gitPush(cwd, op), { key: 'sync.pushed' })
+          }
         />
       </div>
       <p
@@ -105,11 +112,19 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
           gitRun.notice?.failed ? 'text-danger' : 'text-faint'
         }`}
       >
-        {busy ? 'Running git…' : (gitRun.notice?.text ?? '')}
+        {busy ? t('sync.running') : noticeText(gitRun.notice, t)}
       </p>
     </section>
   )
 }
+
+function noticeText(notice: Notice | null, t: TFunction<'workspace'>) {
+  if (!notice) return ''
+  return 'done' in notice ? doneText(notice.done, t) : notice.text
+}
+
+const doneText = (done: Done, t: TFunction<'workspace'>) =>
+  'values' in done ? t(done.key, done.values) : t(done.key)
 
 interface ActionProps {
   control: SyncControl

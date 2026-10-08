@@ -1,12 +1,17 @@
 import { expect, test } from 'bun:test'
 
+import { i18n } from '../../../shared/i18n/i18n'
 import {
   type Deck,
   deckReducer,
   initialDeck,
   type Session,
+  tabDetail,
+  tabLabel,
   tabSession,
 } from './deck'
+
+const labels = i18n.getFixedT('en-US', 'chrome')
 
 const session: Session = {
   agentId: 'claude',
@@ -144,7 +149,7 @@ test('a failed exit is reported with its code and survives later polls', () => {
     title: 'repo',
   })
   deck = deckReducer(deck, { type: 'exited', id: 'tab-1', code: 130 })
-  expect(deck.tabs[0].detail).toBe('exited 130')
+  expect(tabDetail(deck.tabs[0], labels)).toBe('exited 130')
 
   deck = deckReducer(deck, {
     type: 'workspace',
@@ -153,7 +158,7 @@ test('a failed exit is reported with its code and survives later polls', () => {
     branch: 'main',
     dirty: false,
   })
-  expect(deck.tabs[0].detail).toBe('exited 130')
+  expect(tabDetail(deck.tabs[0], labels)).toBe('exited 130')
 })
 
 test("a clean exit reads as plain 'exited'", () => {
@@ -162,7 +167,25 @@ test("a clean exit reads as plain 'exited'", () => {
     id: 'tab-1',
     code: 0,
   })
-  expect(deck.tabs[0].detail).toBe('exited')
+  expect(tabDetail(deck.tabs[0], labels)).toBe('exited')
+})
+
+test('a running tab shows its branch as its detail', () => {
+  const deck = deckReducer(initialDeck('tab-1'), {
+    type: 'workspace',
+    id: 'tab-1',
+    label: 'repo',
+    branch: 'main',
+    dirty: false,
+  })
+  expect(tabDetail(deck.tabs[0], labels)).toBe('main')
+})
+
+test('an untitled tab is labelled in the language it is given', () => {
+  const deck = initialDeck('tab-1')
+  expect(tabLabel(deck.tabs[0], labels)).toBe('New session')
+  const ja = i18n.getFixedT('ja', 'chrome')
+  expect(tabLabel(deck.tabs[0], ja)).toBe(ja('tab.newSession'))
 })
 
 test('history starts closed', () => {
@@ -200,7 +223,7 @@ test('settings open in a tab of their own', () => {
     'launcher',
     'settings',
   ])
-  expect(deck.tabs[1].title).toBe('Settings')
+  expect(tabLabel(deck.tabs[1], labels)).toBe('Settings')
   expect(deck.activeId).toBe('settings-tab')
 })
 
@@ -284,7 +307,7 @@ test('a tab can go back to the launcher after its session ends', () => {
   deck = deckReducer(deck, { type: 'relaunch', id: 'tab-1' })
 
   expect(deck.tabs[0].content.type).toBe('launcher')
-  expect(deck.tabs[0].title).toBe('New session')
+  expect(tabLabel(deck.tabs[0], labels)).toBe('New session')
 })
 
 test('going back to the launcher clears everything the dead session left', () => {

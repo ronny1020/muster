@@ -1,0 +1,68 @@
+{
+  "failedToStart": "failed to start: {{error}}",
+  "dropToTypePath": "Drop to type the path",
+  "handback": {
+    "ended": "Ended. The tab is back at your shell.",
+    "exited": "Exited with code {{code}}. The tab is back at your shell."
+  },
+  "sessionEnded": {
+    "ended": "{{agent}} ended.",
+    "failed": "{{agent}} exited with code {{code}}. Its own output above says why.",
+    "backToStart": "Back to start"
+  },
+  "imagePreview": {
+    "couldNotOpen": "Could not open image",
+    "reveal": "Reveal",
+    "close": "Close preview",
+    "dismissHint": "Esc or click outside to close"
+  },
+  "link": {
+    "unavailable": "Preview unavailable — {{reason}}",
+    "loading": "Loading preview…",
+    "untitled": "This page names no title or picture",
+    "opens": {
+      "click": "click to open",
+      "cmdClick": "⌘-click to open",
+      "ctrlClick": "Ctrl-click to open"
+    }
+  },
+  "shell": {
+    "copied": "Copied",
+    "copyOutput": "Copy output",
+    "copiedStatus": "Output copied to the clipboard",
+    "copyOutputOf": "Copy the output of {{command}}",
+    "copyThisOutput": "Copy this output",
+    "suggestionsLabel": "Past commands that start this way",
+    "suggestionsStatus_one": "{{count}} past command starts with {{typed}}",
+    "suggestionsStatus_other": "{{count}} past commands start with {{typed}}"
+  },
+  "rail": {
+    "conversation": "Your messages in this conversation",
+    "scrollback": "Your messages in the scrollback",
+    "line": "Line {{row}}"
+  },
+  "steps": {
+    "previous": "Previous message",
+    "previousLabel": "Scroll to the previous message you sent",
+    "next": "Next message",
+    "nextLabel": "Scroll to the next message you sent",
+    "count": "{{count}} messages in this session",
+    "replay": "Redraw the conversation at this width — reopens the session with continue",
+    "replayLabel": "Redraw the conversation at this width by reopening the session"
+  },
+  "scrollPath": {
+    "open": "Open {{path}}",
+    "label": "Showing output about {{path}} — open it"
+  },
+  "find": {
+    "placeholder": "Find in scrollback",
+    "noMatches": "no matches",
+    "position": "{{index}} of {{count}}",
+    "previous": "Previous match (⇧Enter)",
+    "previousLabel": "Previous match",
+    "next": "Next match (Enter)",
+    "nextLabel": "Next match",
+    "close": "Close search (Esc)",
+    "closeLabel": "Close search"
+  }
+}

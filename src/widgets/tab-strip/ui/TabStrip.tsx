@@ -9,7 +9,13 @@ import {
   useState,
 } from 'react'
 
-import { type Tab, tabSession } from '../../../entities/tab/model/deck'
+import {
+  type Tab,
+  tabDetail,
+  tabLabel,
+  tabSession,
+} from '../../../entities/tab/model/deck'
+import { useTranslation } from 'react-i18next'
 import { runningAgent } from '../../../entities/agent/model/agents'
 import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
 import { WindowControls } from '../../../shared/ui/WindowControls'
@@ -53,6 +59,7 @@ export function TabStrip({
   onTearOff,
   onOpen,
 }: TabStripProps) {
+  const { t } = useTranslation('chrome')
   const strip = useRef<HTMLDivElement>(null)
   const header = useRef<HTMLElement>(null)
   /** Names this window's latest tear-off, so a hide can say which it ends. */
@@ -75,7 +82,7 @@ export function TabStrip({
       // numbers have to rise across all of them, and survive a reload.
       tearing.current = Math.max(tearing.current + 1, Date.now())
       void showGhost({
-        title: tab.title,
+        title: tabLabel(tab, t),
         accent: accentOf(tab),
         lone,
         grab: lone ? grab.inThisWindow : null,
@@ -98,9 +105,14 @@ export function TabStrip({
   // A lone tab has nowhere to move to: its window would be left empty.
   const menuItems = (id: string): MenuItem[] => [
     ...(tabs.length > 1
-      ? [{ label: 'Move to new window', onSelect: () => onMoveToNewWindow(id) }]
+      ? [
+          {
+            label: t('tab.moveToNewWindow'),
+            onSelect: () => onMoveToNewWindow(id),
+          },
+        ]
       : []),
-    { label: 'Close tab', onSelect: () => onClose(id) },
+    { label: t('tab.close'), onSelect: () => onClose(id) },
   ]
 
   // A tab reached by shortcut or by cycling can be scrolled out of sight, and
@@ -157,8 +169,8 @@ export function TabStrip({
 
       <button
         type="button"
-        title={`New tab (${SHORTCUTS.open})`}
-        aria-label="New tab"
+        title={t('tab.newTabHint', { shortcut: SHORTCUTS.open })}
+        aria-label={t('tab.newTab')}
         onClick={onOpen}
         className="mb-1 h-[26px] w-[26px] flex-none rounded-[7px] text-[17px] leading-none text-muted hover:bg-surface-hover hover:text-ink"
       >
@@ -261,13 +273,16 @@ function TabButton({
   onDragStart,
   onMenu,
 }: TabButtonProps) {
+  const { t } = useTranslation('chrome')
   const accent = accentOf(tab)
+  const title = tabLabel(tab, t)
+  const detail = tabDetail(tab, t)
 
   return (
     <div
       role="tab"
       aria-selected={active}
-      title={tab.detail ? `${tab.title} · ${tab.detail}` : tab.title}
+      title={detail ? `${title} · ${detail}` : title}
       onPointerDown={onDragStart}
       onContextMenu={onMenu}
       // The active tab takes keyboard focus, so the Menu key and `Shift+F10`
@@ -292,17 +307,17 @@ function TabButton({
     >
       <StatusDot tab={tab} accent={accent} />
       <span className="flex-1 overflow-hidden font-medium text-ellipsis whitespace-nowrap">
-        {tab.title}
+        {title}
       </span>
-      {tab.detail && (
+      {detail && (
         <span className="max-w-[88px] flex-initial overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-faint">
-          {tab.detail}
+          {detail}
         </span>
       )}
       <button
         type="button"
         tabIndex={-1}
-        aria-label="Close tab"
+        aria-label={t('tab.close')}
         // The tab selects on `mousedown`, which has already fired by the time
         // a click arrives — so stopping the click alone still left the tab
         // selected, and closing a background tab moved you off the one you
@@ -332,11 +347,12 @@ function TabButton({
  * the same words go in an `sr-only` span.
  */
 function StatusDot({ tab, accent }: { tab: Tab; accent: string }) {
+  const { t } = useTranslation('chrome')
   const said =
     tab.status === 'working'
-      ? 'working'
+      ? t('tab.working')
       : tab.status === 'waiting' || tab.attention
-        ? 'waiting for you'
+        ? t('tab.waiting')
         : null
 
   return (

@@ -1,9 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { matchBranches, switchWarning } from '../model/branches'
 import { branchLabel } from '../model/status'
 import { DragEdge } from '../../../shared/ui/DragEdge'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
+import { currentLocale } from '../../../shared/i18n/i18n'
+import { relativeAge } from '../../../shared/lib/ago'
 import {
   type Branch,
   type Commit,
@@ -32,8 +35,17 @@ export interface HistoryPanelProps {
    */
   runGit(
     action: (op: string) => Promise<string>,
-    done: string,
+    done: SwitchedNotice,
   ): Promise<boolean>
+}
+
+/**
+ * What a checkout git printed nothing for reports, as a key rather than text so
+ * a notice still showing after a language change is reworded with it.
+ */
+interface SwitchedNotice {
+  key: 'branches.switched'
+  values: { branch: string }
 }
 
 /** Enough for a commit subject without wrapping every one of them. */
@@ -51,6 +63,7 @@ export function HistoryPanel({
   busy,
   runGit,
 }: HistoryPanelProps) {
+  const { t } = useTranslation('workspace')
   const [commits, setCommits] = useState<Commit[] | null>(null)
   const [switching, setSwitching] = useState(false)
   const size = usePanelWidth('muster.historyWidth', DEFAULT_WIDTH)
@@ -85,27 +98,27 @@ export function HistoryPanel({
       // preference, and the flex row is what keeps the terminal a column.
       className="relative flex flex-col border-l border-line bg-chrome"
     >
-      <DragEdge size={size} label="Resize the history drawer" />
+      <DragEdge size={size} label={t('history.resize')} />
       <header className="flex h-8 flex-none items-center gap-2 border-b border-line px-2.5">
         <span className="flex-1 truncate text-[11px] tracking-[0.06em] text-muted uppercase">
-          History · {branchLabel(git)}
+          {t('history.title', { branch: branchLabel(git, t) })}
         </span>
         <button
           type="button"
-          title="Switch branch"
-          aria-label="Switch branch"
+          title={t('history.switchBranch')}
+          aria-label={t('history.switchBranch')}
           aria-expanded={switching}
           onClick={() => setSwitching((open) => !open)}
           className={`h-5 rounded px-1 text-[11px] hover:bg-surface-hover hover:text-ink ${
             switching ? 'bg-surface text-ink' : 'text-muted'
           }`}
         >
-          Switch
+          {t('history.switch')}
         </button>
         <button
           type="button"
-          title="Refresh"
-          aria-label="Refresh history"
+          title={t('history.refresh')}
+          aria-label={t('history.refreshLabel')}
           onClick={() => void load()}
           className="h-5 w-5 rounded text-muted hover:bg-surface-hover hover:text-ink"
         >
@@ -113,8 +126,8 @@ export function HistoryPanel({
         </button>
         <button
           type="button"
-          title="Close history"
-          aria-label="Close history"
+          title={t('history.close')}
+          aria-label={t('history.close')}
           onClick={onClose}
           className="h-5 w-5 rounded text-muted hover:bg-surface-hover hover:text-ink"
         >
@@ -140,11 +153,11 @@ export function HistoryPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {commits === null ? (
           <p className="m-0 px-2.5 py-3 text-[11px] text-faint">
-            Reading history…
+            {t('history.reading')}
           </p>
         ) : commits.length === 0 ? (
           <p className="m-0 px-2.5 py-3 text-[11px] text-faint">
-            No commits yet.
+            {t('history.empty')}
           </p>
         ) : (
           commits.map((commit) => (
@@ -180,6 +193,7 @@ function BranchSwitcher({
   runGit,
   onSwitched,
 }: BranchSwitcherProps) {
+  const { t } = useTranslation('workspace')
   const [branches, setBranches] = useState<Branch[] | null>(null)
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
@@ -199,15 +213,18 @@ function BranchSwitcher({
   const checkout = async (branch: string) => {
     setPicked(branch)
     // A refusal lands in the drawer's sync line, as a push's would.
-    const switched = await runGit(async (op) => {
-      await gitCheckout(cwd, branch, op)
-      return ''
-    }, `Switched to ${branch}.`)
+    const switched = await runGit(
+      async (op) => {
+        await gitCheckout(cwd, branch, op)
+        return ''
+      },
+      { key: 'branches.switched', values: { branch } },
+    )
     setPicked(null)
     if (switched) onSwitched()
   }
 
-  const warning = switchWarning(git)
+  const warning = switchWarning(git, t)
   const matches = branches && matchBranches(branches, query)
 
   return (
@@ -217,8 +234,8 @@ function BranchSwitcher({
         value={query}
         autoFocus
         spellCheck={false}
-        placeholder="Filter branches…"
-        aria-label="Filter branches"
+        placeholder={t('branches.filter')}
+        aria-label={t('branches.filterLabel')}
         onChange={(event) => setQuery(event.target.value)}
         className="h-7 w-full border-b border-line bg-surface px-2.5 text-xs text-ink outline-none placeholder:text-faint focus:bg-surface-hover"
       />
@@ -232,11 +249,11 @@ function BranchSwitcher({
       <div className="max-h-56 overflow-y-auto">
         {matches === null ? (
           <p className="m-0 px-2.5 py-2 text-[11px] text-faint">
-            Reading branches…
+            {t('branches.reading')}
           </p>
         ) : matches.length === 0 ? (
           <p className="m-0 px-2.5 py-2 text-[11px] text-faint">
-            {branches?.length ? 'No branch matches.' : 'No branches yet.'}
+            {branches?.length ? t('branches.noMatch') : t('branches.none')}
           </p>
         ) : (
           matches.map((branch) => (
@@ -262,11 +279,14 @@ interface BranchRowProps {
 }
 
 function BranchRow({ branch, busy, disabled, onPick }: BranchRowProps) {
+  const { t } = useTranslation('workspace')
   if (branch.current) {
     return (
       <div className="flex items-baseline gap-1.5 px-2.5 py-1.5 text-xs">
         <span className="flex-1 truncate text-ink">{branch.name}</span>
-        <span className="flex-none text-[10px] text-faint">current</span>
+        <span className="flex-none text-[10px] text-faint">
+          {t('branches.current')}
+        </span>
       </div>
     )
   }
@@ -277,24 +297,33 @@ function BranchRow({ branch, busy, disabled, onPick }: BranchRowProps) {
       disabled={disabled}
       onClick={onPick}
       title={
-        branch.remote
-          ? `Create ${branch.name} from ${branch.upstream}`
-          : `Switch to ${branch.name}`
+        branch.remote && branch.upstream
+          ? t('branches.create', {
+              branch: branch.name,
+              upstream: branch.upstream,
+            })
+          : t('branches.switchTo', { branch: branch.name })
       }
       className="flex w-full items-baseline gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-surface disabled:opacity-50"
     >
       <span className="flex-1 truncate text-[#a8b4c8]">{branch.name}</span>
       {branch.remote && (
-        <span className="flex-none text-[10px] text-faint">remote</span>
+        <span className="flex-none text-[10px] text-faint">
+          {t('branches.remote')}
+        </span>
       )}
       <span className="flex-none text-[10px] text-faint">
-        {busy ? 'switching…' : branch.when}
+        {busy
+          ? t('branches.switching')
+          : branch.at !== null &&
+            relativeAge(branch.at, Date.now(), currentLocale())}
       </span>
     </button>
   )
 }
 
 function CommitRow({ commit }: { commit: Commit }) {
+  const { t } = useTranslation('workspace')
   return (
     <article
       title={commit.subject}
@@ -308,7 +337,7 @@ function CommitRow({ commit }: { commit: Commit }) {
               ? 'var(--color-primary)'
               : 'transparent',
           }}
-          title={commit.unpushed ? 'not pushed yet' : undefined}
+          title={commit.unpushed ? t('history.unpushed') : undefined}
         />
         <span className="flex-1 truncate text-xs leading-snug text-ink">
           {commit.subject}
@@ -331,7 +360,11 @@ function CommitRow({ commit }: { commit: Commit }) {
       <div className="flex gap-1.5 pl-3 text-[10px] text-faint">
         <span className="font-mono">{commit.short}</span>
         <span className="truncate">{commit.author}</span>
-        <span className="flex-none">· {commit.when}</span>
+        {commit.at !== null && (
+          <span className="flex-none">
+            · {relativeAge(commit.at, Date.now(), currentLocale())}
+          </span>
+        )}
       </div>
     </article>
   )

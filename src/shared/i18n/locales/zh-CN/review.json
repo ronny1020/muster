@@ -1,0 +1,73 @@
+{
+  "panel": {
+    "resize": "调整审阅面板宽度",
+    "changes": "变更",
+    "files": "文件",
+    "reread": "重新读取",
+    "close": "关闭审阅",
+    "hiddenFiles": "隐藏文件",
+    "revealDirectory": "{{reveal}}（此目录）",
+    "sendPath": "将此路径输入到会话",
+    "notRepo": "不是 git 仓库，没有可比较的内容。",
+    "readingChanges": "正在读取变更…",
+    "noChanges": "没有变更。",
+    "reading": "读取中…",
+    "versus": "对比",
+    "compareAgainst": "对比对象",
+    "uncommitted": "未提交",
+    "summary_other": "{{count}} 个文件 · +{{insertions}} −{{deletions}}"
+  },
+  "list": {
+    "binary": "二进制",
+    "notCounted": "未统计行数：新文件太多，或路径上有符号链接"
+  },
+  "tree": {
+    "copyPath": "复制路径",
+    "copyRelativePath": "复制相对路径",
+    "reading": "读取中…",
+    "empty": "空",
+    "link": "链接",
+    "rowTitle": "{{name}} — 右键查看更多",
+    "rowTitle_ignored": "{{name}}（已被 git 忽略）— 右键查看更多"
+  },
+  "viewer": {
+    "resize": "调整文件面板宽度",
+    "contextLabel": "上下文",
+    "contextAll": "全部",
+    "contextThree": "三行上下文",
+    "contextTwelve": "十二行上下文",
+    "contextWhole": "整个文件",
+    "showDiff": "改为显示差异",
+    "showSource": "改为显示源代码",
+    "renderMarkdown": "渲染此 Markdown",
+    "diff": "差异",
+    "raw": "源代码",
+    "preview": "预览",
+    "wrap": "换行",
+    "wrapLines": "长行自动换行",
+    "unwrapLines": "停止长行自动换行",
+    "copyPath": "复制路径",
+    "openIn": "在 {{editor}} 中打开",
+    "close": "关闭 · Escape"
+  },
+  "diff": {
+    "reading": "正在读取差异…",
+    "binary": "二进制文件，没有可显示的内容。",
+    "unchanged": "此文件没有文本变更。",
+    "rowsCapped": "显示 {{total}} 行中的 {{rows}} 行。缩小上下文范围即可查看其余部分。",
+    "truncated": "差异已截断：其余内容超出此面板的读取上限。",
+    "added": "新增的行",
+    "removed": "删除的行"
+  },
+  "code": {
+    "pick": "选择一个文件以在此阅读。",
+    "reading": "读取中…",
+    "linesCapped": "仅显示 {{total}} 行中的前 {{shown}} 行。",
+    "truncated": "仅显示此文件的开头部分；文件超出预览的读取上限。",
+    "openLine": "在 {{editor}} 中打开第 {{line}} 行"
+  },
+  "markdown": {
+    "reading": "读取中…",
+    "missingImage": "［找不到图片：{{source}}］"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "title": "新会话",
+  "directory": "文件夹",
+  "browse": "浏览…",
+  "agent": "智能体",
+  "filterAgents": "输入以筛选…",
+  "terminalMode": "终端模式",
+  "scrollback": "回看缓冲",
+  "clicks": "点击",
+  "runIn": "运行于",
+  "wslDistro": "WSL 发行版",
+  "defaultDistro": "默认发行版",
+  "extraFlags": "额外参数",
+  "openShell": "改为打开普通 shell",
+  "noPastSessions": "此文件夹中没有过去的会话",
+  "nothingToContinue": "这里还没有可继续的内容",
+  "readingPast": "正在读取过去的对话…",
+  "pastConversations": "过去的对话",
+  "nothingTyped": "此对话中没有输入任何内容",
+  "olderConversations": "更早的对话 — 打开 {{agent}} 自带的选择器",
+  "chooseDirectory": "请先选择文件夹。",
+  "unreadableDirectory": "无法读取该文件夹。",
+  "cannotBeListed": "无法列出内容。",
+  "startAnyway": "再次点击同一按钮即可仍在此处开始 — 如果智能体知道它需要的路径，会话仍可能正常工作。",
+  "dismiss": "关闭",
+  "doesNotExist": "尚不存在。",
+  "createAndStart": "创建并开始",
+  "cancel": "取消",
+  "modes": {
+    "new": {
+      "label": "新会话",
+      "hint": "在此文件夹中重新开始"
+    },
+    "continue": {
+      "label": "继续",
+      "hint": "重新打开最近的会话"
+    },
+    "continueConversation": {
+      "label": "继续",
+      "hint": "重新打开最近的对话"
+    },
+    "resume": {
+      "label": "恢复…",
+      "hint": "从过去的会话中选择"
+    },
+    "shell": {
+      "label": "打开 shell",
+      "hint": "你的默认 shell"
+    }
+  },
+  "blocked": {
+    "macos": {
+      "reason": "macOS 正在阻止访问此文件夹。“文稿”“桌面”和“下载”需要你的许可，而你当时的回答会被记住。",
+      "remedy": "由于回答已被记住，应用无法再次询问 — 请在“文件与文件夹”中为 Muster 重新开启权限，然后再次开始会话。",
+      "settings": "打开隐私设置"
+    },
+    "windows": {
+      "reason": "Windows 拒绝访问此文件夹。",
+      "remedy": "如果它位于“文档”“桌面”或“图片”下，可能是“受控文件夹访问”阻止了它 — 请允许 Muster 通过。否则请检查文件夹本身的权限。",
+      "settings": "打开 Windows 安全中心"
+    },
+    "linux": {
+      "reason": "你的用户无法读取此文件夹。",
+      "remedy": "请检查它的权限 — 如果 Muster 是以 Flatpak 或 Snap 安装的，还要确认沙盒允许访问它。"
+    }
+  },
+  "pastCount_other": "{{count}} 个过去的对话"
+}

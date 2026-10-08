@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 
+import { i18n } from '../../../shared/i18n/i18n'
 import { handbackNotice, parseHandback } from './handback'
 
 const TOKEN = '0123456789abcdef'
@@ -32,6 +33,15 @@ test('anything that is not exactly the announcement is ignored', () => {
 })
 
 test('a failed agent says how it failed, and a clean one does not', () => {
-  expect(handbackNotice(0)).not.toContain('code')
-  expect(handbackNotice(2)).toContain('code 2')
+  const t = i18n.getFixedT('en-US', 'terminal')
+  expect(handbackNotice(0, t)).not.toContain('code')
+  expect(handbackNotice(2, t)).toContain('code 2')
+})
+
+test('the notice is worded by the catalog it is given', () => {
+  const t = i18n.getFixedT('zh-TW', 'terminal')
+  expect(handbackNotice(2, t)).toBe(t('handback.exited', { code: 2 }))
+  expect(handbackNotice(2, t)).not.toBe(
+    i18n.getFixedT('en-US', 'terminal')('handback.exited', { code: 2 }),
+  )
 })

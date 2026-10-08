@@ -5,6 +5,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import type { Backend } from './lib/platform'
+import { i18n } from './i18n/i18n'
 
 export interface GitStatus {
   repo: boolean
@@ -36,7 +37,8 @@ export interface Commit {
   short: string
   subject: string
   author: string
-  when: string
+  /** Seconds since the epoch, when it was written; `null` if git's field did not parse. */
+  at: number | null
   refs: string[]
   unpushed: boolean
 }
@@ -320,7 +322,8 @@ export interface Branch {
   name: string
   current: boolean
   upstream: string | null
-  when: string
+  /** Seconds since the epoch, when its tip was committed; `null` if unknown. */
+  at: number | null
   /** Only a remote has it, so checking out starts a local branch from it. */
   remote: boolean
 }
@@ -493,7 +496,7 @@ export async function pickDirectory(defaultPath?: string) {
     directory: true,
     multiple: false,
     defaultPath,
-    title: 'Choose a working directory',
+    title: i18n.t('chrome:dialog.chooseDirectory'),
   })
   return typeof picked === 'string' ? picked : null
 }
@@ -502,11 +505,11 @@ export async function pickDirectory(defaultPath?: string) {
 export async function pickImage() {
   const picked = await open({
     multiple: false,
-    title: 'Choose a background image',
+    title: i18n.t('chrome:dialog.chooseImage'),
     // Matches the extensions the Rust side is willing to read.
     filters: [
       {
-        name: 'Images',
+        name: i18n.t('chrome:dialog.images'),
         extensions: [
           'png',
           'jpg',
@@ -690,6 +693,22 @@ export const readAppState = () => invoke<Record<string, string>>('state_read')
 export const onStateChange = (
   handler: (change: { key: string; value: string | null }) => void,
 ) => windowListen('muster://state', handler)
+
+/** What the native close dialog says; each body's `{{count}}` is filled in by Rust. */
+export interface CloseWords {
+  quitTitle: string
+  closeTitle: string
+  quit: string
+  close: string
+  cancel: string
+  quitBodyOne: string
+  quitBodyOther: string
+  closeBodyOne: string
+  closeBodyOther: string
+}
+
+export const sendCloseWords = (words: CloseWords) =>
+  invoke<void>('close_words', { words })
 
 /** Stores one entry, or forgets it when `value` is `null`. */
 export const writeAppState = (key: string, value: string | null) =>

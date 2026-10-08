@@ -1,6 +1,8 @@
 import { type MouseEvent, type ReactNode, useCallback, useState } from 'react'
 
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 
 import { visibleEntries } from '../model/tree'
 import { useDirectory } from '../model/useDirectory'
@@ -9,7 +11,7 @@ import { Icon } from '../../../shared/ui/Icon'
 import { fileIcon, folderIcon } from '../../../shared/ui/fileicon'
 import { relativeTo } from '../model/changes'
 import { type DirEntry, report } from '../../../shared/ipc'
-import { REVEAL_LABEL } from '../../../shared/lib/platform'
+import { revealLabel } from '../../../shared/lib/platform'
 
 export interface FileTreeProps {
   /** Absolute directory at the top of the tree. */
@@ -36,6 +38,8 @@ export function FileTree({
   selected,
   onSelect,
 }: FileTreeProps) {
+  const { t } = useTranslation('review')
+  const { t: chrome } = useTranslation('chrome')
   const [menu, setMenu] = useState<Asked | null>(null)
   const close = useCallback(() => setMenu(null), [])
 
@@ -53,7 +57,11 @@ export function FileTree({
       {menu && (
         <ContextMenu
           at={menu.at}
-          items={itemsFor(menu.entry, root)}
+          items={itemsFor(menu.entry, {
+            root,
+            t,
+            reveal: revealLabel(chrome),
+          })}
           onClose={close}
         />
       )}
@@ -68,16 +76,24 @@ interface Asked {
 }
 
 /** What a row offers besides being clicked. */
-function itemsFor(entry: DirEntry, root: string): MenuItem[] {
+function itemsFor(
+  entry: DirEntry,
+  { root, t, reveal }: { root: string; t: TFunction<'review'>; reveal: string },
+): MenuItem[] {
   const relative = relativeTo(entry.path, root)
   return [
     {
-      label: REVEAL_LABEL,
+      label: reveal,
       onSelect: () => void revealItemInDir(entry.path).catch(report),
     },
-    { label: 'Copy path', onSelect: () => void copy(entry.path) },
+    { label: t('tree.copyPath'), onSelect: () => void copy(entry.path) },
     ...(relative
-      ? [{ label: 'Copy relative path', onSelect: () => void copy(relative) }]
+      ? [
+          {
+            label: t('tree.copyRelativePath'),
+            onSelect: () => void copy(relative),
+          },
+        ]
       : []),
   ]
 }
@@ -107,6 +123,7 @@ interface ChildrenProps extends TreeOptions {
 }
 
 function Children({ path, depth, ...rest }: ChildrenProps) {
+  const { t } = useTranslation('review')
   const { entries, error } = useDirectory(path, rest.revision)
 
   if (error) {
@@ -116,10 +133,10 @@ function Children({ path, depth, ...rest }: ChildrenProps) {
       </Line>
     )
   }
-  if (!entries) return <Line depth={depth}>Reading…</Line>
+  if (!entries) return <Line depth={depth}>{t('tree.reading')}</Line>
 
   const shown = visibleEntries(entries, rest.showHidden)
-  if (shown.length === 0) return <Line depth={depth}>Empty</Line>
+  if (shown.length === 0) return <Line depth={depth}>{t('tree.empty')}</Line>
 
   return (
     <>
@@ -147,6 +164,7 @@ interface FolderProps extends TreeOptions {
 }
 
 function Folder({ entry, depth, ...rest }: FolderProps) {
+  const { t } = useTranslation('review')
   const [open, setOpen] = useState(false)
 
   return (
@@ -154,7 +172,7 @@ function Folder({ entry, depth, ...rest }: FolderProps) {
       <button
         type="button"
         aria-expanded={open}
-        title={`${entry.name}${entry.ignored ? ' — git-ignored' : ''} — ${REVEAL_HINT}`}
+        title={rowTitle(t, entry, entry.name)}
         onClick={() => setOpen((was) => !was)}
         onContextMenu={ask(entry, rest.onAsk)}
         style={{ paddingLeft: indent(depth) }}
@@ -171,7 +189,9 @@ function Folder({ entry, depth, ...rest }: FolderProps) {
         <Icon name={folderIcon(open)} className="h-3.5 w-3.5 text-[#8ea2c0]" />
         <span className="truncate text-ink">{entry.name}</span>
         {entry.symlink && (
-          <span className="flex-none text-[10px] text-faint">link</span>
+          <span className="flex-none text-[10px] text-faint">
+            {t('tree.link')}
+          </span>
         )}
       </button>
       {/* Unmounted when closed, which is what drops everything it had read. */}
@@ -186,6 +206,7 @@ interface FileRowProps extends Omit<TreeOptions, 'showHidden' | 'revision'> {
 }
 
 function FileRow({ entry, depth, selected, onSelect, onAsk }: FileRowProps) {
+  const { t } = useTranslation('review')
   const icon = fileIcon(entry.name)
 
   return (
@@ -194,7 +215,7 @@ function FileRow({ entry, depth, selected, onSelect, onAsk }: FileRowProps) {
       onClick={() => onSelect(entry)}
       onContextMenu={ask(entry, onAsk)}
       aria-current={entry.path === selected ? 'true' : undefined}
-      title={`${entry.path}${entry.ignored ? ' — git-ignored' : ''} — ${REVEAL_HINT}`}
+      title={rowTitle(t, entry, entry.path)}
       style={{ paddingLeft: indent(depth) + 18 }}
       className={`flex w-full items-center gap-1 py-0.5 pr-2 text-left text-xs ${
         entry.path === selected
@@ -208,7 +229,9 @@ function FileRow({ entry, depth, selected, onSelect, onAsk }: FileRowProps) {
   )
 }
 
-const REVEAL_HINT = 'right-click for more'
+/** A row's tooltip, which says so when git ignores the entry. */
+const rowTitle = (t: TFunction<'review'>, entry: DirEntry, name: string) =>
+  t('tree.rowTitle', { name, context: entry.ignored ? 'ignored' : undefined })
 
 /**
  * How an ignored row reads: present, and plainly not part of the work.

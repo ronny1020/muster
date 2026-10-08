@@ -1,0 +1,67 @@
+{
+  "failedToStart": "啟動失敗：{{error}}",
+  "dropToTypePath": "放開以輸入路徑",
+  "handback": {
+    "ended": "已結束。分頁已回到你的 shell。",
+    "exited": "已結束，結束代碼 {{code}}。分頁已回到你的 shell。"
+  },
+  "sessionEnded": {
+    "ended": "{{agent}} 已結束。",
+    "failed": "{{agent}} 已結束，結束代碼 {{code}}。原因請見上方它自己的輸出。",
+    "backToStart": "回到開始畫面"
+  },
+  "imagePreview": {
+    "couldNotOpen": "無法開啟圖片",
+    "reveal": "顯示位置",
+    "close": "關閉預覽",
+    "dismissHint": "按 Esc 或點按外側以關閉"
+  },
+  "link": {
+    "unavailable": "無法預覽：{{reason}}",
+    "loading": "正在載入預覽…",
+    "untitled": "此頁面未提供標題或圖片",
+    "opens": {
+      "click": "點按以開啟",
+      "cmdClick": "⌘ 點按以開啟",
+      "ctrlClick": "Ctrl 點按以開啟"
+    }
+  },
+  "shell": {
+    "copied": "已複製",
+    "copyOutput": "複製輸出",
+    "copiedStatus": "輸出已複製到剪貼簿",
+    "copyOutputOf": "複製「{{command}}」的輸出",
+    "copyThisOutput": "複製此輸出",
+    "suggestionsLabel": "以此開頭的過往指令",
+    "suggestionsStatus_other": "有 {{count}} 個過往指令以「{{typed}}」開頭"
+  },
+  "rail": {
+    "conversation": "你在此對話中的訊息",
+    "scrollback": "你在捲動紀錄中的訊息",
+    "line": "第 {{row}} 行"
+  },
+  "steps": {
+    "previous": "上一則訊息",
+    "previousLabel": "捲動到你送出的上一則訊息",
+    "next": "下一則訊息",
+    "nextLabel": "捲動到你送出的下一則訊息",
+    "count": "此工作階段共有 {{count}} 則訊息",
+    "replay": "以目前寬度重繪對話（以 continue 重新開啟工作階段）",
+    "replayLabel": "重新開啟工作階段，以目前寬度重繪對話"
+  },
+  "scrollPath": {
+    "open": "開啟 {{path}}",
+    "label": "正在顯示關於 {{path}} 的輸出，點按以開啟"
+  },
+  "find": {
+    "placeholder": "在捲動紀錄中搜尋",
+    "noMatches": "沒有符合項目",
+    "position": "{{index}} / {{count}}",
+    "previous": "上一個符合項目（⇧Enter）",
+    "previousLabel": "上一個符合項目",
+    "next": "下一個符合項目（Enter）",
+    "nextLabel": "下一個符合項目",
+    "close": "關閉搜尋（Esc）",
+    "closeLabel": "關閉搜尋"
+  }
+}

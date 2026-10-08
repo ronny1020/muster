@@ -2,6 +2,9 @@ import { expect, test } from 'bun:test'
 
 import { branchLabel, chipGroups, gitChips, treeRevision } from './status'
 import type { GitStatus } from '../../../shared/ipc'
+import { i18n } from '../../../shared/i18n/i18n'
+
+const t = i18n.getFixedT('en-US', 'workspace')
 
 const status = (overrides: Partial<GitStatus> = {}): GitStatus => ({
   repo: true,
@@ -18,7 +21,7 @@ const status = (overrides: Partial<GitStatus> = {}): GitStatus => ({
   ...overrides,
 })
 
-const texts = (git: GitStatus) => gitChips(git).map((chip) => chip.text)
+const texts = (git: GitStatus) => gitChips(git, t).map((chip) => chip.text)
 
 test('a clean tree shows only a clean chip', () => {
   expect(texts(status())).toEqual(['clean'])
@@ -47,22 +50,22 @@ test('a diverged but clean tree still reads as clean', () => {
 })
 
 test('conflicts are toned as danger', () => {
-  expect(gitChips(status({ conflicted: 1 })).at(-1)?.tone).toBe('conflict')
+  expect(gitChips(status({ conflicted: 1 }), t).at(-1)?.tone).toBe('conflict')
 })
 
 test('a detached head is spelled out', () => {
-  expect(branchLabel(status({ detached: true, branch: 'a1b2c3d' }))).toBe(
+  expect(branchLabel(status({ detached: true, branch: 'a1b2c3d' }), t)).toBe(
     'detached @ a1b2c3d',
   )
 })
 
 test('an attached branch shows its bare name', () => {
-  expect(branchLabel(status())).toBe('main')
+  expect(branchLabel(status(), t)).toBe('main')
 })
 
 test('a count opens the drawer that lists what it counts', () => {
   const opens = (git: GitStatus) =>
-    gitChips(git).map((chip) => [chip.key, chip.opens])
+    gitChips(git, t).map((chip) => [chip.key, chip.opens])
 
   expect(
     opens(
@@ -87,7 +90,7 @@ test('a count opens the drawer that lists what it counts', () => {
 })
 
 test('the clean chip goes nowhere, because there is nothing to look at', () => {
-  expect(gitChips(status()).map((chip) => chip.opens)).toEqual([null])
+  expect(gitChips(status(), t).map((chip) => chip.opens)).toEqual([null])
 })
 
 test('the revision moves when the tree does', () => {
@@ -116,6 +119,7 @@ test('a directory that is not a repository still has a revision', () => {
 test('the counts group into one target each', () => {
   const { history, review, clean } = chipGroups(
     status({ ahead: 2, behind: 1, staged: 1, modified: 2, untracked: 3 }),
+    t,
   )
 
   expect(history.map((chip) => chip.text)).toEqual(['↑2', '↓1'])
@@ -124,12 +128,23 @@ test('the counts group into one target each', () => {
 })
 
 test('a clean tree has a chip that leads nowhere, and no groups', () => {
-  const { history, review, clean } = chipGroups(status())
+  const { history, review, clean } = chipGroups(status(), t)
 
   expect([history, review]).toEqual([[], []])
   expect(clean?.text).toBe('clean')
 })
 
 test('a tree with no divergence offers no commits target', () => {
-  expect(chipGroups(status({ modified: 1 })).history).toEqual([])
+  expect(chipGroups(status({ modified: 1 }), t).history).toEqual([])
+})
+
+test('the chips speak the catalog they are given', () => {
+  const chips = gitChips(
+    status({ ahead: 2 }),
+    i18n.getFixedT('ja', 'workspace'),
+  )
+  expect(chips.map((chip) => chip.title)).toEqual([
+    'プッシュ待ちのコミット 2 件',
+    '作業ツリーに変更はありません',
+  ])
 })

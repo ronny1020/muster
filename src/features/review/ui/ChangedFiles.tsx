@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import { basename, folderOf, statusMark, statusTone } from '../model/changes'
 import { Icon } from '../../../shared/ui/Icon'
 import { fileIcon } from '../../../shared/ui/fileicon'
@@ -68,8 +70,13 @@ function Row({ file, active, onSelect }: RowProps) {
 
 /** `+12 −3`, or the word "binary" where lines mean nothing. */
 function Counts({ file }: { file: ChangedFile }) {
+  const { t } = useTranslation('review')
   if (file.binary) {
-    return <span className="flex-none text-[10px] text-faint">binary</span>
+    return (
+      <span className="flex-none text-[10px] text-faint">
+        {t('list.binary')}
+      </span>
+    )
   }
   if (!file.counted) {
     // Not counted is not zero, and a blank column reads as an empty file.
@@ -78,7 +85,7 @@ function Counts({ file }: { file: ChangedFile }) {
     // this one is reached through a symlink and is not followed.
     return (
       <span
-        title="Lines not counted: too many new files, or a symlink on the way to this one"
+        title={t('list.notCounted')}
         className="flex-none text-[10px] text-faint"
       >
         —

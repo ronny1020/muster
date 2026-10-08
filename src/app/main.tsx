@@ -3,7 +3,18 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { loadAppState } from '../shared/lib/appstate'
 import { adoptHandoffs } from './handoff'
-import { GHOST_LABEL, windowLabel } from '../shared/ipc'
+import { syncCloseWords } from './closewords'
+import {
+  GHOST_LABEL,
+  onStateChange,
+  readAppState,
+  windowLabel,
+} from '../shared/ipc'
+import { setLanguage } from '../shared/i18n/i18n'
+import {
+  normalizeSettings,
+  STORAGE_KEY as SETTINGS_KEY,
+} from '../entities/preferences/model/settings'
 import { DragGhost } from '../widgets/tab-strip/ui/DragGhost'
 
 declare global {
@@ -54,6 +65,7 @@ if (import.meta.env.DEV) void listenForMcp()
 const start = async () => {
   if (windowLabel() === GHOST_LABEL) return drawGhost()
   await loadAppState()
+  syncCloseWords()
   const adopted = (await adoptHandoffs()).map(({ tab }) => tab)
   createRoot(document.querySelector('#root')!).render(
     <SettingsProvider>
@@ -71,6 +83,33 @@ function drawGhost() {
     element.style.background = 'transparent'
   }
   createRoot(document.querySelector('#root')!).render(<DragGhost />)
+  void followLanguage()
+}
+
+/**
+ * The label's window speaks the user's language without loading the app's
+ * state, which would run the one-shot migration under the label's own name.
+ * It reads the setting directly, then follows the other windows' writes.
+ */
+const followLanguage = async () => {
+  try {
+    applyLanguage((await readAppState())[SETTINGS_KEY])
+    await onStateChange(({ key, value }) => {
+      if (key === SETTINGS_KEY) applyLanguage(value)
+    })
+  } catch {
+    /* no backend, so the label stays in the default language */
+  }
+}
+
+function applyLanguage(stored: string | null | undefined) {
+  let raw: unknown = {}
+  try {
+    raw = JSON.parse(stored ?? '{}')
+  } catch {
+    /* a corrupt record reads as defaults, as it does in every window */
+  }
+  setLanguage(normalizeSettings(raw).language)
 }
 
 void start()

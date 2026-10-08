@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { ghostState, type GhostState, onGhost } from '../../../shared/ipc'
-
-/** What a release would do, in the words the label shows under the title. */
-const OUTCOME: Record<GhostState['over'], string> = {
-  strip: 'Add to this window',
-  window: 'Move this window',
-  new: 'Open in a new window',
-}
 
 /** A drop shadow heavier than Tailwind's `shadow-lg`, since the label floats
  *  over other apps' windows; spelled out because the agent stripe is a
@@ -26,6 +20,7 @@ const readCurrent = async (show: (state: GhostState) => void) => {
  * says what is under it; this only draws.
  */
 export function DragGhost() {
+  const { t } = useTranslation('chrome')
   const [state, setState] = useState<GhostState | null>(null)
 
   // The backend's word, sent to this window alone — and asked for once, in
@@ -60,7 +55,7 @@ export function DragGhost() {
               joining ? 'text-primary' : 'text-muted'
             }`}
           >
-            {OUTCOME[state.over]}
+            {t(`ghost.${state.over}`)}
           </span>
         </span>
       </div>

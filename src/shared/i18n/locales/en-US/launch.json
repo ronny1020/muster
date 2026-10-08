@@ -1,0 +1,69 @@
+{
+  "title": "New session",
+  "directory": "Directory",
+  "browse": "Browse…",
+  "agent": "Agent",
+  "filterAgents": "Type to filter…",
+  "terminalMode": "Terminal mode",
+  "scrollback": "Scrollback",
+  "clicks": "Clicks",
+  "runIn": "Run in",
+  "wslDistro": "WSL distro",
+  "defaultDistro": "Default distro",
+  "extraFlags": "Extra flags",
+  "openShell": "Open a plain shell instead",
+  "noPastSessions": "No past sessions in this directory",
+  "nothingToContinue": "Nothing to continue here yet",
+  "readingPast": "Reading past conversations…",
+  "pastConversations": "Past conversations",
+  "nothingTyped": "Nothing typed in this one",
+  "olderConversations": "Older conversations — open {{agent}}’s own picker",
+  "chooseDirectory": "Choose a directory first.",
+  "unreadableDirectory": "Could not read that directory.",
+  "cannotBeListed": "cannot be listed.",
+  "startAnyway": "Click the same button again to start here anyway — the session may still work if the agent knows the paths it needs.",
+  "dismiss": "Dismiss",
+  "doesNotExist": "does not exist yet.",
+  "createAndStart": "Create and start",
+  "cancel": "Cancel",
+  "modes": {
+    "new": {
+      "label": "New session",
+      "hint": "Start fresh in this directory"
+    },
+    "continue": {
+      "label": "Continue",
+      "hint": "Reopen the most recent session"
+    },
+    "continueConversation": {
+      "label": "Continue",
+      "hint": "Reopen the most recent conversation"
+    },
+    "resume": {
+      "label": "Resume…",
+      "hint": "Pick from past sessions"
+    },
+    "shell": {
+      "label": "Open shell",
+      "hint": "Your default shell"
+    }
+  },
+  "blocked": {
+    "macos": {
+      "reason": "macOS is blocking this folder. Documents, Desktop and Downloads need your permission, and the answer you gave is remembered.",
+      "remedy": "Because it is remembered, the app cannot ask again — switch Muster back on under Files and Folders, then start the session again.",
+      "settings": "Open Privacy settings"
+    },
+    "windows": {
+      "reason": "Windows is refusing access to this folder.",
+      "remedy": "If it sits under Documents, Desktop or Pictures, Controlled folder access may be blocking it — allow Muster through it. Otherwise check the folder’s own permissions.",
+      "settings": "Open Windows Security"
+    },
+    "linux": {
+      "reason": "This folder is not readable by your user.",
+      "remedy": "Check its permissions — and if Muster was installed as a Flatpak or Snap, that the sandbox is allowed to reach it."
+    }
+  },
+  "pastCount_one": "{{count}} past conversation",
+  "pastCount_other": "{{count}} past conversations"
+}

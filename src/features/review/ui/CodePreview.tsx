@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import {
   type HighlightedLines,
@@ -18,6 +20,7 @@ import { TokenLine } from './TokenLine'
 import { type ImagePreview, readImage } from '../../../shared/ipc'
 import { formatBytes } from '../../../shared/lib/bytes'
 import { isImagePath } from '../../../shared/lib/imagepaths'
+import { currentLocale } from '../../../shared/i18n/i18n'
 
 /**
  * Rows drawn at once. The backend caps a read at two megabytes, which is some
@@ -64,7 +67,8 @@ export function CodePreview({
   cwd,
   base,
 }: CodePreviewProps) {
-  if (!path) return <Notice>Pick a file to read it here.</Notice>
+  const { t } = useTranslation('review')
+  if (!path) return <Notice>{t('code.pick')}</Notice>
   return isImagePath(path) ? (
     <ImageBody key={path} path={path} />
   ) : (
@@ -90,6 +94,7 @@ interface TextBodyProps {
 }
 
 function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
+  const { t } = useTranslation('review')
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
   const { file, error } = useTextFile(path, revision)
@@ -130,7 +135,7 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
   }, [file])
 
   if (error) return <Notice tone="text-danger">{error}</Notice>
-  if (!file) return <Notice>Reading…</Notice>
+  if (!file) return <Notice>{t('code.reading')}</Notice>
 
   const lines = file.text.split('\n')
   const rows = lines.slice(0, MAX_ROWS)
@@ -158,7 +163,7 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
                 : 'border-l-2 border-l-transparent'
             }`}
           >
-            <Gutter line={index + 1} opener={opener} />
+            <Gutter line={index + 1} opener={opener} t={t} />
             <code
               className={`min-w-0 flex-1 pr-1.5 ${
                 wrap ? 'wrap-anywhere whitespace-pre-wrap' : 'whitespace-pre'
@@ -170,14 +175,14 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
         ))}
         {lines.length > rows.length && (
           <Notice tone="text-[#d8b165]">
-            {`Showing the first ${MAX_ROWS.toLocaleString()} of ${lines.length.toLocaleString()} lines.`}
+            {t('code.linesCapped', {
+              shown: MAX_ROWS.toLocaleString(currentLocale()),
+              total: lines.length.toLocaleString(currentLocale()),
+            })}
           </Notice>
         )}
         {file.truncated && (
-          <Notice tone="text-[#d8b165]">
-            Only the first part of this file is shown; it is larger than the
-            preview will read.
-          </Notice>
+          <Notice tone="text-[#d8b165]">{t('code.truncated')}</Notice>
         )}
       </div>
     </div>
@@ -192,6 +197,7 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
  * network on the strength of its name.
  */
 function ImageBody({ path }: { path: string }) {
+  const { t } = useTranslation('review')
   const [image, setImage] = useState<ImagePreview | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -207,7 +213,7 @@ function ImageBody({ path }: { path: string }) {
   }, [path])
 
   if (error) return <Notice tone="text-danger">{error}</Notice>
-  if (!image) return <Notice>Reading…</Notice>
+  if (!image) return <Notice>{t('code.reading')}</Notice>
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -238,15 +244,17 @@ const GUTTER_WIDTH = { minWidth: '4ch' }
 const Gutter = ({
   line,
   opener,
+  t,
 }: {
   line: number
   opener: LineOpener | null
+  t: TFunction<'review'>
 }) =>
   opener ? (
     <button
       type="button"
-      title={`Open line ${line} in ${opener.editor}`}
-      aria-label={`Open line ${line} in ${opener.editor}`}
+      title={t('code.openLine', { line, editor: opener.editor })}
+      aria-label={t('code.openLine', { line, editor: opener.editor })}
       onClick={() => opener.open(line)}
       style={GUTTER_WIDTH}
       className={`${GUTTER} cursor-pointer text-faint hover:text-primary hover:underline`}

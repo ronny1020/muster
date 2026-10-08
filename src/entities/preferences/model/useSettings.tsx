@@ -14,6 +14,7 @@ import {
   type Settings,
   watchSettings,
 } from './settings'
+import { setLanguage } from '../../../shared/i18n/i18n'
 
 interface SettingsStore {
   settings: Settings
@@ -25,13 +26,13 @@ interface SettingsStore {
 const SettingsContext = createContext<SettingsStore | null>(null)
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState(loadSettings)
+  const [settings, setSettings] = useState(() => adopt(loadSettings()))
 
   // Another window's settings pane, which writes the same store.
-  useEffect(() => watchSettings(() => setSettings(loadSettings())), [])
+  useEffect(() => watchSettings(() => setSettings(adopt(loadSettings()))), [])
 
   const persist = useCallback((next: Settings) => {
-    setSettings(next)
+    setSettings(adopt(next))
     saveSettings(next)
   }, [])
 
@@ -45,6 +46,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   )
 
   return <SettingsContext value={store}>{children}</SettingsContext>
+}
+
+/**
+ * Applies the part of the settings that lives outside React before the
+ * settings themselves land, so the first render is already in the right
+ * language.
+ */
+function adopt(settings: Settings): Settings {
+  setLanguage(settings.language)
+  return settings
 }
 
 export function useSettings(): SettingsStore {

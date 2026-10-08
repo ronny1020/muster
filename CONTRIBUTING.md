@@ -158,6 +158,7 @@ building.
 | Whether a session is still working                    | `src/features/terminal/model/working.ts`                           |
 | Which file the output is about                        | `src/features/terminal/model/codeblocks.ts`                        |
 | Where tabs and settings are kept                      | `src/shared/lib/appstate.ts`, `src-tauri/src/store.rs`             |
+| The question asked before closing over sessions       | `src-tauri/src/close.rs`, `src/app/closewords.ts`                  |
 | Finding your messages as the session writes           | `src/features/terminal/ui/useMessages.ts`                          |
 | Marking messages on the scrollbar                     | `src/features/terminal/ui/useRulerMarks.ts`                        |
 | Where the viewport is scrolled to                     | `src/features/terminal/ui/useViewportRow.ts`                       |
@@ -217,6 +218,7 @@ building.
 | The agent picker, filterable                          | `src/shared/ui/Combobox.tsx`                                       |
 | Byte sizes as a person reads them                     | `src/shared/lib/bytes.ts`                                          |
 | How long ago something was, as a list says it         | `src/shared/lib/ago.ts`                                            |
+| Interface languages, and every string the UI shows    | `src/shared/i18n/`                                                 |
 | Material icons, and which file gets which             | `src/shared/ui/`                                                   |
 | Text a dropped file types                             | `src-tauri/src/platform.rs`                                        |
 | Drawer widths, dragged and remembered                 | `src/shared/lib/usePanelWidth.ts`                                  |
@@ -262,8 +264,8 @@ roster is written out by hand. Start with the entry:
   acceptsFlags: true,      // false only for something that takes no arguments
   scrollbackMode: false,   // true only for a CLI that answers SCROLLBACK_ENV
   modes: [
-    { id: "new", label: "New session", hint: "Start fresh in this directory", args: [] },
-    { id: "continue", label: "Continue", hint: "Reopen the most recent session", args: ["--continue"] },
+    { id: "new", text: "new", args: [] },
+    { id: "continue", text: "continue", args: ["--continue"] },
   ],
 }
 ```
@@ -279,6 +281,11 @@ Rules the tests enforce, and the reasons for them:
 - **Mode ids are load-bearing, not labels.** The tests group modes by
   `id === "continue"` and `id === "resume"`, so a "Continue" mode called
   anything else is invisible to them.
+- **A mode's `text` names its words, not the words themselves.** It is a key
+  under `modes` in the `launch` catalog, so the label and hint follow the
+  interface language. A mode the existing keys do not describe needs a new
+  entry there in all four complete catalogs — see "Adding a string, or a
+  language".
 - **Only list a mode the CLI really has.** Antigravity has no resume-picker
   flag, so it has no picker mode — do not paper over a gap with a flag that
   errors. Read the CLI's own `--help`; do not assume it matches a sibling.
@@ -343,6 +350,42 @@ say so: they are drawn here rather than traced, for the reason AGENTS.md's icon
 invariant gives. Drawing one is the exception, not an option — reach for it only
 when the upstream glyph is wrong for the job, keep Material's 960 grid and match
 the 80-unit stroke those three use, and say in a comment that it is not traced.
+
+## Adding a string, or a language
+
+Strings go through [i18next](https://www.i18next.com) and react-i18next. Every
+one lives in `src/shared/i18n/locales/<locale>/<namespace>.json`; `en-US` is
+the source. A component reads `const { t } = useTranslation('<namespace>')`;
+code that runs on an event, such as a notification, reads `i18n.t` from
+`src/shared/i18n/i18n.ts`. A model function that builds display text takes a
+`TFunction` as a parameter, which keeps it testable through `getFixedT`.
+
+Two checks hold the catalogs together, and they split the work:
+
+- `tsc` types every key against `en-US` (`i18next.d.ts`, `strictKeyChecks`),
+  so a key that is not there fails the typecheck.
+- `i18n.test.ts` checks the other catalogs, which JSON gives no type to: the
+  same keys as `en-US`, the same `{{variables}}` in each message, and every
+  plural form `Intl.PluralRules` says the language uses — `_one` and `_other`
+  in English, `_other` alone in Chinese and Japanese.
+
+The one native surface with words of its own, the dialog asked before
+quitting over running sessions, is drawn by Rust so that it still answers when
+a webview hangs. Its words live in the `chrome` catalog like any other;
+`src/app/closewords.ts` sends them over on launch and on every language
+change, with `{{count}}` left in for Rust to fill.
+
+So a new key is added to `en-US`, `zh-TW`, `zh-CN` and `ja`. `en-GB` holds only
+what British spelling changes and falls back to `en-US` for the rest.
+
+A new language is a folder of JSON files copied from `en-US` — the catalog
+with every plural form English uses — and translated,
+its imports in `resources.ts`, an entry in `LOCALE_NAMES`, and a case in
+`catalogFor` — which recognises only the languages it names, so without one
+"Match system" never picks the new language. The README's Language row lists
+them too, and the README itself is translated into each one but British
+English: `README.<locale>.md`, linked from the language line under every
+README's title. A UI label a translated README names uses that catalog's words.
 
 ## Reviewing a change
 

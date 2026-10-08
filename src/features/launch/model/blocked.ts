@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 import { type PlatformInfo } from '../../../shared/lib/platform'
 
 /**
@@ -29,15 +31,16 @@ export interface BlockedHint {
   settings?: { label: string; url: string }
 }
 
-export function blockedHint(os: PlatformInfo['os']): BlockedHint {
+export function blockedHint(
+  os: PlatformInfo['os'],
+  t: TFunction<'launch'>,
+): BlockedHint {
   if (os === 'macos') {
     return {
-      reason:
-        'macOS is blocking this folder. Documents, Desktop and Downloads need your permission, and the answer you gave is remembered.',
-      remedy:
-        'Because it is remembered, the app cannot ask again — switch Muster back on under Files and Folders, then start the session again.',
+      reason: t('blocked.macos.reason'),
+      remedy: t('blocked.macos.remedy'),
       settings: {
-        label: 'Open Privacy settings',
+        label: t('blocked.macos.settings'),
         // `Privacy_FilesAndFolders` is the anchor Apple uses; `Privacy_Files`
         // is not one of them and silently lands on the Privacy root instead.
         url: 'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
@@ -46,18 +49,16 @@ export function blockedHint(os: PlatformInfo['os']): BlockedHint {
   }
   if (os === 'windows') {
     return {
-      reason: 'Windows is refusing access to this folder.',
-      remedy:
-        'If it sits under Documents, Desktop or Pictures, Controlled folder access may be blocking it — allow Muster through it. Otherwise check the folder’s own permissions.',
+      reason: t('blocked.windows.reason'),
+      remedy: t('blocked.windows.remedy'),
       settings: {
-        label: 'Open Windows Security',
+        label: t('blocked.windows.settings'),
         url: 'windowsdefender://RansomwareProtection',
       },
     }
   }
   return {
-    reason: 'This folder is not readable by your user.',
-    remedy:
-      'Check its permissions — and if Muster was installed as a Flatpak or Snap, that the sandbox is allowed to reach it.',
+    reason: t('blocked.linux.reason'),
+    remedy: t('blocked.linux.remedy'),
   }
 }

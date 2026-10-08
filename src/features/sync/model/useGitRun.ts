@@ -2,10 +2,17 @@ import { useCallback, useRef, useState } from 'react'
 
 import { gitCancel } from '../../../shared/ipc'
 
-export interface Notice {
-  failed: boolean
-  text: string
-}
+/**
+ * What to say when git succeeds without a word, as a `workspace` key and its
+ * values, so the notice follows the language rather than the one it ran in.
+ */
+export type Done =
+  | { key: 'sync.committed' | 'sync.pulled' | 'sync.pushed' }
+  | { key: 'branches.switched'; values: { branch: string } }
+
+/** The last result: git's own words, or a `Done` when git printed none. */
+export type Notice =
+  { failed: boolean; text: string } | { failed: false; done: Done }
 
 export interface GitRun {
   /** The op id of the command in flight, or `null`. */
@@ -16,7 +23,7 @@ export interface GitRun {
   draft: string
   setDraft(update: string | ((draft: string) => string)): void
   /** Runs `action` under a fresh op id, reporting `done` when git says nothing. */
-  run(action: (op: string) => Promise<string>, done: string): Promise<boolean>
+  run(action: (op: string) => Promise<string>, done: Done): Promise<boolean>
   cancel(): void
 }
 
@@ -37,7 +44,7 @@ export function useGitRun(onDone: () => void): GitRun {
   const inFlight = useRef(false)
 
   const run = useCallback(
-    async (action: (op: string) => Promise<string>, done: string) => {
+    async (action: (op: string) => Promise<string>, done: Done) => {
       if (inFlight.current) return false
       inFlight.current = true
       const op = crypto.randomUUID()
@@ -45,7 +52,10 @@ export function useGitRun(onDone: () => void): GitRun {
       setNotice(null)
       try {
         const out = await action(op)
-        setNotice({ failed: false, text: firstLine(out) || done })
+        const said = firstLine(out)
+        setNotice(
+          said ? { failed: false, text: said } : { failed: false, done },
+        )
         return true
       } catch (error) {
         setNotice({ failed: true, text: lastLines(String(error)) })

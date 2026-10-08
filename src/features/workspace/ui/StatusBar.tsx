@@ -1,3 +1,6 @@
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
+
 import { branchLabel, chipGroups, type GitChip } from '../model/status'
 import {
   type Editor,
@@ -18,18 +21,19 @@ import { Icon } from '../../../shared/ui/Icon'
  * see. `src/features/terminal/AGENTS.md`'s "But the mouse is on the other side of
  * that trade" invariant has what each costs.
  */
-const MODES = [
-  {
-    scrollback: false,
-    label: 'Clicks',
-    hint: "Let the agent's own prompts, subagents and running shells answer the mouse; the rails then come from its transcript. Needs its fullscreen renderer. Switching reopens the conversation with continue.",
-  },
-  {
-    scrollback: true,
-    label: 'Scrollback',
-    hint: "Keep the terminal's own history, which the find bar, the path beside the scrollbar and the width repair all read. The agent takes no clicks. Switching reopens the conversation with continue.",
-  },
-] as const
+const modes = (t: TFunction<'workspace'>) =>
+  [
+    {
+      scrollback: false,
+      label: t('status.clicks'),
+      hint: t('status.clicksHint'),
+    },
+    {
+      scrollback: true,
+      label: t('status.scrollback'),
+      hint: t('status.scrollbackHint'),
+    },
+  ] as const
 
 const CHIP_TONE: Record<GitChip['tone'], string> = {
   neutral: 'text-faint',
@@ -105,8 +109,9 @@ export function StatusBar({
   onShowHistory,
   onOpenSettings,
 }: StatusBarProps) {
+  const { t } = useTranslation(['workspace', 'settings'])
   const git = workspace?.git
-  const groups = git?.repo ? chipGroups(git) : null
+  const groups = git?.repo ? chipGroups(git, t) : null
   /** A control is "expanded" only when the drawer is showing what it opens. */
   const showing = (view: ReviewView) => reviewOpen && reviewView === view
 
@@ -117,11 +122,9 @@ export function StatusBar({
         <button
           type="button"
           aria-expanded={showing('files')}
-          title={
-            tracked
-              ? `Browse this directory · ${SHORTCUTS.toggleReview}`
-              : `Browse this directory · ${SHORTCUTS.toggleReview} — the one this session started in`
-          }
+          title={t(tracked ? 'status.browse' : 'status.browseLaunch', {
+            shortcut: SHORTCUTS.toggleReview,
+          })}
           onClick={() => onShowReview('files')}
           className={`max-w-[46%] overflow-hidden text-ellipsis hover:text-ink hover:underline ${
             showing('files') ? 'text-ink' : ''
@@ -137,18 +140,21 @@ export function StatusBar({
             type="button"
             aria-expanded={historyOpen}
             onClick={onToggleHistory}
-            title={`Show history${git.upstream ? ` · tracking ${git.upstream}` : ' · no upstream'}`}
+            title={t('status.showHistory', {
+              upstream: git.upstream,
+              context: git.upstream ? 'tracking' : undefined,
+            })}
             className={`flex min-w-0 items-center gap-1 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink ${
               historyOpen ? 'bg-surface text-ink' : 'text-[#a8b4c8]'
             }`}
           >
             <BranchIcon />
-            {branchLabel(git)}
+            {branchLabel(git, t)}
           </button>
           {groups && groups.history.length > 0 && (
             <ChipGroup
               chips={groups.history}
-              label="commits"
+              label={t('status.commits')}
               expanded={historyOpen}
               onClick={onShowHistory}
             />
@@ -156,7 +162,7 @@ export function StatusBar({
           {groups && groups.review.length > 0 && (
             <ChipGroup
               chips={groups.review}
-              label="changed files"
+              label={t('status.changedFiles')}
               expanded={showing('changes')}
               onClick={() => onShowReview('changes')}
             />
@@ -175,9 +181,7 @@ export function StatusBar({
       <span
         role="status"
         title={
-          collision
-            ? `${collision}. Two tabs changing one file diverge until one of them rebases.`
-            : undefined
+          collision ? t('status.collisionTitle', { collision }) : undefined
         }
         // Not a colour alone: the word "also" carries the meaning for anyone
         // who cannot see the tint.
@@ -193,20 +197,20 @@ export function StatusBar({
       {editor && (
         <button
           type="button"
-          title={`Open this directory in ${editor.name}`}
+          title={t('status.openInEditorTitle', { editor: editor.name })}
           onClick={() => void openInEditor(cwd, editor.command).catch(report)}
           className="min-w-0 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink"
         >
-          Open in {editor.name}
+          {t('status.openInEditor', { editor: editor.name })}
         </button>
       )}
       {mode && (
         <span
           className="flex flex-none items-center overflow-hidden rounded border border-line"
           role="group"
-          aria-label="Terminal mode"
+          aria-label={t('status.terminalMode')}
         >
-          {MODES.map(({ scrollback, label, hint }) => (
+          {modes(t).map(({ scrollback, label, hint }) => (
             <button
               key={label}
               type="button"
@@ -229,8 +233,8 @@ export function StatusBar({
       {journal && (
         <button
           type="button"
-          title="Earlier sessions recorded in this directory"
-          aria-label="Earlier sessions"
+          title={t('status.journalTitle')}
+          aria-label={t('status.journal')}
           aria-expanded={journalOpen}
           onClick={onToggleJournal}
           className={`flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink ${
@@ -249,8 +253,11 @@ export function StatusBar({
           above is what keeps it on screen — see AGENTS.md's far-right rule. */}
       <button
         type="button"
-        title={`Settings (${SHORTCUTS.openSettings})`}
-        aria-label="Settings"
+        title={t('status.settingsTitle', {
+          settings: t('settings:title'),
+          shortcut: SHORTCUTS.openSettings,
+        })}
+        aria-label={t('settings:title')}
         onClick={onOpenSettings}
         className="flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink"
       >
@@ -275,25 +282,32 @@ interface ChipGroupProps {
  * staged from untracked at a glance — but the click target is the group,
  * because they all lead to the same place.
  */
-const ChipGroup = ({ chips, label, expanded, onClick }: ChipGroupProps) => (
-  <button
-    type="button"
-    aria-expanded={expanded}
-    // The visible label is `~24`, which names nothing on its own.
-    aria-label={`${chips.map((chip) => chip.title).join(', ')} — show ${label}`}
-    title={`${chips.map((chip) => chip.title).join(' · ')} — click to show`}
-    onClick={onClick}
-    className={`flex items-center gap-1.5 rounded px-1 hover:bg-surface-hover ${
-      expanded ? 'bg-surface' : ''
-    }`}
-  >
-    {chips.map((chip) => (
-      <span key={chip.key} className={CHIP_TONE[chip.tone]}>
-        {chip.text}
-      </span>
-    ))}
-  </button>
-)
+function ChipGroup({ chips, label, expanded, onClick }: ChipGroupProps) {
+  const { t } = useTranslation('workspace')
+  const titles = chips.map((chip) => chip.title)
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      // The visible label is `~24`, which names nothing on its own.
+      aria-label={t('status.chipGroupLabel', {
+        titles: titles.join(t('status.titleSeparator')),
+        what: label,
+      })}
+      title={t('status.chipGroupTitle', { titles: titles.join(' · ') })}
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded px-1 hover:bg-surface-hover ${
+        expanded ? 'bg-surface' : ''
+      }`}
+    >
+      {chips.map((chip) => (
+        <span key={chip.key} className={CHIP_TONE[chip.tone]}>
+          {chip.text}
+        </span>
+      ))}
+    </button>
+  )
+}
 
 /**
  * Branch mark drawn inline rather than typed, since the Unicode glyphs for it

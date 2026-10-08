@@ -2,6 +2,8 @@
  * What the commit, pull and push controls say and whether each can be
  * pressed, read off the same git status the status bar shows.
  */
+import type { TFunction } from 'i18next'
+
 import type { GitStatus } from '../../../shared/ipc'
 
 export interface SyncControl {
@@ -11,11 +13,17 @@ export interface SyncControl {
 }
 
 /** Names what will be committed, because staged work narrows it. */
-export function commitControl(git: GitStatus): SyncControl {
+export function commitControl(
+  git: GitStatus,
+  t: TFunction<'workspace'>,
+): SyncControl {
   const pending = git.staged + git.modified + git.untracked + git.conflicted
   return {
-    label: git.staged > 0 ? `Commit ${git.staged} staged` : 'Commit all',
-    blocked: pending === 0 ? 'Nothing to commit' : null,
+    label:
+      git.staged > 0
+        ? t('sync.commitStaged', { count: git.staged })
+        : t('sync.commitAll'),
+    blocked: pending === 0 ? t('sync.nothingToCommit') : null,
   }
 }
 
@@ -25,19 +33,23 @@ export function commitControl(git: GitStatus): SyncControl {
  * rather than a block, because a rebase stopped for an edit is detached too
  * and committing there is the point.
  */
-export const commitWarning = (git: GitStatus) =>
-  git.detached
-    ? 'Not on a branch: a commit here belongs to no branch until you make one.'
-    : null
+export const commitWarning = (git: GitStatus, t: TFunction<'workspace'>) =>
+  git.detached ? t('sync.detachedWarning') : null
 
-export function pullControl(git: GitStatus): SyncControl {
+export function pullControl(
+  git: GitStatus,
+  t: TFunction<'workspace'>,
+): SyncControl {
   return {
-    label: git.behind > 0 ? `Pull ↓${git.behind}` : 'Pull',
+    label:
+      git.behind > 0
+        ? t('sync.pullBehind', { count: git.behind })
+        : t('sync.pull'),
     blocked: git.detached
-      ? 'No branch is checked out'
+      ? t('sync.noBranch')
       : git.upstream
         ? null
-        : 'This branch has no upstream to pull from',
+        : t('sync.noUpstream'),
   }
 }
 
@@ -46,13 +58,16 @@ export function pullControl(git: GitStatus): SyncControl {
  * `workspace.rs` — and acts on that same field, so the label and the push
  * agree as of the last poll.
  */
-export function pushControl(git: GitStatus): SyncControl {
+export function pushControl(
+  git: GitStatus,
+  t: TFunction<'workspace'>,
+): SyncControl {
   return {
     label: git.publishes
-      ? 'Publish'
+      ? t('sync.publish')
       : git.ahead > 0
-        ? `Push ↑${git.ahead}`
-        : 'Push',
-    blocked: git.detached ? 'No branch is checked out' : null,
+        ? t('sync.pushAhead', { count: git.ahead })
+        : t('sync.push'),
+    blocked: git.detached ? t('sync.noBranch') : null,
   }
 }

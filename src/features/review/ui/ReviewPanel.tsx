@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 
 import { changeTotals, sortChanges } from '../model/changes'
 import { useChanges } from '../model/useChanges'
@@ -18,7 +20,7 @@ import {
   gitBranches,
   report,
 } from '../../../shared/ipc'
-import { REVEAL_LABEL } from '../../../shared/lib/platform'
+import { revealLabel } from '../../../shared/lib/platform'
 
 export interface ReviewPanelProps {
   cwd: string
@@ -67,6 +69,8 @@ export function ReviewPanel({
   onSend,
   onClose,
 }: ReviewPanelProps) {
+  const { t } = useTranslation('review')
+  const { t: chrome } = useTranslation('chrome')
   const [showHidden, setShowHidden] = useState(false)
   const size = usePanelWidth('muster.reviewWidth', DEFAULT_WIDTH)
 
@@ -99,31 +103,31 @@ export function ReviewPanel({
       // thing left that can keep the terminal on screen.
       className="relative flex flex-col border-l border-line bg-chrome"
     >
-      <DragEdge size={size} label="Resize the review drawer" />
+      <DragEdge size={size} label={t('panel.resize')} />
 
       <header className="flex h-8 flex-none items-center gap-1 border-b border-line px-2">
         <Tab
           icon="difference"
-          label="Changes"
+          label={t('panel.changes')}
           active={view === 'changes'}
           onClick={() => onView('changes')}
         />
         <Tab
           icon="account_tree"
-          label="Files"
+          label={t('panel.files')}
           active={view === 'files'}
           onClick={() => onView('files')}
         />
         <span className="flex-1" />
         <IconButton
           icon="refresh"
-          label="Re-read"
+          label={t('panel.reread')}
           onClick={() => {
             reload()
             setAsked((count) => count + 1)
           }}
         />
-        <IconButton icon="close" label="Close review" onClick={onClose} />
+        <IconButton icon="close" label={t('panel.close')} onClick={onClose} />
       </header>
 
       <div className="flex h-7 flex-none items-center gap-1.5 border-b border-line px-2 text-[11px] text-muted">
@@ -134,7 +138,12 @@ export function ReviewPanel({
               role="status"
               className="flex-1 truncate text-[10px] text-faint"
             >
-              {summary(loading, changes?.repo ?? false, totals)}
+              {summary({
+                loading,
+                repo: changes?.repo ?? false,
+                totals,
+                t,
+              })}
             </span>
           </>
         ) : (
@@ -146,7 +155,7 @@ export function ReviewPanel({
                 showHidden ? 'bg-surface text-ink' : 'hover:bg-surface-hover'
               }`}
             >
-              Hidden files
+              {t('panel.hiddenFiles')}
             </button>
             <span className="flex-1" />
             {/* The tree lists the directory's children, not the directory, so
@@ -154,7 +163,9 @@ export function ReviewPanel({
                 directory itself — and none at all when it is empty. */}
             <IconButton
               icon="folder_open"
-              label={`${REVEAL_LABEL} — this directory`}
+              label={t('panel.revealDirectory', {
+                reveal: revealLabel(chrome),
+              })}
               onClick={() => void revealItemInDir(cwd).catch(report)}
             />
           </>
@@ -162,7 +173,7 @@ export function ReviewPanel({
         {viewed && (
           <IconButton
             icon="terminal"
-            label="Type this path into the session"
+            label={t('panel.sendPath')}
             onClick={() => onSend(viewed.absolute)}
           />
         )}
@@ -171,11 +182,13 @@ export function ReviewPanel({
       {view === 'changes' && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           {changes && !changes.repo ? (
-            <Empty>Not a git repository, so there is nothing to compare.</Empty>
+            <Empty>{t('panel.notRepo')}</Empty>
           ) : changes?.error ? (
             <Empty tone="text-danger">{changes.error}</Empty>
           ) : files.length === 0 ? (
-            <Empty>{loading ? 'Reading changes…' : 'No changes.'}</Empty>
+            <Empty>
+              {loading ? t('panel.readingChanges') : t('panel.noChanges')}
+            </Empty>
           ) : (
             <ChangedFiles
               files={files}
@@ -203,15 +216,21 @@ export function ReviewPanel({
   )
 }
 
-function summary(
-  loading: boolean,
-  repo: boolean,
-  totals: ReturnType<typeof changeTotals>,
-) {
+interface SummaryOptions {
+  loading: boolean
+  repo: boolean
+  totals: ReturnType<typeof changeTotals>
+  t: TFunction<'review'>
+}
+
+function summary({ loading, repo, totals, t }: SummaryOptions) {
   if (!repo) return ''
-  if (loading && totals.files === 0) return 'reading…'
-  const plural = totals.files === 1 ? 'file' : 'files'
-  return `${totals.files} ${plural} · +${totals.insertions} −${totals.deletions}`
+  if (loading && totals.files === 0) return t('panel.reading')
+  return t('panel.summary', {
+    count: totals.files,
+    insertions: totals.insertions,
+    deletions: totals.deletions,
+  })
 }
 
 interface BasePickerProps {
@@ -228,6 +247,7 @@ interface BasePickerProps {
  * question "is this ready to open as a pull request" actually asks.
  */
 function BasePicker({ cwd, base, onBase }: BasePickerProps) {
+  const { t } = useTranslation('review')
   const [branches, setBranches] = useState<Branch[]>([])
 
   useEffect(() => {
@@ -242,14 +262,14 @@ function BasePicker({ cwd, base, onBase }: BasePickerProps) {
 
   return (
     <label className="flex items-center gap-1">
-      <span className="text-[10px] text-faint">vs</span>
+      <span className="text-[10px] text-faint">{t('panel.versus')}</span>
       <select
         value={base}
-        aria-label="Compare against"
+        aria-label={t('panel.compareAgainst')}
         onChange={(event) => onBase(event.target.value)}
         className="max-w-[140px] rounded border border-line bg-surface px-1 py-0.5 text-[11px] text-ink outline-none hover:bg-surface-hover"
       >
-        <option value="">uncommitted</option>
+        <option value="">{t('panel.uncommitted')}</option>
         {/* The chosen base is always among the options, even before the branch
             list has loaded, after it failed, or once that branch became the
             current one — otherwise the picker falls back to showing

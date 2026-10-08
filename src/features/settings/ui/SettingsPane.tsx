@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { AGENTS, pickableAgent } from '../../../entities/agent/model/agents'
 import { useBackground } from '../../../shared/lib/useBackground'
@@ -22,16 +23,24 @@ import {
 import {
   everyFont,
   fontChoices,
+  fontLabel,
   fontName,
   installedFonts,
   monospacedFonts,
   stackFor,
 } from '../../../shared/lib/fonts'
 import { themeChoices, themeFor } from '../../../shared/lib/themes'
+import {
+  LOCALE_NAMES,
+  LOCALES,
+  isLanguageSetting,
+} from '../../../shared/i18n/i18n'
 
 /** Settings live in a tab of their own, the way Chrome's do. */
 export function SettingsPane() {
   const { settings, update, reset } = useSettings()
+  const { t } = useTranslation('settings')
+  const { t: chromeText } = useTranslation('chrome')
   const distros = usePlatform()?.wslDistros ?? []
   // Read once into state: the count has to fall to zero the moment Clear is
   // pressed, and reading storage during render leaves it stale until something
@@ -86,11 +95,32 @@ export function SettingsPane() {
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto flex w-[min(620px,100%)] flex-col gap-6">
         <h1 className="m-0 text-[15px] font-semibold tracking-[0.01em]">
-          Settings
+          {t('title')}
         </h1>
 
-        <Group title="New tabs">
-          <Row label="Default agent" hint="Preselected when a tab opens">
+        <Group title={t('groups.general')}>
+          <Row label={t('language.label')}>
+            <select
+              value={settings.language}
+              aria-label={t('language.label')}
+              onChange={(event) => {
+                const language = event.target.value
+                if (isLanguageSetting(language)) update({ language })
+              }}
+              className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
+            >
+              <option value="system">{t('language.matchSystem')}</option>
+              {LOCALES.map((locale) => (
+                <option key={locale} value={locale} lang={locale}>
+                  {LOCALE_NAMES[locale]}
+                </option>
+              ))}
+            </select>
+          </Row>
+        </Group>
+
+        <Group title={t('groups.newTabs')}>
+          <Row label={t('defaultAgent.label')} hint={t('defaultAgent.hint')}>
             <select
               // Through `pickableAgent` for the reason the launcher is: a
               // stored `shell` would otherwise leave this select on a value no
@@ -109,13 +139,10 @@ export function SettingsPane() {
             </select>
           </Row>
 
-          <Row
-            label="Default terminal mode"
-            hint="What a new tab starts on — the start screen offers it per launch, and the status bar switches a tab already running. Clicks lets Claude Code's own prompts, subagents and shells take the mouse; Scrollback keeps the terminal's own history, which is what the scrollbar, the find bar, the path beside the scrollbar and the width repair need. No session can have both."
-          >
+          <Row label={t('terminalMode.label')} hint={t('terminalMode.hint')}>
             <select
               value={settings.terminalMode}
-              aria-label="Terminal mode"
+              aria-label={t('terminalMode.control')}
               onChange={(event) =>
                 update({
                   terminalMode:
@@ -124,19 +151,19 @@ export function SettingsPane() {
               }
               className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
             >
-              <option value="scrollback">Scrollback</option>
-              <option value="clicks">Clicks</option>
+              <option value="scrollback">{t('terminalMode.scrollback')}</option>
+              <option value="clicks">{t('terminalMode.clicks')}</option>
             </select>
           </Row>
 
           <Row
-            label="Default directory"
-            hint="Blank uses the last directory you opened"
+            label={t('defaultDirectory.label')}
+            hint={t('defaultDirectory.hint')}
           >
             <div className="flex gap-1.5">
               <input
                 value={settings.defaultDirectory}
-                placeholder="last used"
+                placeholder={t('defaultDirectory.placeholder')}
                 spellCheck={false}
                 onChange={(event) =>
                   update({ defaultDirectory: event.target.value })
@@ -154,17 +181,17 @@ export function SettingsPane() {
                 }
                 className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
               >
-                Browse…
+                {t('defaultDirectory.browse')}
               </button>
             </div>
           </Row>
 
           {distros.length > 0 && (
-            <Row label="Run in" hint="Where a new tab's session starts">
+            <Row label={t('runIn.label')} hint={t('runIn.hint')}>
               <div className="flex gap-1.5">
                 <select
                   value={settings.defaultBackend}
-                  aria-label="Default backend"
+                  aria-label={t('runIn.backend')}
                   onChange={(event) =>
                     update({
                       defaultBackend:
@@ -179,13 +206,13 @@ export function SettingsPane() {
                 {settings.defaultBackend === 'wsl' && (
                   <select
                     value={settings.defaultDistro}
-                    aria-label="Default WSL distro"
+                    aria-label={t('runIn.distro')}
                     onChange={(event) =>
                       update({ defaultDistro: event.target.value })
                     }
                     className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
                   >
-                    <option value="">Default distro</option>
+                    <option value="">{t('runIn.defaultDistro')}</option>
                     {distros.map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -198,14 +225,14 @@ export function SettingsPane() {
           )}
         </Group>
 
-        <Group title="Terminal">
-          <Row label="Theme" hint="Applies to running sessions too">
+        <Group title={t('groups.terminal')}>
+          <Row label={t('theme.label')} hint={t('theme.hint')}>
             <div className="flex items-center gap-2.5">
               <ThemeSwatch id={settings.themeId} />
               <select
                 value={settings.themeId}
                 onChange={(event) => update({ themeId: event.target.value })}
-                aria-label="Theme"
+                aria-label={t('theme.label')}
                 className="h-8 w-[180px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
               >
                 {themeChoices().map((choice) => (
@@ -217,20 +244,23 @@ export function SettingsPane() {
             </div>
           </Row>
           <Row
-            label="Font family"
+            label={t('fontFamily.label')}
             hint={
               families === null
-                ? 'Reading the installed families…'
+                ? t('fontFamily.reading')
                 : enumerated
-                  ? `${fixedPitch} of ${families.length} installed families can hold a terminal grid`
-                  : 'The installed families could not be read, so this is the built-in list — most of what you have is missing from it'
+                  ? t('fontFamily.counted', {
+                      fixed: fixedPitch,
+                      total: families.length,
+                    })
+                  : t('fontFamily.unreadable')
             }
           >
             <select
               // `Row`'s label is a span, not a `<label>`, so nothing here is
               // named programmatically — a gap every row in this pane shares,
               // and one this control at least does not add to.
-              aria-label="Font family"
+              aria-label={t('fontFamily.label')}
               value={settings.fontFamily}
               onChange={(event) => update({ fontFamily: event.target.value })}
               className="h-8 w-[300px] rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
@@ -243,127 +273,136 @@ export function SettingsPane() {
                   // a set of names you have to try one at a time.
                   style={{ fontFamily: font.stack }}
                 >
-                  {font.name}
+                  {fontLabel(font, chromeText)}
                 </option>
               ))}
             </select>
           </Row>
           <Row
-            label="Show all system fonts"
-            hint="Off, the list holds the fixed-pitch families only — which is almost never the whole of what is installed"
+            label={t('allSystemFonts.label')}
+            hint={t('allSystemFonts.hint')}
           >
             <Toggle
               checked={settings.allSystemFonts}
               onChange={(allSystemFonts) => update({ allSystemFonts })}
-              label="Show all system fonts"
+              label={t('allSystemFonts.label')}
             />
           </Row>
-          <NumberRow label="Font size" field="fontSize" suffix="px" />
-          <NumberRow label="Line height" field="lineHeight" />
-          <NumberRow label="Text width" field="letterSpacing" suffix="px" />
-          <NumberRow label="Scrollback" field="scrollback" suffix="lines" />
-          <Row label="Blinking cursor">
+          <NumberRow
+            label={t('fontSize')}
+            field="fontSize"
+            format={(value) => `${value} px`}
+          />
+          <NumberRow label={t('lineHeight')} field="lineHeight" />
+          <NumberRow
+            label={t('textWidth')}
+            field="letterSpacing"
+            format={(value) => `${value} px`}
+          />
+          <NumberRow
+            label={t('scrollback')}
+            field="scrollback"
+            format={(value) => t('units.lines', { count: value })}
+          />
+          <Row label={t('cursorBlink')}>
             <Toggle
               checked={settings.cursorBlink}
               onChange={(cursorBlink) => update({ cursorBlink })}
-              label="Blinking cursor"
+              label={t('cursorBlink')}
             />
           </Row>
           <Row
-            label="Shell integration"
-            hint="Lets a zsh or bash tab offer a copy control per command and complete what you type from its history — the shell an agent tab hands back to included. Applies to tabs started after the change."
+            label={t('shellIntegration.label')}
+            hint={t('shellIntegration.hint')}
           >
             <Toggle
               checked={settings.shellIntegration}
               onChange={(shellIntegration) => update({ shellIntegration })}
-              label="Shell integration"
+              label={t('shellIntegration.label')}
             />
           </Row>
         </Group>
 
-        <Group title="Background">
+        <Group title={t('groups.background')}>
           <BackgroundRow />
           {settings.backgroundImage && (
             <>
               <NumberRow
-                label="Brightness"
+                label={t('brightness')}
                 field="backgroundBrightness"
-                suffix="%"
+                format={(value) => `${value}%`}
               />
               <BackgroundPreview />
             </>
           )}
         </Group>
 
-        <Group title="Editor">
+        <Group title={t('groups.editor')}>
           <EditorRow />
         </Group>
 
-        <Group title="Notifications">
-          <Row
-            label="When a session is done"
-            hint="Agents ring the terminal bell as they hand control back"
-          >
+        <Group title={t('groups.notifications')}>
+          <Row label={t('notifyOnDone.label')} hint={t('notifyOnDone.hint')}>
             <Toggle
               checked={settings.notifyOnDone}
               onChange={(notifyOnDone) => update({ notifyOnDone })}
-              label="Notify when a session is done"
+              label={t('notifyOnDone.control')}
             />
           </Row>
           <Row
-            label="Only when looking elsewhere"
-            hint="Stay quiet while that tab is already on screen"
+            label={t('notifyOnlyWhenUnfocused.label')}
+            hint={t('notifyOnlyWhenUnfocused.hint')}
           >
             <Toggle
               checked={settings.notifyOnlyWhenUnfocused}
               onChange={(notifyOnlyWhenUnfocused) =>
                 update({ notifyOnlyWhenUnfocused })
               }
-              label="Only notify when looking elsewhere"
+              label={t('notifyOnlyWhenUnfocused.control')}
             />
           </Row>
-          <Row label="Play a sound">
+          <Row label={t('notifySound.label')}>
             <Toggle
               checked={settings.notifySound}
               onChange={(notifySound) => update({ notifySound })}
-              label="Play a notification sound"
+              label={t('notifySound.control')}
             />
           </Row>
         </Group>
 
-        <Group title="Git">
+        <Group title={t('groups.git')}>
           <NumberRow
-            label="Status refresh"
+            label={t('gitPoll')}
             field="gitPollSeconds"
-            suffix="seconds"
+            format={(value) => t('units.seconds', { count: value })}
           />
           <NumberRow
-            label="History length"
+            label={t('historyLimit')}
             field="historyLimit"
-            suffix="commits"
+            format={(value) => t('units.commits', { count: value })}
           />
         </Group>
 
-        <Group title="Session records">
-          <Row
-            label="Record what sessions print"
-            hint="Kept verbatim, so earlier sessions in a folder can be listed and reopened"
-          >
+        <Group title={t('groups.sessionRecords')}>
+          <Row label={t('journal.label')} hint={t('journal.hint')}>
             <Toggle
               checked={settings.journalEnabled}
               onChange={(journalEnabled) => update({ journalEnabled })}
-              label="Record what sessions print"
+              label={t('journal.label')}
             />
           </Row>
           <NumberRow
-            label="Keep records for"
+            label={t('journalRetention')}
             field="journalRetentionDays"
-            suffix="days"
+            format={(value) => t('units.days', { count: value })}
           />
         </Group>
 
-        <Group title="Data">
-          <Row label="Recent directories" hint={`${remembered} remembered`}>
+        <Group title={t('groups.data')}>
+          <Row
+            label={t('recentDirs.label')}
+            hint={t('recentDirs.hint', { count: remembered })}
+          >
             <button
               type="button"
               onClick={() => {
@@ -372,19 +411,16 @@ export function SettingsPane() {
               }}
               className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
             >
-              Clear
+              {t('recentDirs.clear')}
             </button>
           </Row>
-          <Row
-            label="Everything else"
-            hint="Restores every setting on this page"
-          >
+          <Row label={t('reset.label')} hint={t('reset.hint')}>
             <button
               type="button"
               onClick={reset}
               className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
             >
-              Restore defaults
+              {t('reset.action')}
             </button>
           </Row>
         </Group>
@@ -436,11 +472,12 @@ function Row({
 function NumberRow({
   label,
   field,
-  suffix,
+  format = String,
 }: {
   label: string
   field: keyof typeof LIMITS
-  suffix?: string
+  /** The value as the row reads it, unit included. */
+  format?: (value: number) => string
 }) {
   const { settings, update } = useSettings()
   const { min, max, step } = LIMITS[field]
@@ -462,8 +499,7 @@ function NumberRow({
           className="w-[180px] accent-primary"
         />
         <span className="w-[92px] text-right font-mono text-[11px] text-muted">
-          {value}
-          {suffix ? ` ${suffix}` : ''}
+          {format(value)}
         </span>
       </div>
     </Row>
@@ -496,25 +532,28 @@ function Toggle({
  */
 function EditorRow() {
   const { settings, update } = useSettings()
+  const { t } = useTranslation('settings')
   const available = useEditors()
 
   if (available.length === 0) {
     return (
-      <Row label="Open in" hint="No editor command found on your PATH">
-        <span className="text-faint">none</span>
+      <Row label={t('editor.label')} hint={t('editor.none')}>
+        <span className="text-faint">{t('editor.noneValue')}</span>
       </Row>
     )
   }
 
   return (
-    <Row label="Open in" hint="Used by the button in each tab's status bar">
+    <Row label={t('editor.label')} hint={t('editor.hint')}>
       <select
         value={settings.editorCommand}
-        aria-label="Editor"
+        aria-label={t('editor.control')}
         onChange={(event) => update({ editorCommand: event.target.value })}
         className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
       >
-        <option value="">{available[0].name} (first found)</option>
+        <option value="">
+          {t('editor.firstFound', { name: available[0].name })}
+        </option>
         {available.map((editor) => (
           <option key={editor.command} value={editor.command}>
             {editor.name}
@@ -528,6 +567,7 @@ function EditorRow() {
 /** Picks the image drawn behind every terminal, or clears it. */
 function BackgroundRow() {
   const { settings, update } = useSettings()
+  const { t } = useTranslation('settings')
   const chosen = settings.backgroundImage
 
   const choose = async () => {
@@ -537,10 +577,8 @@ function BackgroundRow() {
 
   return (
     <Row
-      label="Image"
-      hint={
-        chosen ? basename(chosen) : 'Drawn behind the terminal in every tab'
-      }
+      label={t('image.label')}
+      hint={chosen ? basename(chosen) : t('image.hint')}
     >
       <div className="flex items-center gap-2">
         {chosen && (
@@ -549,7 +587,7 @@ function BackgroundRow() {
             onClick={() => update({ backgroundImage: '' })}
             className="h-8 rounded-lg border border-line px-2.5 text-xs text-muted hover:border-danger hover:text-danger"
           >
-            Clear
+            {t('image.clear')}
           </button>
         )}
         <button
@@ -557,7 +595,7 @@ function BackgroundRow() {
           onClick={() => void choose()}
           className="h-8 rounded-lg border border-line px-2.5 text-xs text-ink hover:border-primary"
         >
-          {chosen ? 'Change…' : 'Choose…'}
+          {chosen ? t('image.change') : t('image.choose')}
         </button>
       </div>
     </Row>
@@ -572,6 +610,7 @@ function BackgroundRow() {
  */
 function BackgroundPreview() {
   const { settings } = useSettings()
+  const { t } = useTranslation('settings')
   const background = useBackground(settings.backgroundImage)
 
   return (
@@ -588,12 +627,12 @@ function BackgroundPreview() {
           />
         ) : (
           <p className="absolute inset-0 flex items-center justify-center text-[11px] text-faint">
-            That file could not be read as an image.
+            {t('preview.unreadable')}
           </p>
         )}
         {background && (
           <pre
-            aria-label="Background preview"
+            aria-label={t('preview.label')}
             className="relative m-0 p-2.5 leading-snug text-ink"
             style={{
               fontFamily: settings.fontFamily,

@@ -1,0 +1,122 @@
+{
+  "title": "设置",
+  "groups": {
+    "general": "通用",
+    "newTabs": "新标签页",
+    "terminal": "终端",
+    "background": "背景",
+    "editor": "编辑器",
+    "notifications": "通知",
+    "git": "Git",
+    "sessionRecords": "会话记录",
+    "data": "数据"
+  },
+  "language": {
+    "label": "语言",
+    "matchSystem": "跟随系统"
+  },
+  "defaultAgent": {
+    "label": "默认智能体",
+    "hint": "打开标签页时预先选中"
+  },
+  "terminalMode": {
+    "label": "默认终端模式",
+    "hint": "新标签页的起始模式——启动界面可在每次启动时选择，状态栏可切换已在运行的标签页。“点击”让 Claude Code 自己的提示、子智能体和 shell 接管鼠标；“回看缓冲”保留终端自身的历史，滚动条、查找栏、滚动条旁的路径和宽度修复都需要它。一个会话无法两者兼得。",
+    "control": "终端模式",
+    "scrollback": "回看缓冲",
+    "clicks": "点击"
+  },
+  "defaultDirectory": {
+    "label": "默认文件夹",
+    "hint": "留空则使用上次打开的文件夹",
+    "placeholder": "上次使用",
+    "browse": "浏览…"
+  },
+  "runIn": {
+    "label": "运行于",
+    "hint": "新标签页的会话从哪里启动",
+    "backend": "默认后端",
+    "distro": "默认 WSL 发行版",
+    "defaultDistro": "默认发行版"
+  },
+  "theme": {
+    "label": "主题",
+    "hint": "也会应用到正在运行的会话"
+  },
+  "fontFamily": {
+    "label": "字体",
+    "reading": "正在读取已安装的字体…",
+    "counted": "已安装的 {{total}} 个字体中，有 {{fixed}} 个可用于终端网格",
+    "unreadable": "无法读取已安装的字体，因此这是内置列表——你拥有的字体大多不在其中"
+  },
+  "allSystemFonts": {
+    "label": "显示所有系统字体",
+    "hint": "关闭时，列表只包含等宽字体——这几乎从来不是已安装的全部"
+  },
+  "fontSize": "字号",
+  "lineHeight": "行高",
+  "textWidth": "字符宽度",
+  "scrollback": "回看缓冲",
+  "cursorBlink": "光标闪烁",
+  "shellIntegration": {
+    "label": "Shell 集成",
+    "hint": "让 zsh 或 bash 标签页为每条命令提供复制控件，并根据历史记录补全你输入的内容——包括智能体标签页交还的 shell。应用于更改后启动的标签页。"
+  },
+  "units": {
+    "lines_other": "{{count}} 行",
+    "seconds_other": "{{count}} 秒",
+    "commits_other": "{{count}} 个提交",
+    "days_other": "{{count}} 天"
+  },
+  "image": {
+    "label": "图片",
+    "hint": "绘制在每个标签页的终端后方",
+    "clear": "清除",
+    "change": "更换…",
+    "choose": "选择…"
+  },
+  "brightness": "亮度",
+  "preview": {
+    "unreadable": "无法将该文件读取为图片。",
+    "label": "背景预览"
+  },
+  "editor": {
+    "label": "打开方式",
+    "none": "在 PATH 中找不到编辑器命令",
+    "noneValue": "无",
+    "hint": "供每个标签页状态栏中的按钮使用",
+    "control": "编辑器",
+    "firstFound": "{{name}}（第一个找到的）"
+  },
+  "notifyOnDone": {
+    "label": "会话完成时",
+    "hint": "会话完成一轮、交还给 shell 或结束时",
+    "control": "会话完成时通知"
+  },
+  "notifyOnlyWhenUnfocused": {
+    "label": "仅在看着别处时",
+    "hint": "该标签页已在屏幕上时保持安静",
+    "control": "仅在看着别处时通知"
+  },
+  "notifySound": {
+    "label": "播放声音",
+    "control": "播放通知声音"
+  },
+  "gitPoll": "状态刷新",
+  "historyLimit": "历史长度",
+  "journal": {
+    "label": "记录会话的输出",
+    "hint": "原样保存，以便列出并重新打开文件夹中之前的会话"
+  },
+  "journalRetention": "记录保留",
+  "recentDirs": {
+    "label": "最近的文件夹",
+    "hint": "已记住 {{count}} 个",
+    "clear": "清除"
+  },
+  "reset": {
+    "label": "其他所有项",
+    "hint": "恢复此页面上的所有设置",
+    "action": "恢复默认值"
+  }
+}

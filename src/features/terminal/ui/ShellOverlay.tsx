@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { CSSProperties, RefObject } from 'react'
 
 import type { Terminal } from '@xterm/xterm'
@@ -60,6 +61,7 @@ export function ShellOverlay({
   onCopy,
   copied,
 }: ShellOverlayProps) {
+  const { t } = useTranslation('terminal')
   const cell = useCellSize(host, term)
   const hovered = useHoveredBlock(surface, host, shell, viewportRow, cell)
   const { suggestions } = shell
@@ -106,26 +108,47 @@ export function ShellOverlay({
         />
       )}
       {cell && hovered && (
-        <button
-          type="button"
-          onClick={() => onCopy(hovered.block)}
-          title={hovered.label}
-          aria-label={hovered.label}
-          className="pointer-events-auto absolute right-5 z-10 rounded border border-line bg-chrome/95 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
-          style={{
-            top: Math.max(
-              0,
-              (hovered.block.input.row - viewportRow) * cell.height,
-            ),
-          }}
-        >
-          {copied ? 'Copied' : 'Copy output'}
-        </button>
+        <CopyButton
+          block={hovered}
+          top={Math.max(0, (hovered.input.row - viewportRow) * cell.height)}
+          copied={copied}
+          onCopy={onCopy}
+        />
       )}
       <span className="sr-only" role="status">
-        {copied ? 'Output copied to the clipboard' : ''}
+        {copied ? t('shell.copiedStatus') : ''}
       </span>
     </div>
+  )
+}
+
+/** The control that copies one finished command's output. */
+function CopyButton({
+  block,
+  top,
+  copied,
+  onCopy,
+}: {
+  block: ResolvedBlock
+  top: number
+  copied: boolean
+  onCopy(block: ResolvedBlock): void
+}) {
+  const { t } = useTranslation('terminal')
+  const label = block.command
+    ? t('shell.copyOutputOf', { command: block.command })
+    : t('shell.copyThisOutput')
+  return (
+    <button
+      type="button"
+      onClick={() => onCopy(block)}
+      title={label}
+      aria-label={label}
+      className="pointer-events-auto absolute right-5 z-10 rounded border border-line bg-chrome/95 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
+      style={{ top }}
+    >
+      {copied ? t('shell.copied') : t('shell.copyOutput')}
+    </button>
   )
 }
 
@@ -156,11 +179,12 @@ function SuggestionList({
   const below = rows - cursorRow - 1
   const flip = below < suggestions.matches.length
   const height = suggestions.matches.length * cell.height
+  const { t } = useTranslation('terminal')
   return (
     <>
       <div
         role="listbox"
-        aria-label="Past commands that start this way"
+        aria-label={t('shell.suggestionsLabel')}
         className="pointer-events-auto absolute z-10 max-w-[80%] overflow-hidden rounded border border-line bg-chrome/95 shadow-lg backdrop-blur"
         style={{
           ...grid,
@@ -190,7 +214,10 @@ function SuggestionList({
         ))}
       </div>
       <span className="sr-only" role="status">
-        {`${suggestions.matches.length} past commands start with ${suggestions.typed}`}
+        {t('shell.suggestionsStatus', {
+          count: suggestions.matches.length,
+          typed: suggestions.typed,
+        })}
       </span>
     </>
   )
@@ -235,11 +262,6 @@ function useCellSize(
   return cell
 }
 
-interface Hovered {
-  block: ResolvedBlock
-  label: string
-}
-
 /**
  * The command block under the pointer, or `null`.
  *
@@ -257,8 +279,8 @@ function useHoveredBlock(
   shell: ShellSurface,
   viewportRow: number,
   cell: Cell | null,
-): Hovered | null {
-  const [hovered, setHovered] = useState<Hovered | null>(null)
+): ResolvedBlock | null {
+  const [hovered, setHovered] = useState<ResolvedBlock | null>(null)
   // Read through a ref, not a dependency: both change on every write batch —
   // the suggestions as they are typed, the viewport as the session prints —
   // and re-registering a pointer listener that often is one churned per
@@ -280,12 +302,8 @@ function useHoveredBlock(
         // Only a finished command has an output to copy; one still printing
         // would offer a control whose click copied half of it.
         if (!block?.end) return previous === null ? previous : null
-        if (previous?.block.key === block.key) return previous
-        const command = block.command
-        return {
-          block,
-          label: command ? `Copy the output of ${command}` : 'Copy this output',
-        }
+        if (previous?.key === block.key) return previous
+        return block
       })
     }
     const onLeave = () => setHovered(null)

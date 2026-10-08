@@ -1,4 +1,5 @@
 import { MIN_WIDTH, type PanelWidth } from '../lib/usePanelWidth'
+import { useTranslation } from 'react-i18next'
 
 export interface DragEdgeProps {
   size: PanelWidth
@@ -18,6 +19,7 @@ export interface DragEdgeProps {
  * The panel must be `relative` for this to sit on its edge.
  */
 export function DragEdge({ size, label }: DragEdgeProps) {
+  const { t } = useTranslation('chrome')
   return (
     <>
       <div
@@ -28,7 +30,7 @@ export function DragEdge({ size, label }: DragEdgeProps) {
         aria-valuemin={MIN_WIDTH}
         aria-valuemax={size.max}
         tabIndex={0}
-        title="Drag to resize · double-click to reset"
+        title={t('dragEdge')}
         onPointerDown={size.startDrag}
         onDoubleClick={size.reset}
         onKeyDown={(event) => {
