@@ -13,19 +13,19 @@
 
 /** The parts of xterm's buffer this needs, so a test can supply them. */
 export interface MessageCell {
-  isBgDefault(): boolean
+  isBgDefault: () => boolean
 }
 export interface MessageLine {
-  getCell(column: number): MessageCell | undefined
-  translateToString(
+  getCell: (column: number) => MessageCell | undefined
+  translateToString: (
     trimRight?: boolean,
     startColumn?: number,
     endColumn?: number,
-  ): string
+  ) => string
 }
 export interface MessageBuffer {
   readonly length: number
-  getLine(row: number): MessageLine | undefined
+  getLine: (row: number) => MessageLine | undefined
 }
 
 /**

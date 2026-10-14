@@ -12,6 +12,8 @@ import {
   gitCheckout,
   gitLog,
 } from '../../../shared/ipc'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
+import { useKeyedState } from '../../../shared/lib/useKeyedState'
 
 export interface HistoryPanelProps {
   cwd: string
@@ -19,9 +21,9 @@ export interface HistoryPanelProps {
   limit: number
   /** Changes whenever HEAD may have moved, which re-reads the log. */
   revision: string
-  onClose(): void
+  onClose: () => void
   /** A checkout landed, so the working directory should be re-read now. */
-  onSwitched(): void
+  onSwitched: () => void
   /** Drawn under the header — pull and push. */
   sync?: ReactNode
   /** A git write is running, so a checkout would race it. */
@@ -30,10 +32,10 @@ export interface HistoryPanelProps {
    * Runs a checkout as the tab's one git write at a time, so it and a commit
    * or push lock each other out, and reports its result where theirs go.
    */
-  runGit(
+  runGit: (
     action: (op: string) => Promise<string>,
     done: string,
-  ): Promise<boolean>
+  ) => Promise<boolean>
 }
 
 /** Enough for a commit subject without wrapping every one of them. */
@@ -51,32 +53,34 @@ export function HistoryPanel({
   busy,
   runGit,
 }: HistoryPanelProps) {
-  const [commits, setCommits] = useState<Commit[] | null>(null)
+  const [commits, setCommits] = useKeyedState<Commit[] | null>(
+    [cwd, limit, revision],
+    null,
+  )
   const [switching, setSwitching] = useState(false)
   const size = usePanelWidth('muster.historyWidth', DEFAULT_WIDTH)
 
   const load = useCallback(
     async (live: () => boolean = () => true) => {
       const commits = await gitLog(cwd, limit).catch(() => [])
-      if (live()) setCommits(commits)
+      if (live()) setCommits([cwd, limit, revision], commits)
     },
-    [cwd, limit],
+    [cwd, limit, revision, setCommits],
   )
 
   useEffect(() => {
     // A read in flight when the directory changes would otherwise land after
     // the newer one and show the previous tree's history.
     let cancelled = false
-    setCommits(null)
     void load(() => !cancelled)
     return () => {
       cancelled = true
     }
-  }, [load, revision])
+  }, [load])
 
   // Switching to another directory should not leave a picker open over a
   // branch list that belongs to the tree you have left.
-  useEffect(() => setSwitching(false), [cwd])
+  useKeyChange([cwd], () => setSwitching(false))
 
   return (
     <aside
@@ -96,7 +100,7 @@ export function HistoryPanel({
           aria-label="Switch branch"
           aria-expanded={switching}
           onClick={() => setSwitching((open) => !open)}
-          className={`h-5 rounded px-1 text-[11px] hover:bg-surface-hover hover:text-ink ${
+          className={`h-5 rounded-sm px-1 text-[11px] hover:bg-surface-hover hover:text-ink ${
             switching ? 'bg-surface text-ink' : 'text-muted'
           }`}
         >
@@ -107,7 +111,7 @@ export function HistoryPanel({
           title="Refresh"
           aria-label="Refresh history"
           onClick={() => void load()}
-          className="h-5 w-5 rounded text-muted hover:bg-surface-hover hover:text-ink"
+          className="size-5 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
         >
           ↻
         </button>
@@ -116,7 +120,7 @@ export function HistoryPanel({
           title="Close history"
           aria-label="Close history"
           onClick={onClose}
-          className="h-5 w-5 rounded text-muted hover:bg-surface-hover hover:text-ink"
+          className="size-5 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
         >
           ×
         </button>
@@ -162,7 +166,7 @@ interface BranchSwitcherProps {
   /** Another git write is running; a checkout would race it for the index. */
   locked: boolean
   runGit: HistoryPanelProps['runGit']
-  onSwitched(): void
+  onSwitched: () => void
 }
 
 /**
@@ -258,7 +262,7 @@ interface BranchRowProps {
   branch: Branch
   busy: boolean
   disabled: boolean
-  onPick(): void
+  onPick: () => void
 }
 
 function BranchRow({ branch, busy, disabled, onPick }: BranchRowProps) {
@@ -302,7 +306,7 @@ function CommitRow({ commit }: { commit: Commit }) {
     >
       <div className="flex items-baseline gap-1.5">
         <span
-          className="h-1.5 w-1.5 flex-none rounded-full"
+          className="size-1.5 flex-none rounded-full"
           style={{
             background: commit.unpushed
               ? 'var(--color-primary)'
@@ -310,7 +314,7 @@ function CommitRow({ commit }: { commit: Commit }) {
           }}
           title={commit.unpushed ? 'not pushed yet' : undefined}
         />
-        <span className="flex-1 truncate text-xs leading-snug text-ink">
+        <span className="flex-1 truncate text-xs/snug text-ink">
           {commit.subject}
         </span>
       </div>
@@ -320,7 +324,7 @@ function CommitRow({ commit }: { commit: Commit }) {
           {commit.refs.map((reference) => (
             <span
               key={reference}
-              className="rounded border border-line bg-surface px-1 text-[10px] text-[#a8b4c8]"
+              className="rounded-sm border border-line bg-surface px-1 text-[10px] text-[#a8b4c8]"
             >
               {reference}
             </span>

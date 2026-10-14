@@ -88,8 +88,8 @@ export function fileIcon(path: string): FileIcon {
   if (known) return known
   // `bun.lock` and `Cargo.lock` are locks whatever they are locking, and a
   // dotfile like `.env.local` keeps the meaning of its first suffix.
-  if (name.endsWith('.lock')) return BY_EXTENSION.lock!
-  if (name.startsWith('.env')) return BY_EXTENSION.env!
+  if (name.endsWith('.lock')) return BY_EXTENSION.lock
+  if (name.startsWith('.env')) return BY_EXTENSION.env
   return BY_EXTENSION[extensionOf(name)] ?? TEXT
 }
 

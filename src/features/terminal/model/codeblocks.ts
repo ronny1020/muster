@@ -23,7 +23,7 @@ const TOUCHED = [
 function pathOn(row: string): string | null {
   for (const pattern of TOUCHED) {
     const found = pattern.exec(row)
-    if (found) return found[1]!
+    if (found) return found[1]
   }
   return null
 }

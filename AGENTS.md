@@ -21,17 +21,54 @@ test binary that failed to build. Clippy runs with `-D warnings`, as CI does: a
 warning that passes locally and fails in CI is the whole reason the two ever
 disagree.
 
-`bun run format` and `cargo fmt` fix what the two format checks report.
+`bun run lint:fix` applies the fixes `bun lint` can make, the formatting of
+JavaScript and TypeScript among them; `bun run format` formats every other
+file, and `cargo fmt` fixes what `cargo fmt --check` reports. The rest are by
+hand.
 
-A husky pre-commit hook covers _some_ of this: `lint-staged` formats the staged
-files, then `bun run check` and `bun test` run, and `bun run check:rust` — the
-same script CI runs, so the two cannot drift — only when a `.rs` file is staged.
-It never runs `format:check` (Prettier formats instead). Run the seven by hand
-before a pull request.
+**The typecheck is Bun's, and a test pins its TypeScript.** `bun run check`
+is `bun --check`: the checker built into Bun, which matches one TypeScript
+version compiled into Bun, so no `typescript` package is installed.
+`test/typescript.test.ts` holds that version and fails when a Bun upgrade
+moves it, so the change is made on purpose rather than discovered. The
+checker is whichever Bun runs the scripts, so the same test also fails unless
+that is the Bun `.bun-version` names — any canary build, while it says
+`canary`. `bunfig.toml` turns off installing peer
+dependencies: `bun-plugin-tailwind`'s `bun` peer would otherwise put a second
+Bun in `node_modules/.bin`, which scripts find before the one on `PATH`.
+`.bun-version` is `canary` until a stable release carries `bun fmt` and
+`bun lint`, so the Bun under the code moves daily. Once one does, the repo moves
+to that exact version: CONTRIBUTING.md's "Moving to a stable Bun" lists every
+file that changes.
+Type-aware lint takes its types from the same checker. VS Code runs the
+TypeScript 7 extension's own copy, which no file here pins.
 
-None of them lints: there is no ESLint in this repo and no lint step. A wrong
-hook dependency array — re-running the spawn effect, say — fails silently with
-nothing to catch it, so read every dependency list you touch.
+A husky pre-commit hook covers _some_ of this: `bun fmt --staged` formats the
+staged files, then `bun run check`, `bun run lint` and `bun test` run, and
+`bun run check:rust` — the four cargo commands CI's backend job runs — only
+when a `.rs` file is staged. Run the seven by hand before a pull request.
+
+**Lint is `bun lint`, configured in `bunfig.toml`, and nothing it reports
+passes.** Bun's default rules are ESLint's and typescript-eslint's recommended
+sets with a few React and `bun:test` rules; `typeAware` adds typescript-eslint's
+type-aware ones, and `[lint.rules]` adds the rest of eslint-plugin-react's and
+eslint-plugin-react-hooks' recommended sets, the React Compiler rules among
+them. Every rule is built into Bun, so no ESLint package is installed, and
+there is no `eslint.config.*`: Bun would read one instead of its defaults, and
+`prettier/prettier` stops reporting under one.
+Formatting of JavaScript and TypeScript is a lint rule too: `prettier/prettier`,
+built into Bun, compares each file `bun lint` reads with what `bun fmt` prints.
+Two things it leaves to `bun fmt` and the pre-commit hook, and nothing in CI
+checks: the order of Tailwind's classes, and the formatting of every other file
+— Markdown, CSS, JSON, YAML.
+
+`--max-warnings 0` makes a warning fail like an error: a warning nobody has to
+fix is one that stays. When a rule is wrong about a line that is deliberate,
+suppress that one rule on that line and say why —
+`// eslint-disable-next-line react-hooks/set-state-in-effect -- waits for the unmount commit`.
+`bun lint` warns about a suppression of a rule it runs that no longer silences
+anything, so a stale one does not survive. One naming a rule that is off is
+left alone.
 
 A green typecheck is not a passing test, and neither one exercises a PTY. If
 you changed process spawning, terminal behaviour, or anything in the window
@@ -187,12 +224,12 @@ rest arrives as typed keys with a carriage return to submit them. Balanced
 quoting does not help, because the shell's line editor never sees quotes at
 all.
 
-**`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV`
-to `false`, and without it Bun leaves that expression in the bundle — where
+**`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV` to
+`false`, and without it Bun leaves that expression in the bundle — where
 `import.meta.env` does not exist, so the guard in `main.tsx` reads a property
 off `undefined` and throws before `createRoot` renders anything. Every release
-would open a blank window, and `tsc` stays green because `@types/bun` declares
-the property. It is also what keeps the MCP plugin's client code out of
+would open a blank window, and the typecheck stays green because `@types/bun`
+declares the property. It is also what keeps the MCP plugin's client code out of
 `dist/`. Bun's dev server defines the same expression as `true`, which is why
 `bun run dev` never shows it. This is the one place that mechanism is written
 out; `build.ts` and `main.tsx` point here rather than restating it.
@@ -409,8 +446,8 @@ domain type is not shared. `shared/lib` holds contained libraries with one focus
 each, not a `utils` drawer; `shared/ui` holds presentation with no domain in it
 at all — the icon set and the component that draws one.
 
-**`test/layers.test.ts` enforces all of this**, because there is no ESLint here
-and a rule nothing checks is a comment. It fails on an upward import, a
+**`test/layers.test.ts` enforces all of this**, because no lint rule here knows
+the layers, and a rule nothing checks is a comment. It fails on an upward import, a
 sideways one, and on `shared` reaching up.
 
 `src/entities/tab/model/deck.ts` remains the place tab behaviour belongs: a pure
@@ -433,17 +470,34 @@ the signal to move it into a `model` segment first.
 - **Reach for `useEffect` last.** It is right for synchronising with something
   outside React — a PTY, a DOM node, a drop listener — which is most of what
   `TerminalView` does. It is wrong for a value that can be derived while
-  rendering. When you do write one its dependency array must be complete: there
-  is no ESLint here, so a missing dependency fails silently, and an effect
-  written with no array at all re-runs after every render. The rule is to reach
-  for a solution that needs no effect, never to leave an effect's array off.
+  rendering. When you do write one its dependency array must be complete —
+  `react-hooks/exhaustive-deps` checks it, and an effect written with no array at
+  all re-runs after every render. Four shapes recur, and each has a home:
+  - A ref that listeners registered once read later is written in a
+    `useLayoutEffect`, never while rendering. `TerminalView` gathers its own
+    in one.
+  - State that resets when an input changes goes through
+    `shared/lib/useKeyChange`, which lands in the same render rather than a
+    frame late.
+  - A value read asynchronously for an input is held in
+    `shared/lib/useKeyedState`, so a reply for an input that has moved never
+    shows. It compares inputs by value, so an input known by identity — a
+    parsed hunk list, a file object — is stored beside the value and compared
+    on read instead, as `DiffView` does. A read that already keeps a request
+    ticket moves the ticket in a layout effect.
+  - A label measured against the clock reads `shared/lib/useNow`, never
+    `Date.now()` while rendering.
 - **One job per function**, 0–2 parameters, an options object past that.
   Intention-revealing names; no `Manager`, `Data`, `Info`, `Helper`.
 - **Do not name a self-evident literal.** A constant earns its name by being
   computed, repeated, or opaque.
-- **Prettier owns the formatting** (`.prettierrc`). Do not hand-format around it, and do not argue
-  with it in review — run `bun run format`. JSX attributes stay double-quoted,
-  which is Prettier's own default and reads as the HTML it resembles.
+- **`bun fmt` owns the formatting**, Tailwind class order included. It prints
+  what Prettier 3 prints and reads `.prettierrc`, though no `prettier` package
+  is installed; `bunfig.toml`'s `[fmt.sortTailwindcss]` turns on its Tailwind
+  sorting with the theme from `src/app/index.css`. Do not
+  hand-format around it, and do not argue with it in review — run
+  `bun run format`. JSX attributes stay double-quoted, which is Prettier's own
+  default and reads as the HTML it resembles.
 - **Tailwind classes inline**, no `@apply` outside `src/app/index.css`'s base layer.
   Reach for the `@theme` tokens first (`canvas`, `chrome`, `surface`, `line`,
   `ink`, `muted`, `faint`, `primary`, `danger`, `agent`). Claude Code's
@@ -457,9 +511,9 @@ the signal to move it into a `model` segment first.
 
 ## TypeScript
 
-`strict` and its companion flags are on (`tsconfig.json`). There is no ESLint, so the
-compiler is the only automatic check there is — which makes every escape from
-it worth more scrutiny than usual.
+`strict` and its companion flags are on (`tsconfig.json`), and the type-aware
+lint rules stand on the same types — so every escape from the compiler blinds
+both checks, and is worth more scrutiny than usual.
 
 - **Never `any`, and never `@ts-ignore`.** `unknown` plus a narrowing check is
   the replacement; `normalizeSettings` and `normalizeDeck` are what that looks

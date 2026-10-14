@@ -56,10 +56,10 @@ export interface PanelWidth {
   max: number
   /** True while a drag is in progress, for the cursor overlay. */
   dragging: boolean
-  startDrag(event: ReactPointerEvent): void
+  startDrag: (event: ReactPointerEvent) => void
   /** Keyboard resizing, in pixels; negative narrows. */
-  nudge(step: number): void
-  reset(): void
+  nudge: (step: number) => void
+  reset: () => void
 }
 
 export function usePanelWidth(key: string, fallback: number): PanelWidth {

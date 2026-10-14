@@ -1,14 +1,20 @@
 # Formats what is being committed, then checks the whole tree still holds
 # together. Fast on purpose: the Rust suite only runs when Rust changed, since
-# its compile step is the one slow part.
+# its compile step is the one slow part. Staged Rust is checked, not formatted:
+# `check:rust` starts with `cargo fmt --check`.
 set -e
 
-bunx lint-staged
+# Formats only the staged files and stages them again. A file with unstaged
+# changes too stops the commit, and Bun prints how to go on: stage the rest, or
+# `git stash --keep-index`.
+bun fmt --staged
 
 bun run check
+bun run lint
 bun test
 
-# One script, so the hook and CI cannot drift into checking different things.
+# The four cargo commands CI's backend job runs; a command added to one belongs
+# in the other.
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '\.rs$'; then
   bun run check:rust
 fi

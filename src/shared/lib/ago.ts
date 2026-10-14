@@ -2,6 +2,9 @@ const MINUTE = 60
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
+/** How often an age label is redrawn: below an hour, it counts in minutes. */
+export const AGE_TICK_MS = MINUTE * 1000
+
 /**
  * How long ago something was written, at the coarseness a list wants.
  *

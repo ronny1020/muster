@@ -14,7 +14,7 @@ export interface MarkdownViewProps {
   revision: string
   /** A link was clicked: the system browser opens it, as it opens the
    *  terminal's URLs. */
-  onUrl(url: string): void
+  onUrl: (url: string) => void
 }
 
 /**
@@ -30,17 +30,24 @@ export function MarkdownView({ path, revision, onUrl }: MarkdownViewProps) {
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
   const { file, error } = useTextFile(path, revision)
-  const [rendered, setRendered] = useState<RenderedMarkdown | null>(null)
+  // Kept with the file it was rendered from, so only that file's render is
+  // ever shown, and its images resolve beside it.
+  const [lastRendered, setLastRendered] = useState<
+    | (RenderedMarkdown & {
+        source: NonNullable<typeof file>
+        directory: string
+      })
+    | null
+  >(null)
+  const rendered = lastRendered?.source === file ? lastRendered : null
   const host = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!file) {
-      setRendered(null)
-      return
-    }
+    if (!file) return
     let live = true
-    void renderMarkdown(file.text, directoryOf(file.path)).then((result) => {
-      if (live) setRendered(result)
+    const directory = directoryOf(file.path)
+    void renderMarkdown(file.text, directory).then((result) => {
+      if (live) setLastRendered({ ...result, source: file, directory })
     })
     return () => {
       live = false
@@ -52,7 +59,7 @@ export function MarkdownView({ path, revision, onUrl }: MarkdownViewProps) {
     if (!rendered || !host.current) return
     let live = true
     void drawDiagrams(host.current, rendered.diagrams, () => live)
-    void loadImages(host.current, directoryOf(path), () => live)
+    void loadImages(host.current, rendered.directory, () => live)
     return () => {
       live = false
     }

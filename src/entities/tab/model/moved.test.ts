@@ -31,8 +31,12 @@ test('a tab survives the trip between windows unchanged', () => {
 })
 
 test('a session that does not check out is refused, never repaired', () => {
-  const broken = JSON.parse(JSON.stringify(sessionTab))
-  broken.content.session.args = [1, 2]
+  const { content } = sessionTab
+  if (content.type !== 'session') throw new Error('fixture is a session tab')
+  const broken: unknown = {
+    ...sessionTab,
+    content: { ...content, session: { ...content.session, args: [1, 2] } },
+  }
   expect(parseMovedTab(broken)).toBeNull()
 })
 

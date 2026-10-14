@@ -2,7 +2,7 @@ export interface SessionEndedProps {
   /** Exit code of the process that ended. */
   code: number
   agentName: string
-  onRelaunch(): void
+  onRelaunch: () => void
 }
 
 /**

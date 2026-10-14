@@ -26,18 +26,18 @@ export interface ReviewPanelProps {
   revision: string
   /** Branch being compared against, or `''` for uncommitted work. */
   base: string
-  onBase(base: string): void
+  onBase: (base: string) => void
   /** Drawn under the Changes list — the commit and sync controls. */
   footer?: ReactNode
   view: ReviewView
-  onView(view: ReviewView): void
+  onView: (view: ReviewView) => void
   /** What the content column is showing, so the list can mark it. */
   viewed: Viewed | null
-  onOpenDiff(file: ChangedFile, root: string): void
-  onOpenFile(path: string): void
+  onOpenDiff: (file: ChangedFile, root: string) => void
+  onOpenFile: (path: string) => void
   /** Types a path into the session, for handing a file to the agent. */
-  onSend(path: string): void
-  onClose(): void
+  onSend: (path: string) => void
+  onClose: () => void
 }
 
 /** A list, not a reader: wide enough for paths and their counts. */
@@ -142,7 +142,7 @@ export function ReviewPanel({
             <button
               type="button"
               onClick={() => setShowHidden((was) => !was)}
-              className={`rounded px-1 ${
+              className={`rounded-sm px-1 ${
                 showHidden ? 'bg-surface text-ink' : 'hover:bg-surface-hover'
               }`}
             >
@@ -217,7 +217,7 @@ function summary(
 interface BasePickerProps {
   cwd: string
   base: string
-  onBase(base: string): void
+  onBase: (base: string) => void
 }
 
 /**
@@ -247,7 +247,7 @@ function BasePicker({ cwd, base, onBase }: BasePickerProps) {
         value={base}
         aria-label="Compare against"
         onChange={(event) => onBase(event.target.value)}
-        className="max-w-[140px] rounded border border-line bg-surface px-1 py-0.5 text-[11px] text-ink outline-none hover:bg-surface-hover"
+        className="max-w-[140px] rounded-sm border border-line bg-surface px-1 py-0.5 text-[11px] text-ink outline-none hover:bg-surface-hover"
       >
         <option value="">uncommitted</option>
         {/* The chosen base is always among the options, even before the branch
@@ -271,7 +271,7 @@ interface TabProps {
   icon: IconName
   label: string
   active: boolean
-  onClick(): void
+  onClick: () => void
 }
 
 const Tab = ({ icon, label, active, onClick }: TabProps) => (
@@ -279,11 +279,11 @@ const Tab = ({ icon, label, active, onClick }: TabProps) => (
     type="button"
     onClick={onClick}
     aria-pressed={active}
-    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+    className={`flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] ${
       active ? 'bg-surface text-ink' : 'text-muted hover:bg-surface-hover'
     }`}
   >
-    <Icon name={icon} className="h-3.5 w-3.5" />
+    <Icon name={icon} className="size-3.5" />
     {label}
   </button>
 )
@@ -292,7 +292,7 @@ interface IconButtonProps {
   icon: IconName
   label: string
   active?: boolean
-  onClick(): void
+  onClick: () => void
 }
 
 const IconButton = ({ icon, label, active, onClick }: IconButtonProps) => (
@@ -302,13 +302,13 @@ const IconButton = ({ icon, label, active, onClick }: IconButtonProps) => (
     aria-label={label}
     aria-pressed={active}
     onClick={onClick}
-    className={`flex h-5 w-5 items-center justify-center rounded ${
+    className={`flex size-5 items-center justify-center rounded-sm ${
       active
         ? 'bg-surface text-ink'
         : 'text-muted hover:bg-surface-hover hover:text-ink'
     }`}
   >
-    <Icon name={icon} className="h-3.5 w-3.5" />
+    <Icon name={icon} className="size-3.5" />
   </button>
 )
 

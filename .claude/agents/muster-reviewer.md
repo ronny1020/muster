@@ -77,23 +77,23 @@ them deliberately:
   sentence left behind.
 
 Then, with whatever attention the size of the diff deserves and in this order:
-wrong `useEffect` dependency arrays (there is no ESLint here, so a wrong one
-fails silently), state that can desynchronise, and a control or surface that
-can render in an impossible state. Those are defects and carry a failing input
-like any other.
+wrong `useEffect` dependency arrays (lint checks that the array is complete,
+not that the effect is right), state that can desynchronise, and a control or
+surface that can render in an impossible state. Those are defects and carry a
+failing input like any other.
 
 **Two kinds have no failing input, and report differently.** A comment that
 restates the code or narrates what changed rather than what the code does, and
-an `any`, `@ts-ignore` or `as T` with no reason given, are findings about what
-the next reader will believe. Quote the line and give the replacement, with no
-`Fails when:` line. Grade them **low**, or **medium** where the comment states
-something the code does not do — a comment that lies costs more than one that
-says nothing.
+an `any`, `@ts-ignore`, `as T` or `eslint-disable` with no reason given — or an
+untrue one — are findings about what the next reader will believe. Quote the
+line and give the replacement, with no `Fails when:` line. Grade them **low**,
+or **medium** where the comment states something the code does not do — a
+comment that lies costs more than one that says nothing.
 
-**A check that would write is a check you do not run.** `bun run format`,
-`cargo fmt` and anything else that touches the tree are out, whatever they
-would settle. Say in the report that you could not run it and what it would
-have shown.
+**A check that would write is a check you do not run.** `bun run format`, `bun
+run lint:fix`, `cargo fmt` and anything else that touches the tree are out,
+whatever they would settle. Say in the report that you could not run it and what
+it would have shown.
 
 ## Two habits that decide whether the review is worth reading
 

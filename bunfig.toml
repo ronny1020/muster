@@ -3,3 +3,68 @@ plugins = ["bun-plugin-tailwind"]
 
 [test]
 preload = ["./test/setup.ts"]
+
+# `bun-plugin-tailwind` lists `bun` as a peer, and an installed peer puts a
+# second Bun in node_modules/.bin, which every script would run instead of the
+# one `.bun-version` pins. A peer another package needs is declared in
+# package.json instead, as `@testing-library/dom` is.
+[install]
+peer = false
+
+# Scripts whose CLI has a `node` shebang (tauri, husky) run on Bun too, rather
+# than on whatever Node is installed.
+[run]
+bun = true
+
+# Bun's default rules are ESLint's and typescript-eslint's recommended sets,
+# with a few React and `bun:test` rules. The rules below are the rest of the
+# recommended sets that the default leaves out: typescript-eslint's
+# `no-require-imports`, and eslint-plugin-react's and eslint-plugin-react-hooks',
+# the React Compiler rules among them.
+[lint]
+typeAware = true
+
+[lint.rules]
+"@typescript-eslint/no-require-imports" = "error"
+# The automatic JSX runtime needs no `React` in scope.
+"react/jsx-uses-react" = "off"
+"react/display-name" = "error"
+"react/jsx-no-comment-textnodes" = "error"
+"react/jsx-no-duplicate-props" = "error"
+"react/jsx-no-target-blank" = "error"
+"react/jsx-no-undef" = "error"
+"react/jsx-uses-vars" = "error"
+"react/no-children-prop" = "error"
+"react/no-danger-with-children" = "error"
+"react/no-deprecated" = "error"
+"react/no-direct-mutation-state" = "error"
+"react/no-find-dom-node" = "error"
+"react/no-is-mounted" = "error"
+"react/no-render-return-value" = "error"
+"react/no-string-refs" = "error"
+"react/no-unescaped-entities" = "error"
+"react/no-unknown-property" = "error"
+"react/prop-types" = "error"
+"react/require-render-return" = "error"
+"react-hooks/config" = "error"
+"react-hooks/error-boundaries" = "error"
+"react-hooks/gating" = "error"
+"react-hooks/globals" = "error"
+"react-hooks/immutability" = "error"
+"react-hooks/incompatible-library" = "warn"
+"react-hooks/preserve-manual-memoization" = "error"
+"react-hooks/purity" = "error"
+"react-hooks/refs" = "error"
+"react-hooks/set-state-in-effect" = "error"
+"react-hooks/set-state-in-render" = "error"
+"react-hooks/static-components" = "error"
+"react-hooks/unsupported-syntax" = "warn"
+"react-hooks/use-memo" = "error"
+# Formatting of the files lint reads, JavaScript and TypeScript, checked against
+# `bun fmt` and fixed by `--fix`. Tailwind's class order is left to `bun fmt`.
+"prettier/prettier" = "error"
+
+# `bun fmt` sorts Tailwind's classes by this theme; `prettier/prettier` does not
+# check their order.
+[fmt.sortTailwindcss]
+stylesheet = "./src/app/index.css"

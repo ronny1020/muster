@@ -9,7 +9,7 @@ const LIMIT = 8
 
 export function recentDirs(): string[] {
   try {
-    const parsed = JSON.parse(appState(KEY) ?? '[]')
+    const parsed: unknown = JSON.parse(appState(KEY) ?? '[]')
     return Array.isArray(parsed)
       ? parsed.filter((entry) => typeof entry === 'string')
       : []

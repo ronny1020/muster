@@ -15,5 +15,5 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "test", "build.ts"]
+  "include": ["src", "test", ".agents/**/*.ts", "build.ts"]
 }

@@ -2,7 +2,7 @@
 
 /* Relative to this file, so moving the stylesheet breaks it — silently. See
    AGENTS.md's Tailwind invariant. */
-@source "../../src";
+@source '../../src';
 @import '@xterm/xterm/css/xterm.css';
 
 @theme {

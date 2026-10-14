@@ -39,18 +39,18 @@ export interface Grab {
 }
 
 export interface TabDragHandlers {
-  onMove(id: string, index: number): void
+  onMove: (id: string, index: number) => void
   /**
    * Released off the strip: the tab wants another window, or a new one. The
    * drag holds — the tab out of the strip — until this settles, so it does
    * not flash back into its place while it is being handed over.
    */
-  onTearOff(id: string, grab: Grab): Promise<void>
+  onTearOff: (id: string, grab: Grab) => Promise<void>
   /**
    * The tab left the strip, or came back to it, or the drag ended off it.
    * `grab` places what follows the pointer.
    */
-  onTornChange(id: string, torn: boolean, grab: Grab): void
+  onTornChange: (id: string, torn: boolean, grab: Grab) => void
 }
 
 /**
@@ -108,7 +108,7 @@ export function useTabDrag(
         isTornOff(list.getBoundingClientRect(), viewport(), { x, y }, was)
       if (torn !== was) onTornChange(id, torn, grab(measured))
       const travelled = x - startX + list.scrollLeft - startScroll
-      const left = clampLeft(measured, from, measured[from]!.left + travelled)
+      const left = clampLeft(measured, from, measured[from].left + travelled)
       // A torn-off tab is leaving, so the strip closes up behind it: the
       // others take the places they would have with it at the end.
       to = torn ? measured.length - 1 : dropIndex(measured, from, left)
@@ -168,7 +168,7 @@ export function useTabDrag(
     const settle = (index: number) => {
       detach()
       if (!slots) return finish()
-      const left = slots[from]!.left + offsets(slots, from, index)[from]!
+      const left = slots[from].left + offsets(slots, from, index)[from]
       setDrag({ id, from, to: index, left, slots, settling: true, torn: false })
       timer = window.setTimeout(() => {
         if (index !== from) onMove(id, index)
@@ -241,7 +241,7 @@ function dragStyle(drag: Drag, index: number): CSSProperties {
   const glide = `transform ${SETTLE_MS}ms ease-out`
   if (index === drag.from) {
     return {
-      transform: `translateX(${drag.left - drag.slots[drag.from]!.left}px)`,
+      transform: `translateX(${drag.left - drag.slots[drag.from].left}px)`,
       transition: drag.settling ? glide : 'none',
       position: 'relative',
       zIndex: 1,
@@ -294,9 +294,9 @@ function grabOf({
   press: { x: number; y: number }
 }): Grab {
   const origin = list.getBoundingClientRect().left
-  const tabLeft = origin - startScroll + slots[from]!.left
+  const tabLeft = origin - startScroll + slots[from].left
   return {
-    inNewWindow: { x: origin + slots[0]!.left + press.x - tabLeft, y: press.y },
+    inNewWindow: { x: origin + slots[0].left + press.x - tabLeft, y: press.y },
     inThisWindow: press,
   }
 }

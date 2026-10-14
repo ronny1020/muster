@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Terminal } from '@xterm/xterm'
 
 import type { Mark, MessageBuffer } from '../model/messages'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
 /** Whether two scans found the same places with the same names. */
 const same = (a: Mark[], b: Mark[]) =>
@@ -12,6 +13,9 @@ const same = (a: Mark[], b: Mark[]) =>
       mark.endRow === b[i]?.endRow &&
       mark.label === b[i]?.label,
   )
+
+/** Stable, so a reset to empty is not a change. */
+const NO_MARKS: Mark[] = []
 
 /**
  * The marks a scan finds in the scrollback, kept current as the session writes.
@@ -32,13 +36,13 @@ export function useBufferMarks(
   active: boolean,
   scan: (buffer: MessageBuffer) => Mark[],
 ): Mark[] {
-  const [marks, setMarks] = useState<Mark[]>([])
+  const [marks, setMarks] = useState<Mark[]>(NO_MARKS)
+  // A hidden pane is not scanned, and what it held when hidden is not what the
+  // buffer holds when it comes back.
+  useKeyChange([Boolean(term && active)], () => setMarks(NO_MARKS))
 
   useEffect(() => {
-    if (!term || !active) {
-      setMarks([])
-      return
-    }
+    if (!term || !active) return
     let frame = 0
 
     const read = () => {

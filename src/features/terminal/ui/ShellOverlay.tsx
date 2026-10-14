@@ -40,7 +40,7 @@ export interface ShellOverlayProps {
    */
   term: Terminal
   settings: Settings
-  onCopy(block: ResolvedBlock): void
+  onCopy: (block: ResolvedBlock) => void
   /** Set while the last copy is still worth confirming. */
   copied: boolean
 }
@@ -264,7 +264,9 @@ function useHoveredBlock(
   // and re-registering a pointer listener that often is one churned per
   // keystroke.
   const latest = useRef({ shell, viewportRow })
-  latest.current = { shell, viewportRow }
+  useLayoutEffect(() => {
+    latest.current = { shell, viewportRow }
+  }, [shell, viewportRow])
 
   useEffect(() => {
     const pane = surface.current

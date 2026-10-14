@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 import { agentTurns, type Turn } from '../../../shared/ipc'
+import { useKeyedState } from '../../../shared/lib/useKeyedState'
+
+/** Stable, so an empty result is not a change. */
+const NO_TURNS: Turn[] = []
 
 /**
  * The turns of a tab's conversation, re-read when the agent stops working.
@@ -11,18 +15,16 @@ import { agentTurns, type Turn } from '../../../shared/ipc'
  * would read one file per tab forever.
  */
 export function useTurns(cwd: string, id: string, status: string): Turn[] {
-  const [turns, setTurns] = useState<Turn[]>([])
+  // Another conversation's turns are wrong, not merely old.
+  const [turns, setTurns] = useKeyedState([cwd, id], NO_TURNS)
 
   useEffect(() => {
-    if (!cwd) {
-      setTurns([])
-      return
-    }
+    if (!cwd) return
     let live = true
     const read = async () => {
       try {
         const found = await agentTurns(cwd, id)
-        if (live) setTurns(found)
+        if (live) setTurns([cwd, id], found)
       } catch {
         // A transcript is another program's file: unreadable is a fallback to
         // the terminal, not an error to show.
@@ -32,7 +34,7 @@ export function useTurns(cwd: string, id: string, status: string): Turn[] {
     return () => {
       live = false
     }
-  }, [cwd, id, status])
+  }, [cwd, id, status, setTurns])
 
   return turns
 }

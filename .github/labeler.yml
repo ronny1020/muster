@@ -36,7 +36,7 @@ documentation:
 ci:
   - changed-files:
       - any-glob-to-any-file:
-          ['.github/**', '.husky/**', 'lint-staged.config.js', '.prettier*']
+          ['.github/**', '.husky/**', '.prettier*', 'bunfig.toml']
 
 packaging:
   - changed-files:

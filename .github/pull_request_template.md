@@ -4,11 +4,10 @@
 
 ## Checks
 
-<!-- CONTRIBUTING.md lists all six; the pre-commit hook runs most of them. -->
+<!-- `bun run check:all` runs all seven; the pre-commit hook runs most of them. -->
 
-- [ ] `bun run check` and `bun test`
-- [ ] `bun run format:check`
-- [ ] `cargo fmt --check`, `cargo test --lib` and `cargo clippy --all-targets`
+- [ ] `bun run check`, `bun run lint` and `bun test`
+- [ ] `cargo fmt --check`, `cargo check --all-targets`, `cargo test --lib` and `cargo clippy --all-targets`
 
 ## Verified by hand
 

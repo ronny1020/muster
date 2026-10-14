@@ -7,6 +7,8 @@
  * to the pty exactly as if it had been pressed.
  */
 
+import { CONTROL } from './blocks'
+
 /**
  * The shortest prefix worth completing.
  *
@@ -59,7 +61,7 @@ export function matchesFor(typed: string, history: History): string[] {
   }
   for (let index = history.ran.length - 1; index >= 0; index -= 1) {
     if (found.length >= MAX_MATCHES) return found
-    take(history.ran[index]!)
+    take(history.ran[index])
   }
   for (const command of history.stored) {
     if (found.length >= MAX_MATCHES) return found
@@ -94,4 +96,4 @@ function matches(typed: string, command: string): boolean {
 }
 
 /** Whether text can be written to a pty as if it had been typed. */
-const typeable = (text: string) => !/[\u0000-\u001f\u007f]/.test(text)
+const typeable = (text: string) => !CONTROL.test(text)

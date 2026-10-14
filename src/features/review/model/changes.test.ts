@@ -44,14 +44,14 @@ describe('sortChanges', () => {
   test('case never decides the order', () => {
     const sorted = sortChanges([file('src/Zebra.ts'), file('src/apple.ts')])
 
-    expect(sorted[0]!.path).toBe('src/apple.ts')
+    expect(sorted[0].path).toBe('src/apple.ts')
   })
 
   test('the input is left alone, because it is state elsewhere', () => {
     const files = [file('b.ts'), file('a.ts')]
     sortChanges(files)
 
-    expect(files[0]!.path).toBe('b.ts')
+    expect(files[0].path).toBe('b.ts')
   })
 })
 

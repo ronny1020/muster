@@ -91,4 +91,4 @@ const text = (value: unknown, fallback: string) =>
 
 /** The value when it is one of `allowed`, else the first of them. */
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): T =>
-  allowed.find((option) => option === value) ?? allowed[0]!
+  allowed.find((option) => option === value) ?? allowed[0]

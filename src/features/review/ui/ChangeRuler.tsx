@@ -122,7 +122,7 @@ export function ChangeRuler({
     // that started here would be a drag the bar never sees.
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute top-0 right-0 bottom-0 w-2.5"
+      className="pointer-events-none absolute inset-y-0 right-0 w-2.5"
     >
       {bands.map(({ top, height, tone }, index) => (
         <div

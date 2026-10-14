@@ -13,6 +13,7 @@ import { fileIcon } from '../../../shared/ui/fileicon'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { report } from '../../../shared/ipc'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
 export interface FileViewerProps {
   viewed: Viewed
@@ -25,8 +26,8 @@ export interface FileViewerProps {
   active: boolean
   opener: LineOpener | null
   /** A link in a rendered document was clicked. */
-  onUrl(url: string): void
-  onClose(): void
+  onUrl: (url: string) => void
+  onClose: () => void
 }
 
 /** Wide enough for real source, narrow enough to leave a terminal beside it. */
@@ -68,7 +69,7 @@ export function FileViewer({
 
   // Re-derived per selection, not just at mount: the column is not remounted
   // between files, so the mode from the last one would decide this one's.
-  useEffect(() => setPreview(viewed.kind === 'file'), [viewed])
+  useKeyChange([viewed], () => setPreview(viewed.kind === 'file'))
   const size = usePanelWidth('muster.viewerWidth', DEFAULT_WIDTH)
 
   const path = viewed.absolute
@@ -111,10 +112,7 @@ export function FileViewer({
         of sight, leaving Escape the only way back.
       */}
       <header className="flex h-8 flex-none items-center gap-1.5 overflow-hidden border-b border-line bg-chrome px-2">
-        <Icon
-          name={icon.name}
-          className={`h-3.5 w-3.5 flex-none ${icon.tone}`}
-        />
+        <Icon name={icon.name} className={`size-3.5 flex-none ${icon.tone}`} />
         <span className="min-w-0 shrink truncate text-xs text-ink">
           {basename(path)}
         </span>
@@ -145,7 +143,7 @@ export function FileViewer({
                       : 'code'
                     : 'description'
                 }
-                className="h-3.5 w-3.5"
+                className="size-3.5"
               />
             </Action>
           )}
@@ -161,7 +159,7 @@ export function FileViewer({
                   aria-label={step.title}
                   aria-pressed={context === step.value}
                   onClick={() => setContext(step.value)}
-                  className={`h-5 flex-none rounded px-1 text-[11px] ${
+                  className={`h-5 flex-none rounded-sm px-1 text-[11px] ${
                     context === step.value
                       ? 'bg-surface text-ink'
                       : 'text-muted hover:bg-surface-hover hover:text-ink'
@@ -180,7 +178,7 @@ export function FileViewer({
               active={wrap}
               onClick={() => setWrap((was) => !was)}
             >
-              <Icon name="wrap_text" className="h-3.5 w-3.5" />
+              <Icon name="wrap_text" className="size-3.5" />
             </Action>
           )}
           <Action
@@ -189,19 +187,19 @@ export function FileViewer({
               void navigator.clipboard.writeText(path).catch(report)
             }
           >
-            <Icon name="content_copy" className="h-3.5 w-3.5" />
+            <Icon name="content_copy" className="size-3.5" />
           </Action>
           {opener && (
             <Action
               label={`Open in ${opener.editor}`}
               onClick={() => opener.open(viewed.line ?? 1)}
             >
-              <Icon name="open_in_new" className="h-3.5 w-3.5" />
+              <Icon name="open_in_new" className="size-3.5" />
             </Action>
           )}
         </div>
         <Action label="Close · Escape" onClick={onClose}>
-          <Icon name="close" className="h-3.5 w-3.5" />
+          <Icon name="close" className="size-3.5" />
         </Action>
       </header>
 
@@ -237,7 +235,7 @@ interface ActionProps {
   /** Shown beside the icon. Worth it for a control nobody would go looking for. */
   text?: string
   active?: boolean
-  onClick(): void
+  onClick: () => void
   children: ReactNode
 }
 
@@ -248,7 +246,7 @@ const Action = ({ label, text, active, onClick, children }: ActionProps) => (
     aria-label={label}
     aria-pressed={active}
     onClick={onClick}
-    className={`flex h-5 flex-none items-center gap-1 rounded text-[11px] ${
+    className={`flex h-5 flex-none items-center gap-1 rounded-sm text-[11px] ${
       text ? 'px-1.5' : 'w-5 justify-center'
     } ${
       active

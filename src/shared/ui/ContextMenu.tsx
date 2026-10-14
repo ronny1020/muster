@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 
 export interface MenuItem {
   label: string
-  onSelect(): void
+  onSelect: () => void
 }
 
 export interface ContextMenuProps {
   /** Where the menu was asked for, in viewport coordinates. */
   at: { x: number; y: number }
   items: MenuItem[]
-  onClose(): void
+  onClose: () => void
 }
 
 /** Kept off the window's edges, since the menu is placed at the pointer. */

@@ -30,8 +30,8 @@ beforeEach(() => {
 test('nothing stored restores a single blank tab', () => {
   const deck = loadDeck(nextId)
   expect(deck.tabs).toHaveLength(1)
-  expect(deck.tabs[0]!.content.type).toBe('launcher')
-  expect(deck.activeId).toBe(deck.tabs[0]!.id)
+  expect(deck.tabs[0].content.type).toBe('launcher')
+  expect(deck.activeId).toBe(deck.tabs[0].id)
 })
 
 test('a session tab comes back as a launcher holding its directory and agent', () => {
@@ -46,7 +46,7 @@ test('a session tab comes back as a launcher holding its directory and agent', (
 
   const restored = loadDeck(nextId)
   expect(restored.tabs).toHaveLength(1)
-  const content = restored.tabs[0]!.content
+  const content = restored.tabs[0].content
   expect(content.type).toBe('launcher')
   if (content.type !== 'launcher') throw new Error('expected a launcher')
   expect(content.start?.cwd).toBe('/work/api')
@@ -62,7 +62,7 @@ test('a restored tab is named after its directory, not "New session"', () => {
     title: 'api',
   })
   saveDeck(deck)
-  expect(loadDeck(nextId).tabs[0]!.title).toBe('api')
+  expect(loadDeck(nextId).tabs[0].title).toBe('api')
 })
 
 test('the launch mode is not replayed, since it is a choice to make again', () => {
@@ -72,7 +72,7 @@ test('the launch mode is not replayed, since it is a choice to make again', () =
     id: 'tab-1',
     session: session({ args: ['--continue'] }),
     title: 'api',
-  }).tabs[0]!
+  }).tabs[0]
   expect(startOf(tab)?.flags).toBe('')
 })
 
@@ -86,7 +86,7 @@ test('ids come from the caller, so a restored tab cannot take over a live sessio
   })
   saveDeck(deck)
   const restored = loadDeck(nextId)
-  expect(restored.tabs[0]!.id).toBe('t-1')
+  expect(restored.tabs[0].id).toBe('t-1')
 })
 
 test('the settings tab is not remembered as a workspace', () => {
@@ -102,7 +102,7 @@ test('the active tab is restored as the active one', () => {
   deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
   saveDeck(deck)
   const restored = loadDeck(nextId)
-  expect(restored.activeId).toBe(restored.tabs[0]!.id)
+  expect(restored.activeId).toBe(restored.tabs[0].id)
 })
 
 test('a corrupt record repairs rather than throwing', () => {
