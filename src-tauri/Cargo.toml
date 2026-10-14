@@ -35,6 +35,8 @@ tauri-plugin-prevent-default = "=6.0.1"
 # it, so the Linux build needs no package the webview toolkit does not already
 # bring.
 font-kit = { version = "0.14", features = ["source-fontconfig-dlopen"] }
+# The OS's preferred languages; see `src/locale.rs`.
+sys-locale = "0.3"
 
 # A debugging aid, never shipped. It opens a local socket that executes
 # arbitrary JavaScript in this app's webview and simulates input, which is a

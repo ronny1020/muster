@@ -13,7 +13,7 @@ export interface WorkspaceSnapshot {
    */
   tracked: boolean
   /** Re-reads at once, for when the app itself has just changed the tree. */
-  refresh(): void
+  refresh: () => void
 }
 
 /**
@@ -57,6 +57,7 @@ export function useWorkspace(
 
   useEffect(() => {
     if (!sessionId || !launchCwd) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- set after an await
     void read()
     const poll = () => void read()
     const timer = setInterval(poll, pollSeconds * 1000)
@@ -70,5 +71,7 @@ export function useWorkspace(
     }
   }, [read, sessionId, launchCwd, pollSeconds])
 
-  return { ...snapshot, refresh: read }
+  const refresh = useCallback(() => void read(), [read])
+
+  return { ...snapshot, refresh }
 }

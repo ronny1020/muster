@@ -43,7 +43,7 @@ export function DragGhost() {
       >
         <span
           aria-hidden="true"
-          className="h-1.5 w-1.5 flex-none rounded-full"
+          className="size-1.5 flex-none rounded-full"
           style={{ background: state.accent }}
         />
         <span className="min-w-0 flex-1">

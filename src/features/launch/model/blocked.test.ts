@@ -82,11 +82,11 @@ function openerScope(): string[] {
   if (typeof raw !== 'object' || raw === null || !('permissions' in raw)) {
     throw new Error('capability file has no permissions array')
   }
-  const { permissions } = raw as { permissions: unknown }
+  const { permissions } = raw
   if (!Array.isArray(permissions)) {
     throw new Error('capability permissions is not an array')
   }
-  for (const entry of permissions) {
+  for (const entry of permissions as unknown[]) {
     if (
       typeof entry === 'object' &&
       entry !== null &&

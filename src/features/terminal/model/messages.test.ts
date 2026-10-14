@@ -169,21 +169,20 @@ describe('a label the row itself chose', () => {
   })
 
   test('a run of zero-width characters is not a usable name', () => {
-    expect(findMessageRows(buffer('​​​'))[0]!.label).toBe('')
+    expect(findMessageRows(buffer('​​​'))[0].label).toBe('')
   })
 
   test('a braille blank is not a usable name either', () => {
-    expect(findMessageRows(buffer('⠀⠀'))[0]!.label).toBe('')
+    expect(findMessageRows(buffer('⠀⠀'))[0].label).toBe('')
   })
 
   test('an orphaned surrogate is dropped rather than carried', () => {
-    const label = findMessageRows(buffer(`${'x'.repeat(79)}\u{1F600}`))[0]!
-      .label
+    const label = findMessageRows(buffer(`${'x'.repeat(79)}\u{1F600}`))[0].label
     expect(label).toBe('x'.repeat(79))
   })
 
   test('ordinary text survives intact', () => {
-    expect(findMessageRows(buffer('fix the parser'))[0]!.label).toBe(
+    expect(findMessageRows(buffer('fix the parser'))[0].label).toBe(
       'fix the parser',
     )
   })

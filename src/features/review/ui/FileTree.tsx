@@ -21,7 +21,7 @@ export interface FileTreeProps {
   showHidden: boolean
   /** Absolute path of the file being previewed, if any. */
   selected: string | null
-  onSelect(entry: DirEntry): void
+  onSelect: (entry: DirEntry) => void
 }
 
 /**
@@ -111,10 +111,10 @@ async function copy(text: string) {
 interface TreeOptions {
   revision: string
   showHidden: boolean
-  onAsk(asked: Asked): void
+  onAsk: (asked: Asked) => void
   /** Absolute path of the file being previewed, if any. */
   selected: string | null
-  onSelect(entry: DirEntry): void
+  onSelect: (entry: DirEntry) => void
 }
 
 interface ChildrenProps extends TreeOptions {
@@ -182,11 +182,11 @@ function Folder({ entry, depth, ...rest }: FolderProps) {
       >
         <Icon
           name="chevron_right"
-          className={`h-3.5 w-3.5 text-faint transition-transform ${
+          className={`size-3.5 text-faint transition-transform ${
             open ? 'rotate-90' : ''
           }`}
         />
-        <Icon name={folderIcon(open)} className="h-3.5 w-3.5 text-[#8ea2c0]" />
+        <Icon name={folderIcon(open)} className="size-3.5 text-[#8ea2c0]" />
         <span className="truncate text-ink">{entry.name}</span>
         {entry.symlink && (
           <span className="flex-none text-[10px] text-faint">
@@ -223,7 +223,7 @@ function FileRow({ entry, depth, selected, onSelect, onAsk }: FileRowProps) {
           : 'hover:bg-surface-hover'
       } ${entry.ignored ? IGNORED : ''}`}
     >
-      <Icon name={icon.name} className={`h-3.5 w-3.5 ${icon.tone}`} />
+      <Icon name={icon.name} className={`size-3.5 ${icon.tone}`} />
       <span className="truncate">{entry.name}</span>
     </button>
   )

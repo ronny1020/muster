@@ -118,7 +118,7 @@ export function DiffView({
         /* Tailwind's preflight gives `code` the theme's mono stack, which beats
            the family inherited from here — so the font chosen for the terminal
            would be ignored by exactly the elements that show code. */
-        className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
+        className="min-h-0 flex-1 overflow-auto [&_code]:font-[inherit]"
       >
         {budget.hunks.map((hunk, index) => (
           <HunkRows
@@ -165,35 +165,43 @@ function useHighlightedSides(
   hunks: Hunk[] | undefined,
   path: string,
 ): Sides | null {
-  const [sides, setSides] = useState<Sides | null>(null)
+  const index = useMemo(
+    () =>
+      hunks && { old: sideIndex(hunks, 'old'), new: sideIndex(hunks, 'new') },
+    [hunks],
+  )
+  // Kept with the hunks and path they were highlighted for, so a result that
+  // lands after the diff moved never paints another diff's rows.
+  const [colours, setColours] = useState<{
+    hunks: Hunk[]
+    path: string
+    old: HighlightedLines | null
+    new: HighlightedLines | null
+  } | null>(null)
 
   useEffect(() => {
-    if (!hunks) {
-      setSides(null)
-      return
-    }
-    const index = {
-      old: sideIndex(hunks, 'old'),
-      new: sideIndex(hunks, 'new'),
-    }
-    // Shown uncoloured first, so a large diff appears immediately and gains
-    // its colours when the grammar is ready.
-    setSides({ old: null, new: null, index })
-
+    if (!hunks) return
     let live = true
     const language = languageFor(path)
     void Promise.all([
       highlight(sideText(hunks, 'old'), language),
       highlight(sideText(hunks, 'new'), language),
     ]).then(([oldSide, newSide]) => {
-      if (live) setSides({ old: oldSide, new: newSide, index })
+      if (live) setColours({ hunks, path, old: oldSide, new: newSide })
     })
     return () => {
       live = false
     }
   }, [hunks, path])
 
-  return sides
+  // Shown uncoloured first, so a large diff appears immediately and gains its
+  // colours when the grammar is ready.
+  return useMemo(() => {
+    if (!index) return null
+    const fresh =
+      colours?.hunks === hunks && colours?.path === path ? colours : null
+    return { index, old: fresh?.old ?? null, new: fresh?.new ?? null }
+  }, [index, colours, hunks, path])
 }
 
 interface HunkRowsProps {

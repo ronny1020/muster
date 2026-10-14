@@ -4,8 +4,8 @@ import { dirname, join, relative, resolve } from 'node:path'
 
 /**
  * Enforces the layering rule AGENTS.md states: a module may import from a layer
- * strictly below its own, never sideways within one. There is no ESLint here,
- * so this is the only thing holding the rule in place.
+ * strictly below its own, never sideways within one. No lint rule here knows
+ * the layers, so this is the only thing holding the rule in place.
  */
 const LAYERS = ['shared', 'entities', 'features', 'widgets', 'app'] as const
 type Layer = (typeof LAYERS)[number]
@@ -66,7 +66,7 @@ const modules = walk(SRC)
 const edges = modules.flatMap((module) => {
   const source = readFileSync(module.file, 'utf8')
   return [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)]
-    .map((match) => target(module.file, match[1]!))
+    .map((match) => target(module.file, match[1]))
     .filter((path): path is string => path !== null)
     .map(locate)
     .filter((to): to is Module => to !== null)
@@ -109,7 +109,7 @@ test('every relative import resolves, so no edge can vanish from the graph', () 
   // filtered out, so the rule stopped applying to it instead of failing.
   const unresolved = walk(SRC).flatMap((file) =>
     [...readFileSync(file, 'utf8').matchAll(/from\s+['"]([^'"]+)['"]/g)]
-      .map((match) => match[1]!)
+      .map((match) => match[1])
       .filter((spec) => spec.startsWith('.') && target(file, spec) === null)
       .map((spec) => `${relative(SRC, file)} -> ${spec}`),
   )
@@ -123,7 +123,7 @@ test('no import bypasses the checker through a path alias', () => {
   // resolver rather than quietly.
   const aliased = walk(SRC).flatMap((file) =>
     [...readFileSync(file, 'utf8').matchAll(/from\s+['"]([^'"]+)['"]/g)]
-      .map((match) => match[1]!)
+      .map((match) => match[1])
       // `@scope/pkg` is an npm package; `@/…`, `~/…` and `src/…` are aliases.
       .filter((spec) => /^@\/|^~\/|^src\//.test(spec))
       .map((spec) => `${relative(SRC, file)} -> ${spec}`),

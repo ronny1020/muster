@@ -9,7 +9,7 @@ export interface ChangedFilesProps {
   files: ChangedFile[]
   /** Repo-relative path of the file being read, if any. */
   selected: string | null
-  onSelect(file: ChangedFile): void
+  onSelect: (file: ChangedFile) => void
 }
 
 /** The changed-file list: what to read, in the order it sits on disk. */
@@ -31,7 +31,7 @@ export function ChangedFiles({ files, selected, onSelect }: ChangedFilesProps) {
 interface RowProps {
   file: ChangedFile
   active: boolean
-  onSelect(): void
+  onSelect: () => void
 }
 
 function Row({ file, active, onSelect }: RowProps) {
@@ -56,7 +56,7 @@ function Row({ file, active, onSelect }: RowProps) {
       >
         {statusMark(file.status)}
       </span>
-      <Icon name={icon.name} className={`h-3.5 w-3.5 ${icon.tone}`} />
+      <Icon name={icon.name} className={`size-3.5 ${icon.tone}`} />
       <span className="truncate text-ink">{basename(file.path)}</span>
       {/* Always present, empty or not: it is what pushes the counts to the
           right edge, so a file at the repository root lines up with the rest. */}

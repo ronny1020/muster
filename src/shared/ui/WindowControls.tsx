@@ -47,7 +47,7 @@ export function WindowControls() {
 interface CaptionButtonProps {
   label: string
   icon: IconName
-  onClick(): void
+  onClick: () => void
   className?: string
 }
 
@@ -65,7 +65,7 @@ function CaptionButton({
       onClick={onClick}
       className={`flex w-[46px] flex-none items-center justify-center text-muted ${className}`}
     >
-      <Icon name={icon} className="h-3 w-3" />
+      <Icon name={icon} className="size-3" />
     </button>
   )
 }

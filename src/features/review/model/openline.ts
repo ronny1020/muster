@@ -10,7 +10,7 @@ import { type Editor, openInEditor, report } from '../../../shared/ipc'
 export interface LineOpener {
   /** Editor name, for the tooltip; there is no gutter link without one. */
   editor: string
-  open(line: number): void
+  open: (line: number) => void
 }
 
 /**

@@ -67,7 +67,7 @@ export interface StatusBarProps {
    * the alternate buffer whatever it is told. One prop rather than two, so the
    * state and its control cannot disagree.
    */
-  mode: { scrollback: boolean; onSwitch(): void } | null
+  mode: { scrollback: boolean; onSwitch: () => void } | null
   /** Whether a directory is known, so there is somewhere to look for records. */
   journal: boolean
   journalOpen: boolean
@@ -75,16 +75,16 @@ export interface StatusBarProps {
   reviewView: ReviewView
   /** Editor to offer for this directory, or `null` when none was found. */
   editor: Editor | null
-  onToggleHistory(): void
-  onToggleJournal(): void
+  onToggleHistory: () => void
+  onToggleJournal: () => void
   /**
    * Show the review drawer on this view — or close it, when it is already
    * open on it. Each control names what it wants to see rather than toggling
    * something.
    */
-  onShowReview(view: ReviewView): void
-  onShowHistory(): void
-  onOpenSettings(): void
+  onShowReview: (view: ReviewView) => void
+  onShowHistory: () => void
+  onOpenSettings: () => void
 }
 
 /** Footer with the tab's working directory and the git state of that tree. */
@@ -144,7 +144,7 @@ export function StatusBar({
               upstream: git.upstream,
               context: git.upstream ? 'tracking' : undefined,
             })}
-            className={`flex min-w-0 items-center gap-1 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink ${
+            className={`flex min-w-0 items-center gap-1 overflow-hidden rounded-sm px-1 text-ellipsis hover:bg-surface-hover hover:text-ink ${
               historyOpen ? 'bg-surface text-ink' : 'text-[#a8b4c8]'
             }`}
           >
@@ -186,7 +186,7 @@ export function StatusBar({
         // Not a colour alone: the word "also" carries the meaning for anyone
         // who cannot see the tint.
         className={`min-w-0 truncate text-danger ${
-          collision ? 'rounded border border-danger/40 px-1' : ''
+          collision ? 'rounded-sm border border-danger/40 px-1' : ''
         }`}
       >
         {collision}
@@ -199,14 +199,14 @@ export function StatusBar({
           type="button"
           title={t('status.openInEditorTitle', { editor: editor.name })}
           onClick={() => void openInEditor(cwd, editor.command).catch(report)}
-          className="min-w-0 overflow-hidden rounded px-1 text-ellipsis hover:bg-surface-hover hover:text-ink"
+          className="min-w-0 overflow-hidden rounded-sm px-1 text-ellipsis hover:bg-surface-hover hover:text-ink"
         >
           {t('status.openInEditor', { editor: editor.name })}
         </button>
       )}
       {mode && (
         <span
-          className="flex flex-none items-center overflow-hidden rounded border border-line"
+          className="flex flex-none items-center overflow-hidden rounded-sm border border-line"
           role="group"
           aria-label={t('status.terminalMode')}
         >
@@ -237,11 +237,11 @@ export function StatusBar({
           aria-label={t('status.journal')}
           aria-expanded={journalOpen}
           onClick={onToggleJournal}
-          className={`flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink ${
+          className={`flex-none rounded-sm px-1 py-0.5 hover:bg-surface-hover hover:text-ink ${
             journalOpen ? 'bg-surface text-ink' : ''
           }`}
         >
-          <Icon name="terminal" className="h-3.5 w-3.5" />
+          <Icon name="terminal" className="size-3.5" />
         </button>
       )}
       {state && <span className={exited ? 'text-danger' : ''}>{state}</span>}
@@ -259,9 +259,9 @@ export function StatusBar({
         })}
         aria-label={t('settings:title')}
         onClick={onOpenSettings}
-        className="flex-none rounded px-1 py-0.5 hover:bg-surface-hover hover:text-ink"
+        className="flex-none rounded-sm px-1 py-0.5 hover:bg-surface-hover hover:text-ink"
       >
-        <Icon name="settings" className="h-3.5 w-3.5" />
+        <Icon name="settings" className="size-3.5" />
       </button>
     </footer>
   )
@@ -272,7 +272,7 @@ interface ChipGroupProps {
   /** What the group counts, for the name a screen reader reads. */
   label: string
   expanded: boolean
-  onClick(): void
+  onClick: () => void
 }
 
 /**
@@ -296,7 +296,7 @@ function ChipGroup({ chips, label, expanded, onClick }: ChipGroupProps) {
       })}
       title={t('status.chipGroupTitle', { titles: titles.join(' · ') })}
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded px-1 hover:bg-surface-hover ${
+      className={`flex items-center gap-1.5 rounded-sm px-1 hover:bg-surface-hover ${
         expanded ? 'bg-surface' : ''
       }`}
     >
@@ -318,7 +318,7 @@ function BranchIcon() {
     <svg
       viewBox="0 0 16 16"
       aria-hidden="true"
-      className="h-3 w-3 flex-none text-faint"
+      className="size-3 flex-none text-faint"
     >
       <g
         fill="none"

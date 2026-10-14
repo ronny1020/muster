@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+} from 'react'
 
 import { Pane } from '../widgets/pane/ui/Pane'
 import {
@@ -126,7 +132,9 @@ export function App({ adopted }: AppProps) {
   }, [retention, liveTabs])
   // The exit listener is registered once, so it reads live state through refs.
   const current = useRef({ deck, settings })
-  current.current = { deck, settings }
+  useLayoutEffect(() => {
+    current.current = { deck, settings }
+  }, [deck, settings])
 
   const open = useCallback(
     () => dispatch({ type: 'open', id: nextTabId() }),
@@ -136,7 +144,7 @@ export function App({ adopted }: AppProps) {
   // prompt as its close button, so running sessions are still asked about.
   const close = useCallback((id: string) => {
     const { deck } = current.current
-    if (deck.tabs.length === 1 && deck.tabs[0]!.id === id) {
+    if (deck.tabs.length === 1 && deck.tabs[0].id === id) {
       // Stored empty first, so a closed tab does not come back on the next
       // launch. A prompt the user cancels hands focus back to the window,
       // which stores the tab again — see the focus listener below.
@@ -289,7 +297,9 @@ export function App({ adopted }: AppProps) {
   // tab ready to start rather than started: the shell that ran `muster ~/proj`
   // asked for a place to work, not for an agent to be running in it.
   const defaults = useRef(settings)
-  defaults.current = settings
+  useLayoutEffect(() => {
+    defaults.current = settings
+  }, [settings])
   useEffect(() => {
     const unlisten = onOpenDirectory((cwd) =>
       dispatch({

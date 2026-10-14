@@ -16,10 +16,7 @@ import {
   clearRecentDirs,
   recentDirs,
 } from '../../../entities/recents/model/recents'
-import {
-  LIMITS,
-  type Settings,
-} from '../../../entities/preferences/model/settings'
+import { LIMITS } from '../../../entities/preferences/model/settings'
 import {
   everyFont,
   fontChoices,
@@ -481,7 +478,7 @@ function NumberRow({
 }) {
   const { settings, update } = useSettings()
   const { min, max, step } = LIMITS[field]
-  const value = settings[field] as number
+  const value = settings[field]
 
   return (
     <Row label={label}>
@@ -493,9 +490,7 @@ function NumberRow({
           step={step}
           value={value}
           aria-label={label}
-          onChange={(event) =>
-            update({ [field]: Number(event.target.value) } as Partial<Settings>)
-          }
+          onChange={(event) => update({ [field]: Number(event.target.value) })}
           className="w-[180px] accent-primary"
         />
         <span className="w-[92px] text-right font-mono text-[11px] text-muted">
@@ -513,7 +508,7 @@ function Toggle({
 }: {
   checked: boolean
   label: string
-  onChange(checked: boolean): void
+  onChange: (checked: boolean) => void
 }) {
   return (
     <input
@@ -521,7 +516,7 @@ function Toggle({
       checked={checked}
       aria-label={label}
       onChange={(event) => onChange(event.target.checked)}
-      className="h-4 w-4 accent-primary"
+      className="size-4 accent-primary"
     />
   )
 }
@@ -669,7 +664,7 @@ function ThemeSwatch({ id }: { id: string }) {
         (colour) => (
           <span
             key={colour}
-            className="h-2.5 w-2.5 rounded-full"
+            className="size-2.5 rounded-full"
             style={{ background: colour }}
           />
         ),

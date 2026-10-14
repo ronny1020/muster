@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -6,13 +6,15 @@ import {
   type Agent,
   resumeArgs,
 } from '../../../entities/agent/model/agents'
-import { agoLabel } from '../../../shared/lib/ago'
+import { AGE_TICK_MS, agoLabel } from '../../../shared/lib/ago'
+import { useNow } from '../../../shared/lib/useNow'
 import { earlierThan } from '../model/entries'
 import { DragEdge } from '../../../shared/ui/DragEdge'
 import { formatBytes } from '../../../shared/lib/bytes'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { type JournalEntry, journalSessions } from '../../../shared/ipc'
+import { useKeyedState } from '../../../shared/lib/useKeyedState'
 
 export interface JournalPanelProps {
   /** Directory whose recorded sessions this lists. */
@@ -24,7 +26,7 @@ export interface JournalPanelProps {
   /** Whether a session is running here, which reopening would end. */
   busy: boolean
   /** Reopen this conversation in this tab, ending whatever runs here now. */
-  onResume(agent: Agent, args: string[]): void
+  onResume: (agent: Agent, args: string[]) => void
   /**
    * Start again in this tab, ending whatever runs here now — absent for a tab
    * already on its start screen, where the same thing is a click away behind
@@ -33,8 +35,8 @@ export interface JournalPanelProps {
    * The drawer's list answers "take me back to one of these", and "none of
    * these" is the other half of that question.
    */
-  onNew?(): void
-  onClose(): void
+  onNew?: () => void
+  onClose: () => void
 }
 
 /** Enough for a timestamp, a size and the button beside them. */
@@ -60,20 +62,23 @@ export function JournalPanel({
   const { t } = useTranslation(['workspace', 'settings'])
   const { settings } = useSettings()
   const size = usePanelWidth('muster.journalWidth', DEFAULT_WIDTH)
-  const [entries, setEntries] = useState<JournalEntry[] | null>(null)
+  const [entries, setEntries] = useKeyedState<JournalEntry[] | null>(
+    [cwd, liveId],
+    null,
+  )
+  const now = useNow(AGE_TICK_MS)
 
   useEffect(() => {
     let cancelled = false
-    setEntries(null)
-    void journalSessions(cwd)
-      .catch(() => [])
-      .then((found) => {
-        if (!cancelled) setEntries(earlierThan(found, liveId))
-      })
+    const show = async () => {
+      const found = await journalSessions(cwd).catch(() => [])
+      if (!cancelled) setEntries([cwd, liveId], earlierThan(found, liveId))
+    }
+    void show()
     return () => {
       cancelled = true
     }
-  }, [cwd, liveId])
+  }, [cwd, liveId, setEntries])
 
   return (
     <aside
@@ -91,7 +96,7 @@ export function JournalPanel({
           type="button"
           onClick={onClose}
           aria-label={t('journal.close')}
-          className="rounded px-1.5 text-muted hover:bg-surface hover:text-ink"
+          className="rounded-sm px-1.5 text-muted hover:bg-surface hover:text-ink"
         >
           ✕
         </button>
@@ -105,7 +110,7 @@ export function JournalPanel({
             title={
               busy ? t('journal.newSessionBusy') : t('journal.newSessionIdle')
             }
-            className="w-full rounded border border-line px-1.5 py-1 text-[11px] text-ink hover:bg-surface"
+            className="w-full rounded-sm border border-line px-1.5 py-1 text-[11px] text-ink hover:bg-surface"
           >
             {t('journal.newSession')}
           </button>
@@ -140,7 +145,13 @@ export function JournalPanel({
           `overflow-hidden` parent never becomes a scroll container. */}
       <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-px overflow-y-auto p-0">
         {entries?.map((entry) => (
-          <Row key={entry.id} entry={entry} busy={busy} onResume={onResume} />
+          <Row
+            key={entry.id}
+            entry={entry}
+            busy={busy}
+            now={now}
+            onResume={onResume}
+          />
         ))}
       </ul>
     </aside>
@@ -150,7 +161,8 @@ export function JournalPanel({
 interface RowProps {
   entry: JournalEntry
   busy: boolean
-  onResume(agent: Agent, args: string[]): void
+  now: number
+  onResume: (agent: Agent, args: string[]) => void
 }
 
 /**
@@ -160,7 +172,7 @@ interface RowProps {
  * disabled-looking one: the row is still worth showing — it says work happened
  * here — and a control that cannot act is worse than no control.
  */
-function Row({ entry, busy, onResume }: RowProps) {
+function Row({ entry, busy, now, onResume }: RowProps) {
   const { t } = useTranslation('workspace')
   const { t: common } = useTranslation('common')
   const agent = AGENTS.find((candidate) => candidate.id === entry.agentId)
@@ -172,7 +184,7 @@ function Row({ entry, busy, onResume }: RowProps) {
         <span className="flex-1 truncate text-muted">
           {t('journal.lastPrinted', {
             who: agent ? agent.name : t('journal.session'),
-            ago: agoLabel(entry.endedAt, Date.now(), common),
+            ago: agoLabel(entry.endedAt, now, common),
           })}
         </span>
         <span className="flex-none text-faint">{formatBytes(entry.bytes)}</span>
@@ -182,7 +194,7 @@ function Row({ entry, busy, onResume }: RowProps) {
           type="button"
           onClick={() => onResume(agent, args)}
           title={busy ? t('journal.resumeBusy') : t('journal.resumeIdle')}
-          className="self-start rounded border border-line px-1.5 py-0.5 text-[11px] text-ink hover:bg-surface"
+          className="self-start rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-ink hover:bg-surface"
         >
           {t('journal.resume')}
         </button>

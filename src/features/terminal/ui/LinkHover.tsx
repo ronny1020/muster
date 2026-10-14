@@ -62,7 +62,7 @@ export function LinkHover({
   return (
     <div
       role="status"
-      className="pointer-events-none absolute bottom-2 left-2 z-20 w-max max-w-[min(70%,26rem)] overflow-hidden rounded-md border border-line bg-chrome/95 text-[11px] text-ink shadow-lg backdrop-blur"
+      className="pointer-events-none absolute bottom-2 left-2 z-20 w-max max-w-[min(70%,26rem)] overflow-hidden rounded-md border border-line bg-chrome/95 text-[11px] text-ink shadow-lg backdrop-blur-sm"
     >
       {current && 'meta' in current && (
         <PageCard meta={current.meta} untitled={t('link.untitled')} />
@@ -123,7 +123,7 @@ function PageCard({ meta, untitled }: { meta: LinkMeta; untitled: string }) {
         <img
           src={meta.imageDataUrl}
           alt=""
-          className="h-14 w-20 flex-none rounded object-cover"
+          className="h-14 w-20 flex-none rounded-sm object-cover"
         />
       )}
     </div>

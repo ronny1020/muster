@@ -9,6 +9,7 @@ mod ghost;
 mod image;
 mod journal;
 mod link;
+mod locale;
 mod output;
 mod platform;
 mod pty;
@@ -119,6 +120,7 @@ pub fn run() {
             store::state_read,
             store::state_write,
             close::close_words,
+            locale::system_locales,
             window::window_open,
             window::window_send,
             window::window_take,

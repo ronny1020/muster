@@ -710,6 +710,9 @@ export interface CloseWords {
 export const sendCloseWords = (words: CloseWords) =>
   invoke<void>('close_words', { words })
 
+/** The OS's preferred languages, most preferred first; see `locale.rs`. */
+export const systemLocales = () => invoke<string[]>('system_locales')
+
 /** Stores one entry, or forgets it when `value` is `null`. */
 export const writeAppState = (key: string, value: string | null) =>
   invoke<void>('state_write', { key, value })

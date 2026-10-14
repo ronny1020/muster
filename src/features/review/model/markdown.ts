@@ -60,7 +60,7 @@ const fenceLanguage = (info: string) =>
 
 md.renderer.rules.fence = (tokens, index, _options, env) => {
   const { code, diagrams } = state(env)
-  const token = tokens[index]!
+  const token = tokens[index]
   if (fenceLanguage(token.info) === 'mermaid') {
     const id = `diagram-${index}`
     diagrams.set(id, token.content)
@@ -80,7 +80,7 @@ md.renderer.rules.fence = (tokens, index, _options, env) => {
  * hands it to the system browser, as the terminal does.
  */
 md.renderer.rules.link_open = (tokens, index) => {
-  const href = md.utils.escapeHtml(String(tokens[index]!.attrGet('href') ?? ''))
+  const href = md.utils.escapeHtml(String(tokens[index].attrGet('href') ?? ''))
   // A `<button>`, not an `<a>`: without an `href` an anchor is neither
   // focusable nor announced as anything, so the keyboard and a screen reader
   // both lose the link entirely. The title is what puts the URL back in front
@@ -99,7 +99,7 @@ md.renderer.rules.link_open = (tokens, index) => {
 md.renderer.rules.link_close = () => '</button>'
 
 md.renderer.rules.image = (tokens, index, _options, env) => {
-  const token = tokens[index]!
+  const token = tokens[index]
   const source = String(token.attrGet('src') ?? '')
   const alt = md.utils.escapeHtml(token.content || source)
   if (/^[a-z][a-z0-9+.-]*:/i.test(source)) {

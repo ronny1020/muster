@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { type FileDiff, gitFileDiff } from '../../../shared/ipc'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
 export interface DiffSnapshot {
   diff: FileDiff | null
@@ -19,26 +20,29 @@ export function useFileDiff(
   const [state, setState] = useState<DiffSnapshot>({
     diff: null,
     error: null,
-    loading: false,
+    loading: Boolean(cwd && path),
   })
   const latest = useRef(0)
+  // Moved in the commit that changes the inputs, so a read still in flight
+  // cannot land before the read effect's cleanup runs.
+  useLayoutEffect(() => {
+    latest.current += 1
+  }, [cwd, path, base, context, revision])
 
+  const reading = Boolean(cwd && path)
   // A different file is not a re-read: its rows must go at once.
-  useEffect(
-    () => setState({ diff: null, error: null, loading: Boolean(path) }),
-    [cwd, path, base],
+  useKeyChange([cwd, path, base], () =>
+    setState({ diff: null, error: null, loading: reading }),
+  )
+  // A re-read of the same file keeps the previous diff on screen, so the rows
+  // keep their scroll position while the tree moves under an agent.
+  useKeyChange([context, revision], () =>
+    setState((before) => ({ ...before, loading: reading })),
   )
 
   useEffect(() => {
-    if (!cwd || !path) {
-      setState({ diff: null, error: null, loading: false })
-      return
-    }
+    if (!cwd || !path) return
     const mine = (latest.current += 1)
-    // The previous diff stays on screen while the new one is read: clearing it
-    // unmounted the rows, which lost the scroll position — and the tree moves
-    // on every git poll, so that happened while you were reading.
-    setState((before) => ({ ...before, loading: true }))
     void gitFileDiff(cwd, path, base || undefined, context).then(
       (diff) => {
         if (latest.current === mine)

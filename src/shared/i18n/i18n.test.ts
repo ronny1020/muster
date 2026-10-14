@@ -6,12 +6,18 @@ import {
   isLanguageSetting,
   type Locale,
   LOCALES,
+  loadSystemLocales,
   resolveLocale,
   setLanguage,
 } from './i18n'
 import { resources } from './resources'
 
-afterEach(() => setLanguage('en-US'))
+const webviewLanguages = [...navigator.languages]
+
+afterEach(async () => {
+  await loadSystemLocales(() => Promise.resolve(webviewLanguages))
+  setLanguage('en-US')
+})
 
 test('an explicit language wins over the OS preference', () => {
   expect(resolveLocale('ja', ['zh-TW'])).toBe('ja')
@@ -32,6 +38,26 @@ test('British, Irish and Australian English spell the British way', () => {
   }
   expect(resolveLocale('system', ['en'])).toBe('en-US')
   expect(resolveLocale('system', ['en-CA'])).toBe('en-US')
+})
+
+test('Match system follows the languages the OS reported', async () => {
+  await loadSystemLocales(() => Promise.resolve(['zh-Hant-TW', 'en-TW']))
+  setLanguage('system')
+  expect(currentLocale()).toBe('zh-TW')
+})
+
+test('an empty or failed OS answer keeps the languages already held', async () => {
+  await loadSystemLocales(() => Promise.resolve(['ja-JP']))
+  await loadSystemLocales(() => Promise.resolve([]))
+  await loadSystemLocales(() => Promise.reject(new Error('no backend')))
+  setLanguage('system')
+  expect(currentLocale()).toBe('ja')
+})
+
+test('the tags macOS reports, region and script together, resolve', () => {
+  expect(resolveLocale('system', ['zh-Hant-TW', 'en-TW'])).toBe('zh-TW')
+  expect(resolveLocale('system', ['ja-TW', 'zh-Hant-TW'])).toBe('ja')
+  expect(resolveLocale('system', ['en-TW', 'zh-Hant-TW'])).toBe('en-US')
 })
 
 test('Chinese is split by script first, then by region', () => {
@@ -137,7 +163,9 @@ test.each(complete)(
       const theirs = own.get(key)?.vars ?? new Set()
       const same =
         vars.size === theirs.size && [...vars].every((v) => theirs.has(v))
-      return same ? [] : [`${key}: ${[...vars]} vs ${[...theirs]}`]
+      return same
+        ? []
+        : [`${key}: ${[...vars].join()} vs ${[...theirs].join()}`]
     })
     expect(mismatched).toEqual([])
   },

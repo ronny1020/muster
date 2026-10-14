@@ -12,7 +12,7 @@
 /** What a seek reads: the rows the agent is showing right now. */
 export interface Screen {
   readonly rows: number
-  row(index: number): string
+  row: (index: number) => string
 }
 
 /**
@@ -128,13 +128,13 @@ export interface Sweep {
   /** Which way it is going. Carried so a caller can undo what it sent. */
   up: boolean
   /** Turns the wheel one notch. */
-  notch(up: boolean): void
+  notch: (up: boolean) => void
   /** Waits for the agent's repaint to arrive. */
-  settle(): Promise<void>
+  settle: () => Promise<void>
   /** Whether this sweep still owns the view, re-read after every await. */
-  owns(): boolean
+  owns: () => boolean
   /** Whether it has arrived. A sweep to the end never has. */
-  done(): boolean
+  done: () => boolean
 }
 
 /**

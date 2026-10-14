@@ -70,7 +70,7 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
           placeholder={t('sync.message')}
           aria-label={t('sync.message')}
           spellCheck={false}
-          className="w-full resize-y rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none placeholder:text-faint focus:border-primary"
+          className="w-full resize-y rounded-sm border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none placeholder:text-faint focus:border-primary"
         />
       )}
       {warning && <p className="m-0 text-[10px] text-danger">{warning}</p>}
@@ -108,7 +108,7 @@ export function GitActions({ cwd, git, gitRun, withCommit }: GitActionsProps) {
       </div>
       <p
         role="status"
-        className={`m-0 text-[10px] break-words whitespace-pre-wrap ${
+        className={`m-0 text-[10px] wrap-break-word whitespace-pre-wrap ${
           gitRun.notice?.failed ? 'text-danger' : 'text-faint'
         }`}
       >
@@ -130,7 +130,7 @@ interface ActionProps {
   control: SyncControl
   disabled: boolean
   primary?: boolean
-  onClick(): void
+  onClick: () => void
 }
 
 const Action = ({ control, disabled, primary, onClick }: ActionProps) => (
@@ -139,7 +139,7 @@ const Action = ({ control, disabled, primary, onClick }: ActionProps) => (
     disabled={disabled}
     title={control.blocked ?? undefined}
     onClick={onClick}
-    className={`rounded px-2 py-0.5 text-[11px] disabled:cursor-default disabled:opacity-40 ${
+    className={`rounded-sm px-2 py-0.5 text-[11px] disabled:cursor-default disabled:opacity-40 ${
       primary
         ? 'bg-primary text-canvas enabled:hover:opacity-90'
         : 'border border-line text-ink enabled:hover:bg-surface-hover'

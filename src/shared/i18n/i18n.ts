@@ -88,13 +88,34 @@ void i18n.use(initReactI18next).init({
 })
 
 /**
+ * The languages "Match system" resolves against: the OS's once
+ * `loadSystemLocales` has them (see `locale.rs`), else the webview's.
+ */
+let systemPreferred: readonly string[] = navigator.languages
+
+/**
+ * Asks the OS through `read`; an empty or failed answer keeps the list already
+ * held. Call it before the first `setLanguage` that should use the answer.
+ * `read` is a parameter because `ipc.ts` imports this module.
+ */
+export async function loadSystemLocales(read: () => Promise<string[]>) {
+  let reported: string[]
+  try {
+    reported = await read()
+  } catch {
+    return
+  }
+  if (reported.length > 0) systemPreferred = reported
+}
+
+/**
  * Switches every component that reads through `useTranslation`, in place.
  *
  * Nothing is remounted to apply it: panes must stay mounted, and a remount
  * would end every session in the window.
  */
 export function setLanguage(setting: LanguageSetting) {
-  const next = resolveLocale(setting, navigator.languages)
+  const next = resolveLocale(setting, systemPreferred)
   document.documentElement.lang = next
   if (next !== i18n.language) void i18n.changeLanguage(next)
 }

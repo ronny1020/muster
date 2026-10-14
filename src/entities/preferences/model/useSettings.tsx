@@ -19,8 +19,8 @@ import { setLanguage } from '../../../shared/i18n/i18n'
 interface SettingsStore {
   settings: Settings
   /** Applies and persists a change immediately; there is no save button. */
-  update(change: Partial<Settings>): void
-  reset(): void
+  update: (change: Partial<Settings>) => void
+  reset: () => void
 }
 
 const SettingsContext = createContext<SettingsStore | null>(null)

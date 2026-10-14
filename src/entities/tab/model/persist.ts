@@ -70,7 +70,7 @@ export function loadDeck(nextId: () => string): Deck {
       start ? { type: 'launcher', start } : { type: 'launcher' },
     ),
   )
-  return { tabs, activeId: tabs[starts.activeIndex]!.id }
+  return { tabs, activeId: tabs[starts.activeIndex].id }
 }
 
 function readStarts(): StoredDeck {

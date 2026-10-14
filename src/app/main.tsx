@@ -8,9 +8,10 @@ import {
   GHOST_LABEL,
   onStateChange,
   readAppState,
+  systemLocales,
   windowLabel,
 } from '../shared/ipc'
-import { setLanguage } from '../shared/i18n/i18n'
+import { loadSystemLocales, setLanguage } from '../shared/i18n/i18n'
 import {
   normalizeSettings,
   STORAGE_KEY as SETTINGS_KEY,
@@ -64,7 +65,7 @@ if (import.meta.env.DEV) void listenForMcp()
  */
 const start = async () => {
   if (windowLabel() === GHOST_LABEL) return drawGhost()
-  await loadAppState()
+  await Promise.all([loadAppState(), loadSystemLocales(systemLocales)])
   syncCloseWords()
   const adopted = (await adoptHandoffs()).map(({ tab }) => tab)
   createRoot(document.querySelector('#root')!).render(
@@ -89,14 +90,22 @@ function drawGhost() {
 /**
  * The label's window speaks the user's language without loading the app's
  * state, which would run the one-shot migration under the label's own name.
- * It reads the setting directly, then follows the other windows' writes.
+ * It asks the OS's languages for _Match system_, follows the other windows'
+ * writes, then reads the setting directly. It subscribes first so a write
+ * during the read is not missed, and a write it has heard is newer than the
+ * read, which is then dropped.
  */
 const followLanguage = async () => {
   try {
-    applyLanguage((await readAppState())[SETTINGS_KEY])
+    await loadSystemLocales(systemLocales)
+    let heard = false
     await onStateChange(({ key, value }) => {
-      if (key === SETTINGS_KEY) applyLanguage(value)
+      if (key !== SETTINGS_KEY) return
+      heard = true
+      applyLanguage(value)
     })
+    const stored = (await readAppState())[SETTINGS_KEY]
+    if (!heard) applyLanguage(stored)
   } catch {
     /* no backend, so the label stays in the default language */
   }

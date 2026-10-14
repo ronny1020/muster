@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { IMarker, Terminal } from '@xterm/xterm'
 
 import {
@@ -11,6 +18,7 @@ import {
 } from '../model/blocks'
 import { completionFor, type History, matchesFor } from '../model/suggest'
 import { report, shellHistory, writePty } from '../../../shared/ipc'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
 /**
  * A place the shell reported, held as one of xterm's own markers.
@@ -77,20 +85,20 @@ export interface ShellSurface {
   /** Which row of the list is chosen, or -1 while it is only a hint. */
   selected: number
   /** Moves through the list, or answers `false` when there is none. */
-  move(step: -1 | 1): boolean
+  move: (step: -1 | 1) => boolean
   /** Puts the list away until something else is typed. */
-  dismiss(): boolean
+  dismiss: () => boolean
   /**
    * Fills the prompt in from `index`, or from the chosen row, or from the top
    * match. Answers `false` when there was nothing to fill in.
    */
-  accept(index?: number): boolean
+  accept: (index?: number) => boolean
   /** The command whose rows cover `row`, or `null`. */
-  blockAt(row: number): ResolvedBlock | null
+  blockAt: (row: number) => ResolvedBlock | null
   /** The newest command that has finished, for the keyboard route. */
-  lastFinished(): ResolvedBlock | null
+  lastFinished: () => ResolvedBlock | null
   /** Everything `block` printed. */
-  outputText(block: ResolvedBlock): string
+  outputText: (block: ResolvedBlock) => string
 }
 
 const resolve = (tracked: Tracked): Position => ({
@@ -105,6 +113,9 @@ const resolveBlock = (block: TrackedBlock): ResolvedBlock => ({
   end: block.end && resolve(block.end),
   command: block.command,
 })
+
+/** What the terminal's OSC 133 route calls with each event the shell reports. */
+type ShellSink = (event: ShellEvent, at: Position) => void
 
 /**
  * The commands a shell has reported in this session, and the completion for
@@ -131,7 +142,7 @@ export function useShellBlocks({
   /** Whether the session's process is still there to type into. */
   live: boolean
   /** Filled in with the handler the terminal's OSC 133 route calls. */
-  sink: React.RefObject<((event: ShellEvent, at: Position) => void) | null>
+  sink: React.RefObject<ShellSink | null>
 }): ShellSurface {
   const blocks = useRef<TrackedBlock[]>([])
   const openPrompt = useRef<TrackedBlock | null>(null)
@@ -145,8 +156,10 @@ export function useShellBlocks({
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null)
   const [selected, setSelected] = useState(-1)
 
-  useEffect(() => {
-    if (!term) return
+  // Filled through `useImperativeHandle`, so the handler is installed and
+  // cleared in step with the terminal it was built for.
+  useImperativeHandle<ShellSink | null, ShellSink | null>(sink, () => {
+    if (!term) return null
     const mark = (at: Position): Tracked | null => {
       const marker = term.registerMarker(0)
       return marker ? { marker, col: at.col } : null
@@ -166,7 +179,7 @@ export function useShellBlocks({
       history.current = found
     }
 
-    sink.current = (event, at) => {
+    return (event, at) => {
       setReporting(true)
       switch (event.kind) {
         case 'promptStart': {
@@ -249,25 +262,26 @@ export function useShellBlocks({
           void loadHistory(event.path).catch(report)
       }
     }
+  }, [term])
 
+  // A layout effect, so a terminal's blocks are released before the handler
+  // for the next one is installed.
+  useLayoutEffect(() => {
+    if (!term) return
     return () => {
-      sink.current = null
       for (const block of blocks.current) forget(block)
       forget(openPrompt.current)
       blocks.current = []
       openPrompt.current = null
     }
-  }, [term, sink])
+  }, [term])
 
   // The offer follows the cursor, which nothing in the component tree owns —
   // so it is read from the terminal on the events that move it, and coalesced
   // into a frame because a held key moves the cursor faster than React can
   // usefully re-render.
   useEffect(() => {
-    if (!term || !active || !live) {
-      setSuggestions(null)
-      return
-    }
+    if (!term || !active || !live) return
     let frame = 0
     const read = () => {
       frame = 0
@@ -293,13 +307,11 @@ export function useShellBlocks({
     }
   }, [term, active, live])
 
+  // Nothing is offered where nothing can be typed, and an offer from before
+  // the tab was hidden is not the prompt it comes back to.
+  useKeyChange([Boolean(term && active && live)], () => setSuggestions(null))
   // Any new prefix is a new list, so nothing can stay chosen across one.
-  const typed = suggestions?.typed
-  const walked = useRef<string | undefined>(undefined)
-  if (walked.current !== typed) {
-    walked.current = typed
-    if (selected !== -1) setSelected(-1)
-  }
+  useKeyChange([suggestions?.typed], () => setSelected(-1))
 
   const accept = useCallback(
     (index?: number) => {
@@ -363,7 +375,7 @@ export function useShellBlocks({
 
   const blockAt = useCallback((row: number): ResolvedBlock | null => {
     for (let index = blocks.current.length - 1; index >= 0; index -= 1) {
-      const block = resolveBlock(blocks.current[index]!)
+      const block = resolveBlock(blocks.current[index])
       if (block.input.row < 0) continue
       const last = block.end?.row ?? Infinity
       if (row >= block.input.row && row <= last) return block
@@ -373,7 +385,7 @@ export function useShellBlocks({
 
   const lastFinished = useCallback((): ResolvedBlock | null => {
     for (let index = blocks.current.length - 1; index >= 0; index -= 1) {
-      const block = resolveBlock(blocks.current[index]!)
+      const block = resolveBlock(blocks.current[index])
       // Where the output starts has to still be in the scrollback: a trimmed
       // marker answers -1, and `textBetween` refuses it, so a block trimmed
       // at that end would copy nothing rather than what the reader asked for.

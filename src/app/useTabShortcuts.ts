@@ -7,15 +7,15 @@ import {
 } from '../entities/preferences/model/shortcuts'
 
 export interface TabShortcuts {
-  open(): void
-  openSettings(): void
-  toggleHistory(): void
-  toggleReview(): void
-  find(): void
-  closeActive(): void
-  cycle(step: number): void
-  moveActive(step: number): void
-  activateIndex(index: number): void
+  open: () => void
+  openSettings: () => void
+  toggleHistory: () => void
+  toggleReview: () => void
+  find: () => void
+  closeActive: () => void
+  cycle: (step: number) => void
+  moveActive: (step: number) => void
+  activateIndex: (index: number) => void
 }
 
 /**

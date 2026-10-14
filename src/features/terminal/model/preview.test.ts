@@ -13,7 +13,7 @@ const meta = (url: string): LinkMeta => ({
 
 test('hovering the same link again does not fetch it again', async () => {
   let fetches = 0
-  const preview = previewCache(async (url) => (fetches++, meta(url)))
+  const preview = previewCache((url) => (fetches++, Promise.resolve(meta(url))))
   await preview('https://a.example')
   await preview('https://a.example')
   expect(fetches).toBe(1)
@@ -21,9 +21,9 @@ test('hovering the same link again does not fetch it again', async () => {
 
 test('a failed preview is tried again on the next hover', async () => {
   let fetches = 0
-  const preview = previewCache(async () => {
+  const preview = previewCache(() => {
     fetches++
-    throw new Error('offline')
+    return Promise.reject(new Error('offline'))
   })
   await preview('https://a.example').catch(() => {})
   await preview('https://a.example').catch(() => {})
@@ -32,7 +32,9 @@ test('a failed preview is tried again on the next hover', async () => {
 
 test('the oldest preview is the one dropped once the cache is full', async () => {
   const fetched: string[] = []
-  const preview = previewCache(async (url) => (fetched.push(url), meta(url)))
+  const preview = previewCache(
+    (url) => (fetched.push(url), Promise.resolve(meta(url))),
+  )
   await preview('https://first.example')
   for (let i = 0; i < 64; i++) await preview(`https://${i}.example`)
   await preview('https://first.example')
