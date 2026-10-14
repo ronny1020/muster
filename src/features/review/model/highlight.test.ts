@@ -70,10 +70,8 @@ describe('highlight', () => {
     )
 
     expect(lines).toHaveLength(2)
-    expect(lines![0]!.map((token) => token.content).join('')).toBe(
-      'const a = 1',
-    )
-    expect(lines![0]![0]!.color).toMatch(/^#/)
+    expect(lines![0].map((token) => token.content).join('')).toBe('const a = 1')
+    expect(lines![0][0].color).toMatch(/^#/)
   })
 
   test('a file with no grammar is not an error, it is just uncoloured', async () => {

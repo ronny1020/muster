@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { readImage } from '../ipc'
+import { useKeyChange } from './useKeyChange'
 
 /**
  * The one decoded background, shared by every tab.
@@ -34,31 +35,16 @@ export function useBackground(path: string): string {
   const [dataUrl, setDataUrl] = useState(() =>
     decoded?.path === path ? decoded.dataUrl : '',
   )
+  // An image not read yet keeps the current one on screen until it lands.
+  useKeyChange([path], () => {
+    if (!path) setDataUrl('')
+    else if (decoded?.path === path) setDataUrl(decoded.dataUrl)
+  })
 
   useEffect(() => {
-    if (!path) {
-      setDataUrl('')
-      return
-    }
-    if (decoded?.path === path) {
-      setDataUrl(decoded.dataUrl)
-      return
-    }
-    if (loading?.path !== path) {
-      loading = {
-        path,
-        image: readImage(path).then(
-          (preview) => {
-            decoded = { path, dataUrl: preview.dataUrl }
-            return preview.dataUrl
-          },
-          () => '',
-        ),
-      }
-    }
-
+    if (!path) return
     let cancelled = false
-    void loading.image.then((url) => {
+    void imageAt(path).then((url) => {
       if (!cancelled) setDataUrl(url)
     })
     return () => {
@@ -67,4 +53,27 @@ export function useBackground(path: string): string {
   }, [path])
 
   return dataUrl
+}
+
+/**
+ * The decoded image at `path`, read at most once however many callers ask.
+ *
+ * A cached image still arrives through a promise, so a pane that rendered
+ * before another pane's read finished picks the result up too.
+ */
+function imageAt(path: string): Promise<string> {
+  if (decoded?.path === path) return Promise.resolve(decoded.dataUrl)
+  if (loading?.path !== path) {
+    loading = {
+      path,
+      image: readImage(path).then(
+        (preview) => {
+          decoded = { path, dataUrl: preview.dataUrl }
+          return preview.dataUrl
+        },
+        () => '',
+      ),
+    }
+  }
+  return loading.image
 }

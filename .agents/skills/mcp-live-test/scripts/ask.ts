@@ -15,15 +15,17 @@ export function send(command: string, payload: unknown, timeoutMs = 40000) {
       ),
     )
     socket.on('data', (chunk) => {
-      buffer += chunk
+      buffer += String(chunk)
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
       for (const line of lines) {
         if (!line.trim()) continue
         socket.end()
-        const msg = JSON.parse(line)
-        if (msg.success) resolve(msg.data)
-        else reject(new Error(msg.error ?? line))
+        const msg: unknown = JSON.parse(line)
+        if (typeof msg === 'object' && msg !== null && 'success' in msg) {
+          if (msg.success) resolve('data' in msg ? msg.data : undefined)
+          else reject(new Error('error' in msg ? String(msg.error) : line))
+        } else reject(new Error(line))
         return
       }
     })

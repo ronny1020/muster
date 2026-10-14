@@ -140,7 +140,7 @@ test('a block stops well short of the whole scrollback', () => {
   // session and paints the bar in one colour.
   const rows = ['⏺ Updated a/b.ts', ...Array.from({ length: 900 }, () => 'x')]
   const [block] = findFileBlocks(buffer(rows))
-  expect(block!.endRow).toBe(24)
+  expect(block.endRow).toBe(24)
 })
 
 test('a block is one row when the next file is named immediately below', () => {

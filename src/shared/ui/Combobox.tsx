@@ -11,7 +11,7 @@ export interface ComboboxProps {
   label: string
   options: ComboboxOption[]
   selected: string
-  onSelect(id: string): void
+  onSelect: (id: string) => void
   placeholder?: string
 }
 
@@ -117,7 +117,7 @@ export function Combobox({
           id={listId}
           role="listbox"
           aria-label={label}
-          className="absolute top-[30px] right-0 left-0 z-30 max-h-56 overflow-y-auto rounded-lg border border-line bg-chrome py-1 shadow-xl"
+          className="absolute inset-x-0 top-[30px] z-30 max-h-56 overflow-y-auto rounded-lg border border-line bg-chrome py-1 shadow-xl"
         >
           {matches.length === 0 && (
             <li className="px-2.5 py-1 text-[11px] text-faint">No match.</li>
@@ -174,7 +174,7 @@ export function matching(
 const Dot = ({ colour }: { colour: string }) => (
   <span
     aria-hidden="true"
-    className="h-2 w-2 flex-none rounded-full"
+    className="size-2 flex-none rounded-full"
     style={{ background: colour }}
   />
 )

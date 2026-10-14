@@ -11,7 +11,7 @@ export interface Slot {
  * can still reach it once clamped there.
  */
 export function dropIndex(slots: Slot[], from: number, left: number): number {
-  const right = left + slots[from]!.width
+  const right = left + slots[from].width
   let index = from
   slots.forEach((slot, other) => {
     const centre = slot.left + slot.width / 2
@@ -38,7 +38,7 @@ export function offsets(slots: Slot[], from: number, to: number): number[] {
   const result = slots.map(() => 0)
   let x = first.left
   for (const index of order) {
-    const slot = slots[index]!
+    const slot = slots[index]
     result[index] = x - slot.left
     x += slot.width + gap
   }
@@ -47,9 +47,9 @@ export function offsets(slots: Slot[], from: number, to: number): number[] {
 
 /** Keeps a dragged tab inside the strip, as Chrome does until it tears off. */
 export function clampLeft(slots: Slot[], from: number, left: number): number {
-  const first = slots[0]!
+  const first = slots[0]
   const last = slots.at(-1)!
-  const max = last.left + last.width - slots[from]!.width
+  const max = last.left + last.width - slots[from].width
   return Math.min(Math.max(left, first.left), max)
 }
 

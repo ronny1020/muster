@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
   AGENTS,
@@ -26,7 +26,10 @@ import {
   report,
   workspaceInfo,
 } from '../../../shared/ipc'
-import { agoLabel } from '../../../shared/lib/ago'
+import { AGE_TICK_MS, agoLabel } from '../../../shared/lib/ago'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
+import { useKeyedState } from '../../../shared/lib/useKeyedState'
+import { useNow } from '../../../shared/lib/useNow'
 import { basename } from '../model/paths'
 import {
   type Backend,
@@ -100,7 +103,7 @@ export function Launcher({
   start,
 }: {
   active: boolean
-  onLaunch(request: LaunchRequest): void
+  onLaunch: (request: LaunchRequest) => void
   /** What a restored tab opens with, in place of the settings defaults. */
   start?: LauncherStart
 }) {
@@ -152,8 +155,6 @@ export function Launcher({
    */
   const launched = useRef(false)
   const hint = blocked ? blockedHint(OS) : null
-  // null = the agent's store is unreadable, so every mode stays offered.
-  const [sessions, setSessions] = useState<number | null>(null)
   /**
    * The conversations Resume is offering, or `null` while it is offering none.
    *
@@ -176,7 +177,7 @@ export function Launcher({
   /** Whether a Resume click is still being answered. See `offerResume`. */
   const handling = useRef(false)
 
-  const distros = platform?.wslDistros ?? []
+  const distros = useMemo(() => platform?.wslDistros ?? [], [platform])
   /**
    * The backend a launch from here would really use. A distro that has since
    * been removed would strand the session, so the choice only survives while
@@ -184,6 +185,13 @@ export function Launcher({
    * list describes a host the session will not run on.
    */
   const runIn: Backend = distros.length > 0 ? backend : 'native'
+  // null = unknown: the agent's store is unreadable, or the count for this
+  // directory has not landed yet — never the previous directory's, which would
+  // gate on the wrong one. Every mode stays offered while it is unknown.
+  const [sessions, setSessions] = useKeyedState<number | null>(
+    [agent.id, cwd, runIn],
+    null,
+  )
   /** Narrows `resumeMode.args` below; the list exists only where it does. */
   const resumeMode = agent.modes.find((mode) => mode.id === 'resume')
   /**
@@ -200,12 +208,26 @@ export function Launcher({
    * arguments would be worse than the staleness it repaired.
    */
   const chosen = useRef({ flags, mode, distro, backend: runIn, distros })
-  chosen.current = { flags, mode, distro, backend: runIn, distros }
+  useLayoutEffect(() => {
+    chosen.current = { flags, mode, distro, backend: runIn, distros }
+  }, [flags, mode, distro, runIn, distros])
 
+  // Fills the initial blank once. A directory the user chose in the meantime
+  // — typed, cleared, picked or created — is theirs to keep.
+  const startedBlank = useRef(!cwd)
+  const edited = useRef(false)
+  const chooseCwd = (value: string) => {
+    edited.current = true
+    setCwd(value)
+  }
   useEffect(() => {
-    if (!cwd) void homeDir().then(setCwd, () => setCwd(''))
-    // Runs once: it only fills the initial blank, and every later edit is
-    // the user's to keep.
+    if (!startedBlank.current) return
+    void homeDir().then(
+      (home) => {
+        if (!edited.current) setCwd(home)
+      },
+      () => {},
+    )
   }, [])
 
   // Claim focus whenever this tab comes forward, not only on mount: switching
@@ -214,30 +236,35 @@ export function Launcher({
     if (active) directory.current?.focus()
   }, [active])
 
+  // An emptied field is a change like any other: a list left standing under it
+  // offers conversations no button on the page can start.
+  useKeyChange([agent.id, cwd, runIn], () => setPast(null))
+  // The ticket moves in the same commit as that reset, so a list read still
+  // in flight cannot land after the list was cleared for the new directory.
+  useLayoutEffect(() => {
+    asked.current += 1
+  }, [agent.id, cwd, runIn])
   // Re-read on every directory, agent or backend change: `claude --continue`
-  // in a
-  // directory with no history just prints `No conversation found to
+  // in a directory with no history just prints `No conversation found to
   // continue` and exits, which is a worse answer than not offering the mode.
   useEffect(() => {
     const directory = cwd.trim()
-    // Dropped before the guard below, because an emptied field is a change
-    // like any other: a list left standing under it offers conversations no
-    // button on the page can start. The ticket goes with it, so a read still
-    // in flight has nowhere to land.
-    setPast(null)
-    asked.current += 1
     if (!directory) return
+    const input = [agent.id, cwd, runIn]
+    // Leaving and coming back to a directory asks again; the older answer must
+    // not land after the newer one.
     let cancelled = false
-    // Until the new answer lands, "unknown" is the honest state — keeping the
-    // previous directory's count would gate on the wrong directory.
-    setSessions(null)
-    void agentSessions(agent.id, directory, runIn)
-      .then((count) => !cancelled && setSessions(count))
-      .catch(() => !cancelled && setSessions(null))
+    const readCount = async () => {
+      const found = await agentSessions(agent.id, directory, runIn).catch(
+        () => null,
+      )
+      if (!cancelled) setSessions(input, found)
+    }
+    void readCount()
     return () => {
       cancelled = true
     }
-  }, [agent.id, cwd, runIn])
+  }, [agent.id, cwd, runIn, setSessions])
 
   /**
    * `as` is how the shell starts without being in the picker: it is not one of
@@ -370,7 +397,7 @@ export function Launcher({
       // `launch` closes over this render's `cwd`, so the resolved path has to
       // be handed over directly — setting state would not reach it in time.
       const created = await createDirectory(cwd.trim())
-      setCwd(created)
+      chooseCwd(created)
       await launch(pending.modeArgs, { directory: created, as: pending.as })
     } catch (cause) {
       setError(String(cause))
@@ -380,7 +407,7 @@ export function Launcher({
   const browse = async () => {
     const picked = await pickDirectory(cwd || undefined).catch(() => null)
     if (picked) {
-      setCwd(picked)
+      chooseCwd(picked)
       setError('')
       // The third path that moves `cwd`, and both notices name a directory:
       // left up, they describe the folder the user has just navigated away
@@ -408,7 +435,7 @@ export function Launcher({
                 id="launcher-dir"
                 value={cwd}
                 onChange={(value) => {
-                  setCwd(value)
+                  chooseCwd(value)
                   // Both notices name a directory, so both are stale the
                   // moment a different one is typed.
                   setMissing(null)
@@ -437,7 +464,7 @@ export function Launcher({
                 type="button"
                 title={dir}
                 onClick={() => {
-                  setCwd(dir)
+                  chooseCwd(dir)
                   setError('')
                   setMissing(null)
                   setBlocked(null)
@@ -605,9 +632,7 @@ export function Launcher({
                     <span className="min-w-0 flex-1 truncate">
                       {session.summary || 'Nothing typed in this one'}
                     </span>
-                    <span className="flex-none text-[11px] text-faint">
-                      {agoLabel(session.at, Date.now())}
-                    </span>
+                    <SessionAge at={session.at} />
                   </button>
                 </li>
               ) : null
@@ -696,7 +721,7 @@ interface ChoiceProps {
   label: string
   accent?: string
   selected: boolean
-  onSelect(): void
+  onSelect: () => void
 }
 
 function Choice({
@@ -749,8 +774,8 @@ interface TextInputProps {
   value: string
   placeholder?: string
   ref?: React.Ref<HTMLInputElement>
-  onChange(value: string): void
-  onKeyDown(event: React.KeyboardEvent): void
+  onChange: (value: string) => void
+  onKeyDown: (event: React.KeyboardEvent) => void
 }
 
 function TextInput({
@@ -773,5 +798,18 @@ function TextInput({
       onKeyDown={onKeyDown}
       className="h-8 w-full min-w-0 rounded-lg border border-line bg-[#1e1e22] px-2.5 font-mono text-xs text-ink select-text focus:border-primary focus:outline-none"
     />
+  )
+}
+
+/**
+ * How long ago a past conversation was written. The clock starts when the row
+ * mounts, so the first label is never a minute stale.
+ */
+function SessionAge({ at }: { at: number }) {
+  const now = useNow(AGE_TICK_MS)
+  return (
+    <span className="flex-none text-[11px] text-faint">
+      {agoLabel(at, now)}
+    </span>
   )
 }

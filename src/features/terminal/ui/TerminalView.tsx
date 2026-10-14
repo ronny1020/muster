@@ -3,6 +3,8 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -88,23 +90,23 @@ export interface TerminalViewProps {
   session: Session
   active: boolean
   /** Fired when the session rings the terminal bell, i.e. it wants attention. */
-  onBell(): void
+  onBell: () => void
   /**
    * Fired for each turn boundary the agent announces over `OSC 777`. Claude
    * Code never rings the bell, so this is the only signal it hands back — and
    * only where a hook plugin is installed to broadcast it.
    */
-  onAgentEvent(event: AgentEvent): void
+  onAgentEvent: (event: AgentEvent) => void
   /**
    * The agent has exited and the terminal now runs the user's shell, with the
    * agent's exit status. From then on the tab's terminal is a shell's.
    */
-  onHandback(code: number): void
+  onHandback: (code: number) => void
   /**
    * A moved-in tab whose session had exited by the time this window took it
    * over, before this window was listening for the exit.
    */
-  onAdoptedExit(code: number): void
+  onAdoptedExit: (code: number) => void
   /**
    * The colour of what the tab is running — its agent's, or a shell's once
    * the agent has handed back — for everything drawn over its output.
@@ -114,9 +116,9 @@ export interface TerminalViewProps {
   cwd: string
   home: string
   /** A path in the output was clicked. */
-  onPath(path: string, line?: number): void
+  onPath: (path: string, line?: number) => void
   /** A URL in the output was clicked. */
-  onUrl(url: string): void
+  onUrl: (url: string) => void
   /**
    * Reopen this session's conversation, which is the only way back from the
    * clear a width change forces. Absent when there is nothing to reopen — a
@@ -124,7 +126,7 @@ export interface TerminalViewProps {
    */
   onReplay?: () => void
   /** Whether the session is still printing, i.e. still working. */
-  onWorking(working: boolean): void
+  onWorking: (working: boolean) => void
   /**
    * Whether the session's process has gone. Only the mouse gate reads it —
    * see `agentReadsMouse`.
@@ -137,7 +139,7 @@ export interface TerminalViewProps {
   turns: Turn[]
   /** Whether this tab's scrollback search bar is showing. */
   findOpen: boolean
-  onCloseFind(): void
+  onCloseFind: () => void
   /**
    * Filled in with a function that types text into this session, for the
    * surfaces outside the terminal that need to — the review panel handing a
@@ -261,48 +263,11 @@ export function TerminalView({
     },
     [shell],
   )
-  // Assigned while rendering, like every other handler the key route reads:
-  // that route is registered once, with the terminal, and must not be torn
-  // down and rebuilt as a completion appears and goes.
+  // Read through a ref, like every other handler the key route reads: that
+  // route is registered once, with the terminal, and must not be torn down
+  // and rebuilt as a completion appears and goes.
   const shellKey = useRef<((event: KeyboardEvent) => boolean) | null>(null)
-  shellKey.current = (event) => {
-    // A modified chord belongs to the shell whatever the list is showing:
-    // `⌥→` is `forward-word`, `⇧Enter` is a newline in several CLIs, and a
-    // list that swallowed them would take a key the reader has always had.
-    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
-      return false
-    }
-    switch (event.key) {
-      // The rest of the line, the way every shell that draws a completion
-      // accepts one — at the end of the line, where the key had nothing else
-      // to do.
-      case 'ArrowRight':
-        return shell.accept()
-      // Down enters the list. It is the one arrow a prompt can spare: with a
-      // line typed, a shell's own Down is already at the newest entry and
-      // does nothing.
-      case 'ArrowDown':
-        return shell.move(1)
-      // Up only walks a list already entered, so recalling the previous
-      // command still reaches the shell.
-      case 'ArrowUp':
-        return shell.move(-1)
-      // Enter fills the chosen row in and leaves it there: running it is
-      // still a press the reader makes, having read the line.
-      case 'Enter':
-        return shell.selected >= 0 && shell.accept()
-      case 'Escape':
-        return shell.dismiss()
-      default:
-        return false
-    }
-  }
   const copyLast = useRef<(() => boolean) | null>(null)
-  copyLast.current = () => {
-    const block = shell.lastFinished()
-    if (!block) return false
-    return copyOutput(block)
-  }
   /**
    * What this session's view supports — the rail's source, whether xterm
    * draws a scrollbar, and whether a width change has anything to repair.
@@ -344,16 +309,16 @@ export function TerminalView({
   // dozen, so past a dozen messages its length stops changing and a reset
   // that watched the length would never fire again.
   // A sentinel rather than the first value: a turn the agent wrote no
-  // timestamp for reads as the empty string, which would match a ref seeded
+  // timestamp for reads as the empty string, which would match a value seeded
   // with one and leave the walk at the mount-time zero.
   // Keyed on the length as well as the newest turn's timestamp, because the
   // timestamp alone is not unique: the agent may write a turn without one,
   // and two such turns in a row then compare equal while the list has grown —
   // leaving the walk short of the newest message by however many arrived.
   const newest = `${said.length}|${said.at(-1)?.at ?? ''}`
-  const walked = useRef<string | null>(null)
-  if (said.length > 0 && walked.current !== newest) {
-    walked.current = newest
+  const [walked, setWalked] = useState<string | null>(null)
+  if (said.length > 0 && walked !== newest) {
+    setWalked(newest)
     // A render-phase update of this component's own state, which React
     // re-renders in place: the walk has to be put back before the rail is
     // drawn, or one frame marks a dot the buttons have already left.
@@ -374,6 +339,9 @@ export function TerminalView({
   const integrated = useRef(false)
   /** Whether it is believed once the agent has handed back, and not before. */
   const integratedAfterHandback = useRef(false)
+  // Read through a ref by the link providers the spawn effect registers, and
+  // by the seek, so neither is rebuilt when the session ends.
+  const live = useRef(!ended)
   /**
    * Sets up a run of the wheel over the agent's own view, or answers null
    * when nothing may be sent.
@@ -472,7 +440,7 @@ export function TerminalView({
       const next = walkTo({ at: stepped, count: said.length, direction })
       setStepped(next)
       if (next === said.length) seekToBottom()
-      else void seekTo(said[next]!)
+      else void seekTo(said[next])
     },
     [said, stepped, seekTo, seekToBottom],
   )
@@ -481,7 +449,7 @@ export function TerminalView({
   const jumpToSaid = useCallback(
     (index: number) => {
       setStepped(index)
-      void seekTo(said[index]!)
+      void seekTo(said[index])
     },
     [said, seekTo],
   )
@@ -515,13 +483,9 @@ export function TerminalView({
   const { settings } = useSettings()
   const background = useBackground(settings.backgroundImage)
   const bell = useRef(onBell)
-  bell.current = onBell
   const agentEvent = useRef(onAgentEvent)
-  agentEvent.current = onAgentEvent
   const handback = useRef(onHandback)
-  handback.current = onHandback
   const adoptedExit = useRef(onAdoptedExit)
-  adoptedExit.current = onAdoptedExit
   /** The token this session's hand-back announcement carries, if any. */
   const handbackToken = useRef<string | null>(null)
   /**
@@ -532,7 +496,6 @@ export function TerminalView({
   /** Whether it has, so the terminal is a shell's from here on. */
   const handedBack = useRef(false)
   const working = useRef(onWorking)
-  working.current = onWorking
   /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
       pane cannot do it for itself. */
   const resync = useRef<(() => void) | null>(null)
@@ -545,20 +508,84 @@ export function TerminalView({
    */
   const releaseSelection = useRef<(() => void) | null>(null)
   const showing = useRef(active)
-  showing.current = active
   // Read through refs: these change with every poll, and the terminal is built
   // once. A dependency on them would tear the session down.
   const link = useRef({ cwd, home, onPath, onUrl })
-  link.current = { cwd, home, onPath, onUrl }
   // Read through a ref so changing a setting never re-runs the spawn effect.
   const latest = useRef(settings)
-  latest.current = settings
-  // Read the same way, by the link providers the spawn effect registers.
-  const live = useRef(!ended)
-  live.current = !ended
   // The session is fixed for the life of the tab, but reading it through a ref
   // keeps it out of the spawn effect's dependencies all the same.
   const launch = useRef(session)
+  // Written in a layout effect, after commit: a discarded render cannot leak
+  // into the terminal's listeners, and this commit's passive effects see it.
+  useLayoutEffect(() => {
+    shellKey.current = (event: KeyboardEvent) => {
+      // A modified chord belongs to the shell whatever the list is showing:
+      // `⌥→` is `forward-word`, `⇧Enter` is a newline in several CLIs, and a
+      // list that swallowed them would take a key the reader has always had.
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+        return false
+      }
+      switch (event.key) {
+        // The rest of the line, the way every shell that draws a completion
+        // accepts one — at the end of the line, where the key had nothing else
+        // to do.
+        case 'ArrowRight':
+          return shell.accept()
+        // Down enters the list. It is the one arrow a prompt can spare: with a
+        // line typed, a shell's own Down is already at the newest entry and
+        // does nothing.
+        case 'ArrowDown':
+          return shell.move(1)
+        // Up only walks a list already entered, so recalling the previous
+        // command still reaches the shell.
+        case 'ArrowUp':
+          return shell.move(-1)
+        // Enter fills the chosen row in and leaves it there: running it is
+        // still a press the reader makes, having read the line.
+        case 'Enter':
+          return shell.selected >= 0 && shell.accept()
+        case 'Escape':
+          return shell.dismiss()
+        default:
+          return false
+      }
+    }
+    copyLast.current = () => {
+      const block = shell.lastFinished()
+      if (!block) return false
+      return copyOutput(block)
+    }
+    bell.current = onBell
+    agentEvent.current = onAgentEvent
+    handback.current = onHandback
+    adoptedExit.current = onAdoptedExit
+    working.current = onWorking
+    showing.current = active
+    link.current = { cwd, home, onPath, onUrl }
+    latest.current = settings
+    live.current = !ended
+  }, [
+    shell,
+    copyOutput,
+    onBell,
+    onAgentEvent,
+    onHandback,
+    onAdoptedExit,
+    onWorking,
+    active,
+    cwd,
+    home,
+    onPath,
+    onUrl,
+    settings,
+    ended,
+  ])
+  useImperativeHandle(
+    paste,
+    () => (text: string) => terminal.current?.paste(text),
+    [],
+  )
   /**
    * Drops the history a new column count would ruin, and remembers the count.
    *
@@ -642,7 +669,7 @@ export function TerminalView({
      */
     term.options.linkHandler = {
       activate: (_event, uri) => {
-        if (!agentReadsMouse(term, live.current)) link.current!.onUrl(uri)
+        if (!agentReadsMouse(term, live.current)) link.current.onUrl(uri)
       },
       hover: (_event, uri, range) => {
         hoveredHyperlink = { uri, range }
@@ -654,7 +681,7 @@ export function TerminalView({
       },
     }
     const linksAddon = new WebLinksAddon(
-      (_event, uri) => link.current!.onUrl(uri),
+      (_event, uri) => link.current.onUrl(uri),
       {
         hover: (_event, uri) =>
           setLinkTarget({ uri, hint: openHint(term, live.current) }),
@@ -779,7 +806,7 @@ export function TerminalView({
       if (hyperlink && covers(hyperlink.range, cell, term.cols)) {
         return {
           range: hyperlink.range,
-          open: () => link.current!.onUrl(hyperlink.uri),
+          open: () => link.current.onUrl(hyperlink.uri),
         }
       }
       const found = linkAt(ungated, cell, term.cols)
@@ -1060,7 +1087,6 @@ export function TerminalView({
     })
     terminal.current = term
     setMounted(term)
-    if (paste) paste.current = (text: string) => term.paste(text)
 
     /**
      * How many bytes of output this terminal has been sent — the backend's
@@ -1108,7 +1134,7 @@ export function TerminalView({
         earlyHandbacks.current = null
         early.forEach(acceptHandback)
       } catch (error) {
-        term.writeln(`\r\n\x1b[31mfailed to start: ${error}\x1b[0m`)
+        term.writeln(`\r\n\x1b[31mfailed to start: ${String(error)}\x1b[0m`)
       }
     }
 
@@ -1284,12 +1310,10 @@ export function TerminalView({
       resync.current = null
       releaseSelection.current = null
       setMounted(null)
-      if (paste) paste.current = null
     }
     // Session identity is fixed for the life of the tab, so the spawn runs
-    // once: everything else this effect reads comes through a ref. `paste` is
-    // a ref object too, so it is stable by construction.
-  }, [paste, sessionId, settleCols])
+    // once: everything else this effect reads comes through a ref.
+  }, [sessionId, settleCols])
 
   /**
    * Scrolls to the message before or after the one at the top of the screen.
@@ -1470,7 +1494,7 @@ export function TerminalView({
       )}
       <div
         ref={host}
-        className="absolute inset-2 [&_.xterm]:h-full [&_.xterm-viewport]:!bg-transparent"
+        className="absolute inset-2 [&_.xterm]:h-full [&_.xterm-viewport]:bg-transparent!"
       />
       {openFileHere && (
         <ScrollPath
@@ -1547,8 +1571,8 @@ export function TerminalView({
           copied={copiedAt !== 0}
         />
       )}
-      {findOpen && search.current && (
-        <FindBar search={search.current} accent={accent} onClose={closeFind} />
+      {findOpen && mounted && (
+        <FindBar search={search} accent={accent} onClose={closeFind} />
       )}
       {linkTarget && <LinkHover {...linkTarget} />}
       {dropping && (
@@ -1556,7 +1580,7 @@ export function TerminalView({
           aria-hidden="true"
           className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-agent/70 p-4"
         >
-          <span className="rounded bg-chrome/95 px-2 py-1 text-[11px] text-muted">
+          <span className="rounded-sm bg-chrome/95 px-2 py-1 text-[11px] text-muted">
             Drop to type the path
           </span>
         </div>
@@ -1569,7 +1593,7 @@ export function TerminalView({
 interface RailEntry {
   key: string
   label: string
-  open(): void
+  open: () => void
 }
 
 /**
@@ -1616,9 +1640,7 @@ function Rail({
         >
           <span
             className={`rounded-full border border-current group-hover:bg-current ${
-              entry.key === current
-                ? 'h-[9px] w-[9px] bg-current'
-                : 'h-[7px] w-[7px]'
+              entry.key === current ? 'size-[9px] bg-current' : 'size-[7px]'
             }`}
           />
         </button>
@@ -1666,14 +1688,14 @@ function ScrollPath({
 }: {
   file: NamedFile
   fraction: number
-  onOpen(): void
+  onOpen: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onOpen}
       title={`Open ${file.path}`}
-      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur hover:border-agent hover:text-ink"
+      className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded-sm border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur-sm hover:border-agent hover:text-ink"
       style={{
         top: `calc(0.75rem + ${fraction} * (100% - ${STEPS_RESERVE}))`,
       }}
@@ -1697,7 +1719,7 @@ function ScrollPath({
  * platform also makes one host's ligatures the same as another's.
  */
 function withoutLocalFonts(activate: () => void) {
-  const query = Reflect.get(window, 'queryLocalFonts')
+  const query: unknown = Reflect.get(window, 'queryLocalFonts')
   if (query === undefined) return activate()
   Reflect.deleteProperty(window, 'queryLocalFonts')
   try {
@@ -1733,7 +1755,7 @@ function MessageSteps({
 }: {
   /** How many places there are to walk, from whichever source found them. */
   count: number
-  onStep(direction: -1 | 1): void
+  onStep: (direction: -1 | 1) => void
   /** Set when there is a session to reopen; absent on a launcher tab. */
   onReplay?: () => void
 }) {
@@ -1742,7 +1764,7 @@ function MessageSteps({
   return (
     <div // Left of the rail's own 16px lane rather than sharing it: both hug the
       // right edge, and stacked they took the clicks meant for the newest dots.
-      className="absolute right-10 bottom-3 z-20 flex flex-col overflow-hidden rounded-lg border border-line bg-chrome/95 shadow-lg backdrop-blur"
+      className="absolute right-10 bottom-3 z-20 flex flex-col overflow-hidden rounded-lg border border-line bg-chrome/95 shadow-lg backdrop-blur-sm"
     >
       {steppable && (
         <>
@@ -1751,7 +1773,7 @@ function MessageSteps({
             title="Previous message"
             aria-label="Scroll to the previous message you sent"
             onClick={() => onStep(-1)}
-            className="h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink"
+            className="size-6 text-muted hover:bg-surface-hover hover:text-ink"
           >
             ↑
           </button>
@@ -1763,7 +1785,7 @@ function MessageSteps({
             title="Next message"
             aria-label="Scroll to the next message you sent"
             onClick={() => onStep(1)}
-            className="h-6 w-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
+            className="size-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
           >
             ↓
           </button>
@@ -1775,7 +1797,7 @@ function MessageSteps({
           title="Redraw the conversation at this width — reopens the session with continue"
           aria-label="Redraw the conversation at this width by reopening the session"
           onClick={onReplay}
-          className={`h-6 w-6 text-muted hover:bg-surface-hover hover:text-ink ${
+          className={`size-6 text-muted hover:bg-surface-hover hover:text-ink ${
             steppable ? 'border-t border-line' : ''
           }`}
         >
@@ -1817,14 +1839,16 @@ function FindBar({
   accent,
   onClose,
 }: {
-  search: SearchAddon
+  /** Filled by the spawn effect before the terminal is mounted. */
+  search: RefObject<SearchAddon | null>
   /** The tab's agent colour, for the current match. */
   accent: string
-  onClose(): void
+  onClose: () => void
 }) {
   const options = useMemo(() => searchOptions(accent), [accent])
   const [query, setQuery] = useState('')
-  const [found, setFound] = useState({ index: -1, count: 0 })
+  const [results, setResults] = useState({ index: -1, count: 0 })
+  const found = query ? results : { index: -1, count: 0 }
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -1833,30 +1857,27 @@ function FindBar({
   }, [])
 
   useEffect(() => {
-    const results = search.onDidChangeResults(({ resultIndex, resultCount }) =>
-      setFound({ index: resultIndex, count: resultCount }),
+    const subscription = search.current?.onDidChangeResults(
+      ({ resultIndex, resultCount }) =>
+        setResults({ index: resultIndex, count: resultCount }),
     )
-    return () => results.dispose()
+    return () => subscription?.dispose()
   }, [search])
 
   // Incremental on the way in, so the first match is highlighted as you type.
   useEffect(() => {
-    if (!query) {
-      search.clearDecorations()
-      setFound({ index: -1, count: 0 })
-      return
-    }
-    search.findNext(query, { ...options, incremental: true })
+    if (!query) search.current?.clearDecorations()
+    else search.current?.findNext(query, { ...options, incremental: true })
   }, [search, query, options])
 
   const step = (forward: boolean) => {
     if (!query) return
-    if (forward) search.findNext(query, options)
-    else search.findPrevious(query, options)
+    if (forward) search.current?.findNext(query, options)
+    else search.current?.findPrevious(query, options)
   }
 
   return (
-    <div className="absolute top-3 right-4 z-20 flex items-center gap-1 rounded-lg border border-line bg-chrome/95 px-1.5 py-1 shadow-lg backdrop-blur">
+    <div className="absolute top-3 right-4 z-20 flex items-center gap-1 rounded-lg border border-line bg-chrome/95 px-1.5 py-1 shadow-lg backdrop-blur-sm">
       <input
         ref={input}
         value={query}
@@ -1873,7 +1894,7 @@ function FindBar({
             step(!event.shiftKey)
           }
         }}
-        className="h-6 w-[200px] rounded bg-surface px-2 font-mono text-xs text-ink select-text placeholder:text-faint focus:outline-none"
+        className="h-6 w-[200px] rounded-sm bg-surface px-2 font-mono text-xs text-ink select-text placeholder:text-faint focus:outline-none"
       />
       <span className="w-[68px] text-center font-mono text-[10px] text-faint">
         {query === ''
@@ -1887,7 +1908,7 @@ function FindBar({
         title="Previous match (⇧Enter)"
         aria-label="Previous match"
         onClick={() => step(false)}
-        className="h-6 w-6 rounded text-muted hover:bg-surface-hover hover:text-ink"
+        className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
         ↑
       </button>
@@ -1896,7 +1917,7 @@ function FindBar({
         title="Next match (Enter)"
         aria-label="Next match"
         onClick={() => step(true)}
-        className="h-6 w-6 rounded text-muted hover:bg-surface-hover hover:text-ink"
+        className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
         ↓
       </button>
@@ -1905,7 +1926,7 @@ function FindBar({
         title="Close search (Esc)"
         aria-label="Close search"
         onClick={onClose}
-        className="h-6 w-6 rounded text-muted hover:bg-surface-hover hover:text-ink"
+        className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
         ×
       </button>
@@ -2016,8 +2037,8 @@ function pathLinks(
   link: React.RefObject<{
     cwd: string
     home: string
-    onPath(path: string, line?: number): void
-    onUrl(url: string): void
+    onPath: (path: string, line?: number) => void
+    onUrl: (url: string) => void
   }>,
 ) {
   return (row: number, callback: (links: ILink[] | undefined) => void) => {
@@ -2043,7 +2064,7 @@ function pathLinks(
             // held, and leaks the 50ms drag-scroll interval. `clearSelection`
             // is what xterm's own mouseup path calls to undo it.
             term.clearSelection()
-            const { cwd, home, onPath } = link.current!
+            const { cwd, home, onPath } = link.current
             onPath(resolvePath(match.path, cwd, home), match.line)
           },
         } satisfies ILink,

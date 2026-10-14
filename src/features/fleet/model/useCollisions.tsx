@@ -1,8 +1,9 @@
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -56,7 +57,9 @@ export function CollisionProvider({
   // shape the compiler cannot check.
   const watching = JSON.stringify(tabs)
   const latest = useRef(tabs)
-  latest.current = tabs
+  useLayoutEffect(() => {
+    latest.current = tabs
+  }, [tabs])
 
   useEffect(() => {
     const watched = latest.current

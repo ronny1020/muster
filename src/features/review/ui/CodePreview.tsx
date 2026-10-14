@@ -144,7 +144,7 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
         /* Tailwind's preflight gives `code` the theme's mono stack, which beats
            the family inherited from here — so the font chosen for the terminal
            would be ignored by exactly the elements that show code. */
-        className="min-h-0 flex-1 overflow-auto [&_code]:[font-family:inherit]"
+        className="min-h-0 flex-1 overflow-auto [&_code]:font-[inherit]"
       >
         {rows.map((text, index) => (
           <div
@@ -214,7 +214,7 @@ function ImageBody({ path }: { path: string }) {
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3">
         {/* Checkered ground, so a transparent PNG is not invisible against a
             dark panel — which is most icons and every logo. */}
-        <div className="bg-[repeating-conic-gradient(#2a2a30_0%_25%,#1d1d21_0%_50%)] bg-[length:16px_16px] p-1">
+        <div className="bg-[repeating-conic-gradient(#2a2a30_0%_25%,#1d1d21_0%_50%)] bg-size-[16px_16px] p-1">
           <img
             src={image.dataUrl}
             alt={path}

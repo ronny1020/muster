@@ -14,10 +14,13 @@ export interface GitRun {
   notice: Notice | null
   /** The commit message being written. */
   draft: string
-  setDraft(update: string | ((draft: string) => string)): void
+  setDraft: (update: string | ((draft: string) => string)) => void
   /** Runs `action` under a fresh op id, reporting `done` when git says nothing. */
-  run(action: (op: string) => Promise<string>, done: string): Promise<boolean>
-  cancel(): void
+  run: (
+    action: (op: string) => Promise<string>,
+    done: string,
+  ) => Promise<boolean>
+  cancel: () => void
 }
 
 /**

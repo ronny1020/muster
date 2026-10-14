@@ -23,16 +23,47 @@ Vite, and no bundler config beyond `build.ts`.
 ## Setup
 
 ```bash
+bun upgrade --canary
 bun install
 ```
 
-You need [Bun](https://bun.sh) and a [Rust toolchain](https://rustup.rs). The
-exact Bun version is in `.bun-version`, which is what CI installs — a newer Bun
-rewrites `bun.lock` and would fail CI's `--frozen-lockfile` on a lockfile that
-is fine locally. Bump that file and the lockfile together.
+You need [Bun](https://bun.sh) and a [Rust toolchain](https://rustup.rs).
+`.bun-version` is what CI installs, and it is `canary` — `bun fmt` and `bun
+lint` are not in a release yet — hence the upgrade, and the `-0` in
+`engines.bun`, which admits 1.4.4's prereleases; Bun does not enforce the
+field, so it records the version rather than gating it. A canary that
+rewrites `bun.lock` fails CI's `--frozen-lockfile` until `bun install` has been
+run with it, and one that brings a new TypeScript fails
+`test/typescript.test.ts` until its pin moves. Once a stable release carries
+both, the repo moves to it: see
+[Moving to a stable Bun](#moving-to-a-stable-bun). Peer dependencies are not
+installed (`bunfig.toml`), so a package whose peer you need has to be added to
+`package.json` yourself. Node is not needed: `bunfig.toml`'s
+`[run] bun = true` runs every script on Bun, the Tauri CLI and husky included,
+though their files ask for `node`.
+
 On Debian or Ubuntu also install `libwebkit2gtk-4.1-dev`, `build-essential`,
 `libssl-dev`, `libappindicator3-dev`, `librsvg2-dev` and `patchelf`. CI installs
 a subset of these (see `.github/workflows/ci.yml`); a local build wants them all.
+
+In VS Code, install the workspace's recommended extensions. Its settings turn
+on the TypeScript 7 extension, whose bundled TypeScript is close to — but not
+pinned to — the one `bun run check` runs (`bun -p process.versions.typescript`).
+
+### Moving to a stable Bun
+
+The canary is temporary. When a stable Bun release ships `bun fmt` and
+`bun lint`, pin that exact version, in one change:
+
+1. `.bun-version`: the version, e.g. `1.4.5`, in place of `canary`.
+2. `package.json`: `engines.bun` set to the same version, without the `-0`.
+3. `bun upgrade --stable`, which leaves the canary for the latest release,
+   then `bun install`, keeping `bun.lock` if it changed.
+4. Run `bun run check:all`. `test/typescript.test.ts` then requires that exact
+   Bun; if the release moved TypeScript, update `PINNED_TYPESCRIPT`.
+5. Update the text that names the canary: the Setup block and paragraph above,
+   this section, AGENTS.md's typecheck paragraph, and the comments in
+   `ci.yml`, `release.yml` and `test/typescript.test.ts`.
 
 ## Running
 
@@ -72,10 +103,11 @@ it.
 
 ## Checks
 
-A `husky` pre-commit hook runs these for you: `lint-staged` formats the staged
-files (Prettier for everything, `rustfmt` for Rust), then the typecheck and
-tests run, with `bun run check:rust` only when Rust changed — the hook calls the
-same script as CI, so neither can quietly check less than the other. Run them by
+A `husky` pre-commit hook runs these for you: `bun fmt --staged` formats the
+staged files, then the typecheck, the lint and the tests run. `bun run
+check:rust` runs only when Rust changed, and it checks Rust's formatting rather
+than fixing it, so run `cargo fmt` first. That script runs the four cargo
+commands CI's backend job runs, so a command added to one belongs in the other. Run them by
 hand before opening a pull request too — `.github/workflows/ci.yml` runs the same set, and
 clippy is `-D warnings` there.
 
@@ -89,8 +121,8 @@ deleted and re-cut — which is how the Linux leg of v0.2.1 was discovered broke
 Spelled out, because knowing which one failed is the point:
 
 ```bash
-bun run check                     # tsc --noEmit
-bun run format:check              # prettier; `bun run format` fixes it
+bun run check                     # bun --check, Bun's built-in TypeScript checker
+bun run lint                      # bun lint, type-aware, JS/TS formatting included; any warning fails it — `bun run lint:fix` applies its fixes
 (cd src-tauri && cargo fmt --check) # rustfmt; `cargo fmt` fixes it
 cd src-tauri && cargo check --all-targets  # rustc alone: a compile error reads
                                   # better here than through clippy or a test
@@ -103,9 +135,11 @@ bun test                          # settings, deck, persist, flags, git chips,
                                   # files, highlighting, the file tree, file
                                   # icons, markdown rendering, font metrics,
                                   # panel widths, the code style, image paths,
-                                  # byte sizes, the agent combobox — and
-                                  # `test/layers`, which
-                                  # enforces the import direction
+                                  # byte sizes, the agent combobox, keyed
+                                  # async state — plus `test/typescript`, which
+                                  # pins the checker's TypeScript, and
+                                  # `test/layers`, which enforces the import
+                                  # direction
 cd src-tauri && cargo test --lib  # git parsing, shell quoting, cwd reading, WSL
                                   # paths, image MIME, session lookup,
                                   # directory creation,
@@ -220,6 +254,12 @@ building.
 | Material icons, and which file gets which             | `src/shared/ui/`                                                   |
 | Text a dropped file types                             | `src-tauri/src/platform.rs`                                        |
 | Drawer widths, dragged and remembered                 | `src/shared/lib/usePanelWidth.ts`                                  |
+| State that resets when an input changes               | `src/shared/lib/useKeyChange.ts`                                   |
+| An async result that belongs to one input             | `src/shared/lib/useKeyedState.ts`                                  |
+| "3 minutes ago" labels that keep counting             | `src/shared/lib/useNow.ts`                                         |
+| Lint rules                                            | `bunfig.toml`'s `[lint]`, read by `bun lint`                       |
+| Formatting                                            | `.prettierrc`, read by `bun fmt`                                   |
+| Tailwind's class order                                | `bunfig.toml`'s `[fmt.sortTailwindcss]`, read by `bun fmt`         |
 | Which paths are images                                | `src/shared/lib/imagepaths.ts`                                     |
 | Windows' caption buttons                              | `src/shared/ui/WindowControls.tsx`                                 |
 | The frame Windows does not draw                       | `src-tauri/tauri.windows.conf.json`                                |
@@ -427,8 +467,10 @@ Match the surrounding code. The parts worth stating:
 - Keep logic out of components. If something is worth a test, it belongs in a
   plain module a test can call directly — a new file in the relevant slice's
   `model/` segment is welcome, not a last resort.
-- There is no ESLint here, and no lint step among the checks. Nothing will catch
-  a wrong hook dependency array for you, so read them.
+- `bun run lint` is `bun lint` reading `bunfig.toml`, and a warning fails
+  it as an error does. Fix what it reports; where a rule is wrong about a
+  deliberate line, suppress that rule on that line with the reason —
+  `// eslint-disable-next-line <rule> -- <why>` — and never for a whole file.
 - Test names read as behaviours — "closing the active tab focuses the one that
   slid into its place", not "test close". Cover the edge that would actually
   bite: an empty deck, a corrupt stored setting, a truncated `git` record.

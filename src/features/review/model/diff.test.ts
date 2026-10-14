@@ -28,7 +28,7 @@ describe('parsePatch', () => {
     const [hunk] = parsePatch(PATCH).hunks
 
     expect(
-      hunk!.lines.map((line) => [line.kind, line.oldLine, line.newLine]),
+      hunk.lines.map((line) => [line.kind, line.oldLine, line.newLine]),
     ).toEqual([
       ['context', 10, 10],
       ['del', 11, null],
@@ -42,9 +42,9 @@ describe('parsePatch', () => {
     // git writes `@@ -1 +1 @@` for a one-line hunk.
     const { hunks } = parsePatch('@@ -1 +1 @@\n-old\n+new\n')
 
-    expect(hunks[0]!.oldStart).toBe(1)
-    expect(hunks[0]!.newStart).toBe(1)
-    expect(hunks[0]!.lines).toHaveLength(2)
+    expect(hunks[0].oldStart).toBe(1)
+    expect(hunks[0].newStart).toBe(1)
+    expect(hunks[0].lines).toHaveLength(2)
   })
 
   test('the next file’s header ends the hunk rather than joining it', () => {
@@ -61,8 +61,8 @@ diff --git a/b.txt b/b.txt
     const { hunks } = parsePatch(two)
 
     expect(hunks).toHaveLength(2)
-    expect(hunks[0]!.lines).toHaveLength(2)
-    expect(hunks[1]!.oldStart).toBe(5)
+    expect(hunks[0].lines).toHaveLength(2)
+    expect(hunks[1].oldStart).toBe(5)
   })
 
   test('a binary file reports itself rather than parsing to nothing', () => {
@@ -79,11 +79,11 @@ diff --git a/b.txt b/b.txt
     const { hunks } = parsePatch(
       '@@ -1,1 +1,1 @@\n-one\n\\ No newline at end of file\n+one\n',
     )
-    const meta = hunks[0]!.lines[1]!
+    const meta = hunks[0].lines[1]
 
     expect(meta.kind).toBe('meta')
     expect(meta.text).toBe('No newline at end of file')
-    expect(hunks[0]!.lines[2]!.newLine).toBe(1)
+    expect(hunks[0].lines[2].newLine).toBe(1)
   })
 
   test('the synthesised patch for a new file parses as all additions', () => {
@@ -93,8 +93,8 @@ diff --git a/b.txt b/b.txt
       '--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+alpha\n+beta\n',
     )
 
-    expect(hunks[0]!.lines.map((line) => line.newLine)).toEqual([1, 2])
-    expect(hunks[0]!.lines.every((line) => line.kind === 'add')).toBe(true)
+    expect(hunks[0].lines.map((line) => line.newLine)).toEqual([1, 2])
+    expect(hunks[0].lines.every((line) => line.kind === 'add')).toBe(true)
   })
 
   test('a patch with no hunks at all is empty, not an error', () => {
@@ -118,17 +118,17 @@ describe('highlighting input', () => {
 
   test('a row’s index is where its text landed on that side', () => {
     const { hunks } = parsePatch(PATCH)
-    const lines = hunks[0]!.lines
+    const lines = hunks[0].lines
     const old = sideIndex(hunks, 'old')
     const fresh = sideIndex(hunks, 'new')
 
     // The removed line is on the old side only, the added ones on the new.
-    expect(old.get(lines[1]!)).toBe(1)
-    expect(fresh.has(lines[1]!)).toBe(false)
-    expect(fresh.get(lines[3]!)).toBe(2)
+    expect(old.get(lines[1])).toBe(1)
+    expect(fresh.has(lines[1])).toBe(false)
+    expect(fresh.get(lines[3])).toBe(2)
     // The trailing context line follows both sides' additions.
-    expect(old.get(lines[4]!)).toBe(2)
-    expect(fresh.get(lines[4]!)).toBe(3)
+    expect(old.get(lines[4])).toBe(2)
+    expect(fresh.get(lines[4])).toBe(3)
   })
 })
 
@@ -154,7 +154,7 @@ describe('usedSides', () => {
 describe('hunksWithin', () => {
   const hunk = (rows: number) =>
     parsePatch(`@@ -1,${rows} +1,${rows} @@\n${'+line\n'.repeat(rows)}`)
-      .hunks[0]!
+      .hunks[0]
 
   test('a diff inside the budget is drawn whole', () => {
     const { hunks, rows, total } = hunksWithin([hunk(3), hunk(4)], 100)
@@ -176,13 +176,13 @@ describe('hunksWithin', () => {
     const { hunks, rows, total } = hunksWithin([hunk(50)], 10)
 
     expect(hunks).toHaveLength(1)
-    expect(hunks[0]!.lines).toHaveLength(10)
+    expect(hunks[0].lines).toHaveLength(10)
     expect([rows, total]).toEqual([10, 50])
   })
 
   test('a cut hunk keeps the numbering of the rows it kept', () => {
     const { hunks } = hunksWithin([hunk(50)], 3)
-    const kept = hunks[0]!.lines.map((line) => line.newLine)
+    const kept = hunks[0].lines.map((line) => line.newLine)
 
     expect(kept).toEqual([1, 2, 3])
   })

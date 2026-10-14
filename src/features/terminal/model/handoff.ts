@@ -45,9 +45,9 @@ export interface HandoffSource {
    * Stops drawing and answers a snapshot, or `null` for a terminal with no
    * session yet. Nothing is drawn after it, so nothing after `offset` is lost.
    */
-  detach(): Promise<TerminalHandoff | null>
+  detach: () => Promise<TerminalHandoff | null>
   /** Takes the session back after a move that failed, from where it stopped. */
-  resume(): void
+  resume: () => void
 }
 
 const sources = new Map<string, HandoffSource>()

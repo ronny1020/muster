@@ -92,9 +92,8 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          # Pinned, not `latest`: a newer Bun rewrites `bun.lock`, and
-          # `--frozen-lockfile` then fails on a lockfile that is perfectly
-          # valid for the version the project actually uses.
+          # The pin CI uses, `canary`, resolved on the day of the release, so
+          # a release builds with that day's canary.
           bun-version-file: .bun-version
 
       - uses: dtolnay/rust-toolchain@stable
@@ -109,6 +108,10 @@ jobs:
       # has to match its source; the cache only saved minutes.
 
       - run: bun install --frozen-lockfile
+
+      # The canary is that day's, so check it still carries the pinned
+      # TypeScript before it typechecks the release.
+      - run: bun test test/typescript.test.ts
 
       # `beforeBuildCommand` typechecks and bundles the frontend, so this is the
       # only build step.

@@ -106,7 +106,7 @@ test('the revision does not move on its own', () => {
   // It was a `Date.now()`, which tore down an open diff every poll.
   const twice = [1, 2].map(() => treeRevision('/work/repo', status()))
 
-  expect(twice[0]).toBe(twice[1]!)
+  expect(twice[0]).toBe(twice[1])
 })
 
 test('a directory that is not a repository still has a revision', () => {

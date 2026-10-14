@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 import { readTextFile, type TextFile } from '../../../shared/ipc'
+import { useKeyedState } from '../../../shared/lib/useKeyedState'
 
 export interface TextFileState {
   file: TextFile | null
   error: string | null
 }
+
+/** Nothing read yet for this path and revision. */
+const UNREAD: TextFileState = { file: null, error: null }
 
 /**
  * A file read as text.
@@ -16,25 +20,25 @@ export interface TextFileState {
  * column follows an agent still editing the file you are looking at.
  */
 export function useTextFile(path: string, revision: string): TextFileState {
-  const [state, setState] = useState<TextFileState>({
-    file: null,
-    error: null,
-  })
+  const [state, setState] = useKeyedState<TextFileState>(
+    [path, revision],
+    UNREAD,
+  )
 
   useEffect(() => {
     let live = true
-    setState({ file: null, error: null })
     void readTextFile(path).then(
-      (file) => live && setState({ file, error: null }),
+      (file) => live && setState([path, revision], { file, error: null }),
       (error: unknown) =>
-        live && setState({ file: null, error: String(error) }),
+        live &&
+        setState([path, revision], { file: null, error: String(error) }),
     )
     return () => {
       live = false
     }
     // `revision` is the caller's "the tree moved": without it a file rewritten
     // by the agent sat on screen unchanged, beside a drawer that had updated.
-  }, [path, revision])
+  }, [path, revision, setState])
 
   return state
 }

@@ -89,7 +89,7 @@ function propertyEvent(rest: string): ShellEvent | null {
 }
 
 /** C0 and DEL, which neither a path nor a command may carry. */
-const CONTROL = /[\u0000-\u001f\u007f]/
+export const CONTROL = /[\u0000-\u001f\u007f]/ // eslint-disable-line no-control-regex -- matching them is its job
 
 /**
  * The value behind a property's escaping: `;` would end the field, and `\`
@@ -106,15 +106,15 @@ function unescapeValue(text: string): string {
 /** The parts of xterm's buffer this reads, so a test can supply them. */
 export interface BlockLine {
   isWrapped: boolean
-  translateToString(
+  translateToString: (
     trimRight?: boolean,
     startColumn?: number,
     endColumn?: number,
-  ): string
+  ) => string
 }
 export interface BlockBuffer {
   readonly length: number
-  getLine(row: number): BlockLine | undefined
+  getLine: (row: number) => BlockLine | undefined
 }
 
 /**

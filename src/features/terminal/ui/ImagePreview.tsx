@@ -10,7 +10,7 @@ export interface ImagePreviewProps {
   preview: Preview | null
   /** Set when the read failed, so the click is never silently ignored. */
   error: string | null
-  onClose(): void
+  onClose: () => void
 }
 
 /**
@@ -59,7 +59,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
               <button
                 type="button"
                 onClick={() => void revealItemInDir(preview.path).catch(report)}
-                className="flex-none rounded px-1 text-[11px] text-muted hover:bg-surface-hover hover:text-ink"
+                className="flex-none rounded-sm px-1 text-[11px] text-muted hover:bg-surface-hover hover:text-ink"
               >
                 Reveal
               </button>
@@ -69,7 +69,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
             type="button"
             aria-label="Close preview"
             onClick={onClose}
-            className="h-5 w-5 flex-none rounded text-muted hover:bg-surface-hover hover:text-ink"
+            className="size-5 flex-none rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
           >
             ×
           </button>
@@ -79,7 +79,7 @@ export function ImagePreview({ preview, error, onClose }: ImagePreviewProps) {
           <p className="m-0 px-3 py-4 text-[11px] text-danger">{error}</p>
         ) : (
           // The checkerboard is what makes a transparent PNG readable.
-          <div className="min-h-0 overflow-auto bg-[repeating-conic-gradient(#26262b_0%_25%,#1b1b1f_0%_50%)] bg-[length:16px_16px] p-4">
+          <div className="min-h-0 overflow-auto bg-[repeating-conic-gradient(#26262b_0%_25%,#1b1b1f_0%_50%)] bg-size-[16px_16px] p-4">
             <img
               src={preview!.dataUrl}
               alt={preview!.path}

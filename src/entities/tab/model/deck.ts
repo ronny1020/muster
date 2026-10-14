@@ -396,7 +396,7 @@ function moveTab(deck: Deck, id: string, index: number): Deck {
 
   const tabs = [...deck.tabs]
   const [tab] = tabs.splice(from, 1)
-  tabs.splice(to, 0, tab!)
+  tabs.splice(to, 0, tab)
   return { ...deck, tabs }
 }
 
@@ -411,7 +411,7 @@ function patch(
   const index = deck.tabs.findIndex((tab) => tab.id === id)
   if (index === -1) return deck
 
-  const tab = deck.tabs[index]!
+  const tab = deck.tabs[index]
   const fields = change(tab)
   // Identity is what tells React and the persistence layer that something
   // happened, so a change that changes nothing must not produce a new deck:

@@ -402,7 +402,7 @@ test('a real change still produces a new deck', () => {
     dirty: true,
   })
   expect(moved).not.toBe(deck)
-  expect(moved.tabs[0]!.dirty).toBe(true)
+  expect(moved.tabs[0].dirty).toBe(true)
 })
 
 test('an action for a tab that is gone leaves the deck alone', () => {
@@ -611,7 +611,7 @@ test('moving a tab onto its own place, or an unknown tab, changes nothing', () =
 })
 
 test('a tab moved in from another window joins the strip and comes forward', () => {
-  const moved = { ...deckOf(1).tabs[0]!, id: 'moved', title: 'from afar' }
+  const moved = { ...deckOf(1).tabs[0], id: 'moved', title: 'from afar' }
   const deck = deckReducer(deckOf(2), { type: 'adopt', tab: moved })
   expect(deck.tabs.map((tab) => tab.id)).toEqual(['tab-1', 'tab-2', 'moved'])
   expect(deck.activeId).toBe('moved')
@@ -619,7 +619,7 @@ test('a tab moved in from another window joins the strip and comes forward', () 
 })
 
 test('a tab dropped onto the strip joins where it was dropped', () => {
-  const moved = { ...deckOf(1).tabs[0]!, id: 'moved' }
+  const moved = { ...deckOf(1).tabs[0], id: 'moved' }
   const deck = deckReducer(deckOf(3), { type: 'adopt', tab: moved, index: 1 })
   expect(deck.tabs.map((tab) => tab.id)).toEqual([
     'tab-1',

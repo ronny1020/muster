@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { webHref } from '../../../shared/lib/weburl'
 
@@ -65,6 +71,7 @@ import { handbackNotice } from '../../../features/terminal/model/handback'
 import { SettingsPane } from '../../../features/settings/ui/SettingsPane'
 import { StatusBar } from '../../../features/workspace/ui/StatusBar'
 import { TerminalView } from '../../../features/terminal/ui/TerminalView'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
 interface ImagePreviewState {
   image: Image | null
@@ -74,10 +81,10 @@ interface ImagePreviewState {
 export interface PaneProps {
   tab: Tab
   active: boolean
-  onLaunch(request: LaunchRequest): void
+  onLaunch: (request: LaunchRequest) => void
   /** Passed rather than dispatched here: a new tab's id is minted in `App`. */
-  onOpenSettings(): void
-  dispatch(action: DeckAction): void
+  onOpenSettings: () => void
+  dispatch: (action: DeckAction) => void
 }
 
 /**
@@ -115,7 +122,9 @@ export function Pane({
   const editor = preferredEditor(useEditors(), settings.editorCommand)
   // Read through a ref: onPath is built once, the editor arrives asynchronously.
   const editorRef = useRef(editor)
-  editorRef.current = editor
+  useLayoutEffect(() => {
+    editorRef.current = editor
+  }, [editor])
   const git = workspace?.git
   const historyOpen = tab.historyOpen && Boolean(git?.repo)
   const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
@@ -221,9 +230,11 @@ export function Pane({
   }
 
   // The relaunch has landed and the terminal has unmounted, so the new session
-  // can start into a fresh one.
+  // can start into a fresh one. An effect because it has to wait for that
+  // commit: launching any earlier would hand the new session the old terminal.
   useEffect(() => {
     if (!resuming || session) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- waits for the unmount commit
     setResuming(null)
     onLaunch(resuming)
   }, [resuming, session, onLaunch])
@@ -298,10 +309,10 @@ export function Pane({
   // A session that `cd`s elsewhere is looking at another tree: a file from the
   // last one, and a base branch that may not exist in this one, are both stale
   // rather than merely old.
-  useEffect(() => {
+  useKeyChange([cwd], () => {
     setViewed(null)
     setBase('')
-  }, [cwd])
+  })
   // Filled in by the terminal once it exists, so the panel and a file drop
   // can both put text in front of the agent.
   const paste = useRef<((text: string) => void) | null>(null)
@@ -332,6 +343,14 @@ export function Pane({
       setPreview({ image: null, error: String(error) }),
     )
   }, [])
+
+  /** Read through refs: `onPath` is built once, these move under it. */
+  const cwdRef = useRef(cwd)
+  const baseRef = useRef(base)
+  useLayoutEffect(() => {
+    cwdRef.current = cwd
+    baseRef.current = base
+  }, [cwd, base])
 
   /**
    * A path clicked in the output.
@@ -394,12 +413,6 @@ export function Pane({
     },
     [dispatch, openFile, tab.id],
   )
-
-  /** Read through refs: `onPath` is built once, these move under it. */
-  const cwdRef = useRef(cwd)
-  cwdRef.current = cwd
-  const baseRef = useRef(base)
-  baseRef.current = base
 
   /** Puts a path in front of the agent, quoted as a drop would be. */
   const sendPath = useCallback(

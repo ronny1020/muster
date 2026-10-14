@@ -15,19 +15,19 @@
  */
 
 export interface Cell {
-  getChars(): string
+  getChars: () => string
   /** 2 for a wide glyph, 0 for the placeholder cell that follows it. */
-  getWidth(): number
+  getWidth: () => number
 }
 
 export interface BufferLine {
   isWrapped: boolean
   length: number
-  getCell(index: number): Cell | undefined
+  getCell: (index: number) => Cell | undefined
 }
 
 export interface Buffer {
-  getLine(index: number): BufferLine | undefined
+  getLine: (index: number) => BufferLine | undefined
 }
 
 /** Where one character of the flattened text sits in the buffer. */
@@ -112,7 +112,7 @@ export function covers(range: CellRange, cell: CellPosition, cols: number) {
 }
 
 interface LinkSource<Link> {
-  provideLinks(row: number, callback: (links?: Link[]) => void): void
+  provideLinks: (row: number, callback: (links?: Link[]) => void) => void
 }
 
 /**

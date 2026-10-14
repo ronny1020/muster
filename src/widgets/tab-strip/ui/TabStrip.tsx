@@ -28,18 +28,18 @@ import { ContextMenu, type MenuItem } from '../../../shared/ui/ContextMenu'
 export interface TabStripProps {
   tabs: Tab[]
   activeId: string
-  onSelect(id: string): void
-  onClose(id: string): void
+  onSelect: (id: string) => void
+  onClose: (id: string) => void
   /** A tab dragged, or moved by keyboard, to `index` of the strip. */
-  onMove(id: string, index: number): void
+  onMove: (id: string, index: number) => void
   /** Takes a tab out into a window of its own, its session still running. */
-  onMoveToNewWindow(id: string): void
+  onMoveToNewWindow: (id: string) => void
   /**
    * A tab dragged off the strip and released; `grab` places its window. The
    * tab stays out of the strip until the returned promise settles.
    */
-  onTearOff(id: string, grab: Grab): Promise<void>
-  onOpen(): void
+  onTearOff: (id: string, grab: Grab) => Promise<void>
+  onOpen: () => void
 }
 
 /** Chrome-style strip: tabs sit in the titlebar, active tab merges with the pane. */
@@ -128,7 +128,7 @@ export function TabStrip({
       <div
         ref={strip}
         role="tablist"
-        className="flex min-w-0 items-end gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex min-w-0 [scrollbar-width:none] items-end gap-0.5 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab, index) => (
           <Fragment key={tab.id}>
@@ -160,7 +160,7 @@ export function TabStrip({
         title={`New tab (${SHORTCUTS.open})`}
         aria-label="New tab"
         onClick={onOpen}
-        className="mb-1 h-[26px] w-[26px] flex-none rounded-[7px] text-[17px] leading-none text-muted hover:bg-surface-hover hover:text-ink"
+        className="mb-1 size-[26px] flex-none rounded-[7px] text-[17px] leading-none text-muted hover:bg-surface-hover hover:text-ink"
       >
         +
       </button>
@@ -193,10 +193,10 @@ interface TabButtonProps {
   active: boolean
   dragging: boolean
   dragStyle: CSSProperties | undefined
-  onSelect(): void
-  onClose(): void
-  onDragStart(event: PointerEvent<HTMLElement>): void
-  onMenu(event: MouseEvent<HTMLElement>): void
+  onSelect: () => void
+  onClose: () => void
+  onDragStart: (event: PointerEvent<HTMLElement>) => void
+  onMenu: (event: MouseEvent<HTMLElement>) => void
 }
 
 /** Well inside `ghost.rs`'s `SILENCE`, so a slow frame never drops the label. */
@@ -291,11 +291,9 @@ function TabButton({
       }}
     >
       <StatusDot tab={tab} accent={accent} />
-      <span className="flex-1 overflow-hidden font-medium text-ellipsis whitespace-nowrap">
-        {tab.title}
-      </span>
+      <span className="flex-1 truncate font-medium">{tab.title}</span>
       {tab.detail && (
-        <span className="max-w-[88px] flex-initial overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-faint">
+        <span className="max-w-[88px] flex-initial truncate text-[11px] text-faint">
           {tab.detail}
         </span>
       )}
@@ -313,7 +311,7 @@ function TabButton({
           event.stopPropagation()
           onClose()
         }}
-        className={`h-[18px] w-[18px] flex-none rounded-[5px] text-sm leading-none hover:bg-[#48484f] hover:opacity-100 ${
+        className={`size-[18px] flex-none rounded-[5px] text-sm leading-none hover:bg-[#48484f] hover:opacity-100 ${
           active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65'
         }`}
       >
@@ -343,7 +341,7 @@ function StatusDot({ tab, accent }: { tab: Tab; accent: string }) {
     <>
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 flex-none rounded-full ${
+        className={`size-1.5 flex-none rounded-full ${
           tab.status === 'working' || tab.attention ? 'animate-pulse' : ''
         }`}
         style={{
