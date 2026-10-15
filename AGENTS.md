@@ -224,7 +224,10 @@ in the middle. A filename holding that sequence — git stores arbitrary path
 bytes, and an agent picks its own filenames — ends paste mode early, and the
 rest arrives as typed keys with a carriage return to submit them. Balanced
 quoting does not help, because the shell's line editor never sees quotes at
-all.
+all. The clipboard is the other way in, so it is filtered too: **Copy path**
+refuses a path carrying any control byte (`isPlainPath`, the same rule), and
+an `OSC 52` write refuses any control character other than a tab or a line
+break (`isPasteable`) — both in `shared/lib/paste.ts`.
 
 **`build.ts` must keep both its flags.** `define` sets `import.meta.env.DEV` to
 `false`, and without it Bun leaves that expression in the bundle — where
@@ -338,6 +341,8 @@ closing another tab's panel.
 - Dispose every addon before the terminal, and hold a handle to each so you can.
 - Three addons are pinned exactly — webgl, ligatures and serialize — and the rest keep ranges.
 - Ligatures are activated with the Local Font Access API hidden.
+- Cell widths are Unicode 11's, because that is what the CLIs lay out with.
+- `OSC 52` writes the clipboard and never reads it.
 - A multi-line prompt reports its end twice.
 - The command a block ran is the shell's answer, never the row it was drawn on.
 - Only a session Muster injected into is believed, and the backend is what says so.

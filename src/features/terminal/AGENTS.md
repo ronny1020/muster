@@ -69,7 +69,7 @@ only line that reads it is the addon's own dispose callback — so every
 terminal rendered correctly and closing a tab threw, on every close, whatever
 the dispose order. So the pin is `0.18.0` — the build that pairs with xterm
 5.5.0 — exactly rather than ranged; ligatures and serialize are pinned for
-the peer-range trap the ligatures invariant below describes. The other four
+the peer-range trap the ligatures invariant below describes. The other five
 addons and the core keep `^` ranges, and `test/xterm.test.ts`
 is what stands behind them — it fails when an addon names a core field this
 xterm does not have. Read its doc comment before trusting a green run: the
@@ -95,6 +95,54 @@ enumeration in the root AGENTS.md's Scope section and has the side effect of
 making one host's ligatures match another's. The version is the last on the
 xterm 5 line (`0.9.0`, peer `^5.0.0`); `0.10.0` declares no peer at all, which
 is the trap the pinning invariant above describes.
+
+**Cell widths are Unicode 11's, because that is what the CLIs lay out
+with.** xterm's default table is Unicode 6, where `✅`, `❌` and `🔥` take one
+cell; an Ink CLI measures them with `string-width`, which gives two, so every
+row carrying one drew a column short and the frame's right edge went ragged.
+`Unicode11Addon` closes that for single code points — measured against
+`@xterm/headless` 5.5.0, those three go from 1 to 2 and CJK and Claude Code's
+`⏺ ⎿ ✻` do not move. Sequences are still wrong: `⚠️` (a base plus a
+variation selector) stays at 1 against `string-width`'s 2, and a skin-tone
+emoji goes to 4. The grapheme addon that fixes those exists only for xterm 6.
+The addon is `^0.8.0` because 0.8 is the xterm 5 build (peer `^5.0.0`) and
+0.9 is xterm 6's — the same pairing as the pinned addons above, so the core
+stays on 5.5 and moves with them, by hand.
+
+**`OSC 52` writes the clipboard and never reads it.** It is how a TUI copies:
+Claude Code's copy-on-select in a clicks tab sends the selection that way —
+measured, 21 of 103 recorded sessions here carry `OSC 52;c;…`, and none a
+query. xterm 5.5 answers none of it on its own. `clipboardWrite` answers
+`null` for a query, and the handler then claims it and replies nothing,
+because the reply would hand the clipboard to whatever asked — and any
+command's output can ask.
+
+A write is honoured only from the tab on screen in the focused window: every
+pane stays mounted and every window has an active tab, so a tab printing a
+file anywhere else would otherwise replace what the reader last copied. And
+text carrying a control character is refused, because a paste is wrapped in
+bracketed-paste markers xterm does not sanitise — a write holding `ESC[201~`
+would end the next paste early and type the rest, the hazard the
+`drop_text` invariant in the root AGENTS.md describes, reached through the
+clipboard instead. Line breaks pass, so a paste into a program that never turned bracketed
+paste on still submits each line — the usual trade for honouring `OSC 52`.
+
+The write goes through `tauri-plugin-clipboard-manager`, not the webview's
+`navigator.clipboard`, which in WebKit wants a user gesture — and an `OSC 52`
+copy has none. The webview's API is only the fallback for a page with no Tauri
+host behind it. The capability grants `allow-write-text` alone, so the plugin
+cannot read the clipboard, for this handler or anything else in the webview.
+
+The handler is ours rather than `@xterm/addon-clipboard`'s. Its 0.1.0 build —
+the one paired with xterm 5.5 — is constructed `(base64, provider)` while its
+typings declare `(provider?)`, so a write-only provider could be passed only
+past the compiler, and the default provider would answer queries.
+
+Progress is the sequence the same recordings do not carry: `OSC 9;4`, which
+Claude Code can emit (`terminalProgressBarEnabled`), appears in none of the
+103, and what makes the CLI decide is not known here — so neither a handler
+nor `@xterm/addon-progress` is loaded, since either would draw nothing. Check
+a fresh recording for `ESC]9;4;` before building on it.
 
 **A multi-line prompt reports its end twice.** The line editor redraws the
 prompt's last line after the first paint — measured against starship, `A B B

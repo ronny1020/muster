@@ -14,8 +14,9 @@ import { DragEdge } from '../../../shared/ui/DragEdge'
 import { fileIcon } from '../../../shared/ui/fileicon'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
 import { isImagePath } from '../../../shared/lib/imagepaths'
-import { report } from '../../../shared/ipc'
 import { useKeyChange } from '../../../shared/lib/useKeyChange'
+import { copyPath } from './copyPath'
+import { isPlainPath } from '../../../shared/lib/paste'
 
 export interface FileViewerProps {
   viewed: Viewed
@@ -196,14 +197,14 @@ export function FileViewer({
               <Icon name="wrap_text" className="size-3.5" />
             </Action>
           )}
-          <Action
-            label={t('viewer.copyPath')}
-            onClick={() =>
-              void navigator.clipboard.writeText(path).catch(report)
-            }
-          >
-            <Icon name="content_copy" className="size-3.5" />
-          </Action>
+          {isPlainPath(path) && (
+            <Action
+              label={t('viewer.copyPath')}
+              onClick={() => void copyPath(path)}
+            >
+              <Icon name="content_copy" className="size-3.5" />
+            </Action>
+          )}
           {opener && (
             <Action
               label={t('viewer.openIn', { editor: opener.editor })}

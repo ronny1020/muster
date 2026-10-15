@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { clipboardIntent, type KeyChord } from './clipboard'
+import { clipboardIntent, clipboardWrite, type KeyChord } from './clipboard'
 
 const chord = (extra: Partial<KeyChord> = {}): KeyChord => ({
   type: 'keydown',
@@ -66,5 +66,44 @@ describe('clipboardIntent', () => {
     expect(
       clipboardIntent(chord({ key: 'o', shiftKey: false }), false),
     ).toBeNull()
+  })
+})
+
+describe('clipboardWrite', () => {
+  const encode = (text: string) =>
+    btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+
+  it('decodes a write as UTF-8, which is how Claude Code sends CJK text', () => {
+    expect(clipboardWrite(`c;${encode('中文 ✅')}`)).toBe('中文 ✅')
+  })
+
+  it('accepts a write that names no selection', () => {
+    expect(clipboardWrite(`;${encode('hello')}`)).toBe('hello')
+  })
+
+  it('never answers a query, so no process can read the clipboard back', () => {
+    expect(clipboardWrite('c;?')).toBeNull()
+  })
+
+  it('ignores an empty write rather than clearing the clipboard', () => {
+    expect(clipboardWrite('c;')).toBeNull()
+  })
+
+  it('refuses text that would end a bracketed paste and type the rest', () => {
+    expect(clipboardWrite(`c;${encode('x\x1b[201~rm -rf ~\r')}`)).toBeNull()
+    expect(clipboardWrite(`c;${encode('x\x9b201~')}`)).toBeNull()
+  })
+
+  it('keeps tabs and line breaks, which copied code is full of', () => {
+    expect(clipboardWrite(`c;${encode('a\tb\r\nc')}`)).toBe('a\tb\r\nc')
+  })
+
+  it('drops bytes that are not UTF-8 rather than pasting replacement marks', () => {
+    expect(clipboardWrite(`c;${btoa('\xff\xfe')}`)).toBeNull()
+  })
+
+  it('drops a payload that is not base64 instead of throwing in the parser', () => {
+    expect(clipboardWrite('c;not base64!')).toBeNull()
+    expect(clipboardWrite('no separator')).toBeNull()
   })
 })
