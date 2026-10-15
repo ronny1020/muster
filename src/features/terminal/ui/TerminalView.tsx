@@ -1056,11 +1056,13 @@ export function TerminalView({
     // How a TUI copies — Claude Code's copy-on-select in a clicks tab sends
     // one. Writes only, and only from the tab on screen in the focused window:
     // a tab printing a file anywhere else must not replace what the reader
-    // last copied.
+    // last copied. Asked again when the write leaves the queue, which may be
+    // after the tab has hidden or closed.
+    const mayCopy = () => !disposed && showing.current && document.hasFocus()
     term.parser.registerOscHandler(52, (data) => {
-      if (!showing.current || !document.hasFocus()) return true
+      if (!mayCopy()) return true
       const text = clipboardWrite(data)
-      if (text !== null) void writeClipboard(text)
+      if (text !== null) void writeClipboard(text, mayCopy)
       return true
     })
     // The modes a move has to carry itself — see `CARRIED_MODES`. Watched,
@@ -2110,13 +2112,19 @@ let pendingCopy: Promise<void> = Promise.resolve()
  * WebKit's own API wants a user gesture, and an `OSC 52` copy arrives from the
  * pty rather than from a click; the plugin writes from Rust, where no such
  * check applies. Its command runs as a task of its own, so two copies sent
- * together could land in either order — each waits for the one before. The
+ * together could land in either order — each waits for the one before, and
+ * `stillWanted` is asked once its turn comes. The
  * webview's API stays as the fallback for a page with no Tauri host behind it,
  * which is what `bun run serve` gives.
  */
-function writeClipboard(text: string): Promise<void> {
+function writeClipboard(
+  text: string,
+  stillWanted: () => boolean = () => true,
+): Promise<void> {
   if (!text) return pendingCopy
-  pendingCopy = pendingCopy.then(() => copyText(text))
+  pendingCopy = pendingCopy.then(() =>
+    stillWanted() ? copyText(text) : undefined,
+  )
   return pendingCopy
 }
 
