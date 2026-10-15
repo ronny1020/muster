@@ -17,6 +17,8 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { ImageAddon } from '@xterm/addon-image'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   type IBufferRange,
   type ILink,
@@ -27,7 +29,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import type { Turn } from '../../../shared/ipc'
 import { routePaste } from '../model/paste'
-import { clipboardIntent } from '../model/clipboard'
+import { clipboardIntent, clipboardWrite } from '../model/clipboard'
 import type { Session } from '../../../entities/tab/model/deck'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
@@ -637,6 +639,12 @@ export function TerminalView({
     const searchAddon = new SearchAddon()
     search.current = searchAddon
     term.loadAddon(searchAddon)
+    // xterm's default widths are Unicode 6's, where `✅` and `🔥` take one
+    // cell; the CLIs lay their frames out with `string-width`, which gives
+    // them two, so every row carrying one drew a column short.
+    const unicodeAddon = new Unicode11Addon()
+    term.loadAddon(unicodeAddon)
+    term.unicode.activeVersion = '11'
     /**
      * Registers a link provider that offers nothing while the agent is
      * reading the mouse — see `agentReadsMouse`.
@@ -1045,6 +1053,18 @@ export function TerminalView({
       if (event) agentEvent.current(event)
       return true
     })
+    // How a TUI copies — Claude Code's copy-on-select in a clicks tab sends
+    // one. Writes only, and only from the tab on screen in the focused window:
+    // a tab printing a file anywhere else must not replace what the reader
+    // last copied. Asked again when the write leaves the queue, which may be
+    // after the tab has hidden or closed.
+    const mayCopy = () => !disposed && showing.current && document.hasFocus()
+    term.parser.registerOscHandler(52, (data) => {
+      if (!mayCopy()) return true
+      const text = clipboardWrite(data)
+      if (text !== null) void writeClipboard(text, mayCopy)
+      return true
+    })
     // The modes a move has to carry itself — see `CARRIED_MODES`. Watched,
     // never claimed: xterm still applies every one of them.
     const carriedModes = new Map<number, boolean>()
@@ -1305,6 +1325,7 @@ export function TerminalView({
         serializeAddon,
         imageAddon,
         linksAddon,
+        unicodeAddon,
         searchAddon,
         fitAddon,
       ]) {
@@ -2082,34 +2103,41 @@ function pathLinks(
   }
 }
 
+/** The copy in flight, so the next one waits for it — see `writeClipboard`. */
+let pendingCopy: Promise<void> = Promise.resolve()
+
 /**
- * Puts `text` on the system clipboard.
+ * Puts `text` on the system clipboard, through the native plugin.
  *
- * The async API is the only one that can see xterm's selection: xterm draws its
- * own, so there is no DOM selection for `execCommand` to copy. A hidden
- * textarea is the fallback for a webview that refuses the permission.
+ * WebKit's own API wants a user gesture, and an `OSC 52` copy arrives from the
+ * pty rather than from a click; the plugin writes from Rust, where no such
+ * check applies. Its command runs as a task of its own, so two copies sent
+ * together could land in either order — each waits for the one before, and
+ * `stillWanted` is asked once its turn comes. The
+ * webview's API stays as the fallback for a page with no Tauri host behind it,
+ * which is what `bun run serve` gives.
  */
-async function writeClipboard(text: string) {
-  if (!text) return
+function writeClipboard(
+  text: string,
+  stillWanted: () => boolean = () => true,
+): Promise<void> {
+  if (!text) return pendingCopy
+  pendingCopy = pendingCopy.then(() =>
+    stillWanted() ? copyText(text) : undefined,
+  )
+  return pendingCopy
+}
+
+async function copyText(text: string) {
   try {
-    await navigator.clipboard.writeText(text)
-    return
+    await writeText(text)
   } catch {
-    /* fall through to the selection-based route */
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      /* a failed copy is not worth an unhandled rejection in the parser */
+    }
   }
-  const staging = document.createElement('textarea')
-  staging.value = text
-  staging.setAttribute('aria-hidden', 'true')
-  staging.style.position = 'fixed'
-  staging.style.opacity = '0'
-  document.body.appendChild(staging)
-  staging.select()
-  try {
-    document.execCommand('copy')
-  } catch {
-    /* nothing left to try; better than throwing into a keypress */
-  }
-  staging.remove()
 }
 
 /** The clipboard's text, or empty when the webview will not hand it over. */

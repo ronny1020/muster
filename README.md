@@ -566,7 +566,8 @@ without Muster knowing anything about it. Worth knowing:
   replayed, the same as the ⟳ button beside the step arrows. In a clickable
   session the agent is taking the mouse, so selecting output to copy it needs
   **Option-drag** on macOS and **Shift-drag** elsewhere; block selection works
-  as usual in a Scrollback tab.
+  as usual in a Scrollback tab. What you select in the agent's own view is
+  copied by the agent, and lands on your clipboard as well.
 
   Clicks mode only gets out of the way. Claude Code still picks its own
   renderer and reports the mouse from the fullscreen one alone — and it turns

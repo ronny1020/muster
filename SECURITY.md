@@ -17,12 +17,12 @@ product, and `pty_spawn` grants it by design.
 What _is_ in scope is anything that gives one of these four a capability it
 should not have:
 
-| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, so the target is shown at the pane's corner while the pointer is over one, and a click opens it in the browser — which also means a row an agent made one big link opens its page on a click meant only to focus the pane; only `http` and `https` targets are offered. |
-| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, so the target is shown at the pane's corner while the pointer is over one, and a click opens it in the browser — which also means a row an agent made one big link opens its page on a click meant only to focus the pane; only `http` and `https` targets are offered. It can put text on your clipboard with `OSC 52`, and never read it back. |
+| **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 None of those four is you, and none of them should be able to read a file you
 did not choose or put an argument in front of a program you did not type. The
@@ -113,6 +113,32 @@ development build and not something a user runs:
   half is pinned to an immutable commit and its npm half to an exact version,
   for the reason `Cargo.toml` gives about anything that injects script into
   this app's webview.
+
+## What a session may put on the clipboard
+
+`OSC 52` is how a program in a terminal copies — Claude Code's copy-on-select
+uses it — and Muster honours it, so anything that writes to a tab can set the
+clipboard: the agent, a command it runs, a file it prints. That is the cost,
+accepted because a TUI's copy is otherwise dropped, and the same trade most
+terminals make. What bounds it:
+
+- **Writes only.** A query (`OSC 52;c;?`) is claimed and never answered, so
+  nothing in a session can read what you copied elsewhere. The clipboard
+  plugin is granted `allow-write-text` and nothing else, so it cannot read the
+  clipboard; the only read is the paste path's `navigator.clipboard.readText`,
+  on a paste you made.
+- **Only from the tab on screen in the focused window.** Any other tab's
+  write is dropped, so a background agent cannot replace your clipboard while
+  you work elsewhere. The one in front of you can — which is how text you
+  never selected could end up being what you paste.
+- **Text, decoded as UTF-8, and no control characters but tabs and line
+  breaks.** A payload that is not base64 or not UTF-8 is dropped, and so is one carrying
+  `ESC` or another control byte — otherwise a write could plant the
+  bracketed-paste end marker described under the known gaps below, and the
+  next paste would type keystrokes into a session. Tabs and line breaks pass,
+  because copied text is full of them — so a planted `curl … | sh` and a
+  newline still runs when pasted into a program that has not turned
+  bracketed paste on, or into another application.
 
 ## What an agent may put in a desktop notification
 
@@ -514,7 +540,12 @@ Named rather than hidden, because the code carries the same notes:
   reaching `term.paste` is not filtered: xterm wraps it in `ESC[200~`…`ESC[201~`
   by plain concatenation and strips nothing, so a clipboard carrying
   `ESC[201~` ends paste mode early and the rest arrives as typed keys. It
-  requires the user to copy hostile content, and it predates the journal work.
+  requires the user to copy hostile content themselves: the app's own routes
+  onto the clipboard are filtered — **Copy path** refuses a path carrying a
+  control byte, and an `OSC 52` write refuses one carrying any but a tab or a
+  line break — and a copy off the grid cannot carry one, since the terminal's
+  buffer holds no control characters. So neither a filename nor a session's
+  output can put one there.
 
 - **Unsigned binaries.** No Apple Developer membership and no Windows
   certificate, so macOS builds are ad-hoc signed and Windows builds are

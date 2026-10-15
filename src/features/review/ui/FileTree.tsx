@@ -12,6 +12,8 @@ import { fileIcon, folderIcon } from '../../../shared/ui/fileicon'
 import { relativeTo } from '../model/changes'
 import { type DirEntry, report } from '../../../shared/ipc'
 import { revealLabel } from '../../../shared/lib/platform'
+import { copyPath } from './copyPath'
+import { isPlainPath } from '../../../shared/lib/paste'
 
 export interface FileTreeProps {
   /** Absolute directory at the top of the tree. */
@@ -86,25 +88,24 @@ function itemsFor(
       label: reveal,
       onSelect: () => void revealItemInDir(entry.path).catch(report),
     },
-    { label: t('tree.copyPath'), onSelect: () => void copy(entry.path) },
-    ...(relative
+    // A path `copyPath` would refuse is not offered, so no item does nothing.
+    ...(isPlainPath(entry.path)
+      ? [
+          {
+            label: t('tree.copyPath'),
+            onSelect: () => void copyPath(entry.path),
+          },
+        ]
+      : []),
+    ...(relative && isPlainPath(relative)
       ? [
           {
             label: t('tree.copyRelativePath'),
-            onSelect: () => void copy(relative),
+            onSelect: () => void copyPath(relative),
           },
         ]
       : []),
   ]
-}
-
-/** The clipboard is the browser's here; there is no plugin for it in this app. */
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch (error) {
-    report(error)
-  }
 }
 
 /** What every row of the tree needs, whatever its depth. */

@@ -199,7 +199,8 @@ building.
 | Where the viewport is scrolled to                     | `src/features/terminal/ui/useViewportRow.ts`                       |
 | Terminal colour schemes                               | `src/shared/lib/themes.ts`                                         |
 | Font fallback list and CSS stacks                     | `src/shared/lib/fonts.ts`                                          |
-| Clipboard key decisions                               | `src/features/terminal/model/clipboard.ts`                         |
+| Clipboard key decisions, and what `OSC 52` may write  | `src/features/terminal/model/clipboard.ts`                         |
+| What text the app may put on the clipboard unchosen   | `src/shared/lib/paste.ts`                                          |
 | What a shell is started with, and its history         | `src-tauri/src/shell.rs`                                           |
 | The scripts that report a shell's boundaries          | `src-tauri/shell/`                                                 |
 | Reading a shell's `OSC 133` boundaries                | `src/features/terminal/model/blocks.ts`                            |

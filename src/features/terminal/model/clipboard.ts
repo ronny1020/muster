@@ -11,6 +11,8 @@
  * tested without a DOM.
  */
 
+import { isPasteable } from '../../../shared/lib/paste'
+
 export interface KeyChord {
   type: string
   key: string
@@ -49,4 +51,32 @@ export function clipboardIntent(
   if (key === 'c') return 'copy'
   if (key === 'v') return 'paste'
   return null
+}
+
+/**
+ * The text an `OSC 52` payload asks to put on the clipboard, or `null` for a
+ * query, an empty write, a payload that is not base64 or not UTF-8, or text
+ * carrying a control character other than a tab or a line break.
+ *
+ * That last refusal is `isPasteable`'s, and it matters because anything that
+ * prints into the tab can send an `OSC 52` write — a file being `cat` as much
+ * as the agent.
+ *
+ * A query (`?` in place of the data) answers `null` because reading is never
+ * honoured: the reply would hand the clipboard to whatever process asked, and
+ * any command's output can ask. The selection letters are ignored — every
+ * target lands on the one clipboard these hosts have.
+ */
+export function clipboardWrite(payload: string): string | null {
+  const separator = payload.indexOf(';')
+  if (separator < 0) return null
+  const data = payload.slice(separator + 1)
+  if (data === '' || data === '?') return null
+  try {
+    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0))
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return text && isPasteable(text) ? text : null
+  } catch {
+    return null
+  }
 }

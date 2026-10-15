@@ -99,6 +99,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pty::Sessions::default())
         .manage(pty::Exits::default())
         .manage(store::Store::default())
