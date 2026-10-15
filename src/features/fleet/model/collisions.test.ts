@@ -5,6 +5,9 @@ import {
   collisionSummary,
   collisionsByTab,
 } from './collisions'
+import { i18n } from '../../../shared/i18n/i18n'
+
+const t = i18n.getFixedT('en-US', 'workspace')
 
 const tab = (over: Partial<TabChanges> & { tabId: string }): TabChanges => ({
   title: over.tabId,
@@ -81,23 +84,43 @@ test('one tab listing a path twice does not collide with itself', () => {
 })
 
 test('the summary leads with the file, not the count', () => {
-  expect(collisionSummary([{ path: 'src/auth.ts', others: ['codex'] }])).toBe(
-    'src/auth.ts also in codex',
-  )
   expect(
-    collisionSummary([
-      { path: 'src/auth.ts', others: ['codex'] },
-      { path: 'README.md', others: ['codex'] },
-    ]),
+    collisionSummary([{ path: 'src/auth.ts', others: ['codex'] }], t),
+  ).toBe('src/auth.ts also in codex')
+  expect(
+    collisionSummary(
+      [
+        { path: 'src/auth.ts', others: ['codex'] },
+        { path: 'README.md', others: ['codex'] },
+      ],
+      t,
+    ),
   ).toBe('src/auth.ts +1 also in codex')
 })
 
 test('several other tabs are counted rather than listed', () => {
   expect(
-    collisionSummary([{ path: 'src/auth.ts', others: ['codex', 'gemini'] }]),
+    collisionSummary([{ path: 'src/auth.ts', others: ['codex', 'gemini'] }], t),
   ).toBe('src/auth.ts also in 2 other tabs')
 })
 
 test('nothing to say is an empty string, not a zero', () => {
-  expect(collisionSummary([])).toBe('')
+  expect(collisionSummary([], t)).toBe('')
+})
+
+test('the summary speaks the catalog it is given', () => {
+  expect(
+    collisionSummary(
+      [{ path: 'src/auth.ts', others: ['codex', 'gemini'] }],
+      i18n.getFixedT('ja', 'workspace'),
+    ),
+  ).toBe('src/auth.ts は他のタブ 2 件でも変更中')
+})
+
+test('a single tab is named apart from the sentence around it in any script', () => {
+  const summary = collisionSummary(
+    [{ path: 'src/auth.ts', others: ['api'] }],
+    i18n.getFixedT('zh-TW', 'workspace'),
+  )
+  expect(summary).toBe('src/auth.ts 也在「api」中變更')
 })

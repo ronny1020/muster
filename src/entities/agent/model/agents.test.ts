@@ -6,7 +6,9 @@ import {
   SHELL_AGENT,
   resumeArgs,
   pickableAgent,
+  modeText,
 } from './agents'
+import { i18n } from '../../../shared/i18n/i18n'
 
 test('every agent id resolves to itself', () => {
   for (const agent of AGENTS) expect(agentById(agent.id)).toBe(agent)
@@ -170,4 +172,17 @@ test('switching mode has a conversation to reopen', () => {
   for (const agent of AGENTS.filter((agent) => agent.scrollbackMode)) {
     expect(agent.modes.some((mode) => mode.id === 'continue')).toBe(true)
   }
+})
+
+test('a mode is labelled from the catalog it is given', () => {
+  const [plain] = AGENTS[0].modes
+  const zhTW = i18n.getFixedT('zh-TW', 'launch')
+  expect(modeText(plain, i18n.getFixedT('en-US', 'launch')).label).toBe(
+    'New session',
+  )
+  expect(modeText(plain, zhTW)).toEqual({
+    label: zhTW('modes.new.label'),
+    hint: zhTW('modes.new.hint'),
+  })
+  expect(modeText(plain, zhTW).label).not.toBe('New session')
 })

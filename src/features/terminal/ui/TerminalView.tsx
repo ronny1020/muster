@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { SerializeAddon } from '@xterm/addon-serialize'
@@ -78,7 +79,8 @@ import {
   type ShellEvent,
 } from '../model/blocks'
 import { ShellOverlay } from './ShellOverlay'
-import { LinkHover } from './LinkHover'
+import { LinkHover, type OpenGesture } from './LinkHover'
+import { i18n } from '../../../shared/i18n/i18n'
 import { type ResolvedBlock, useShellBlocks } from './useShellBlocks'
 import { useFileMarks } from './useFileMarks'
 import { useMessages } from './useMessages'
@@ -196,6 +198,7 @@ export function TerminalView({
   onCloseFind,
   paste,
 }: TerminalViewProps) {
+  const { t } = useTranslation('terminal')
   const host = useRef<HTMLDivElement>(null)
   /** The whole pane, which is what the overlay follows the pointer across. */
   const pane = useRef<HTMLDivElement>(null)
@@ -223,7 +226,7 @@ export function TerminalView({
    */
   const [linkTarget, setLinkTarget] = useState<{
     uri: string
-    hint: string
+    opens: OpenGesture
   } | null>(null)
   /**
    * Where the terminal's `OSC 133` route delivers, filled in by the hook that
@@ -673,7 +676,7 @@ export function TerminalView({
       },
       hover: (_event, uri, range) => {
         hoveredHyperlink = { uri, range }
-        setLinkTarget({ uri, hint: openHint(term, live.current) })
+        setLinkTarget({ uri, opens: openGesture(term, live.current) })
       },
       leave: () => {
         hoveredHyperlink = null
@@ -684,7 +687,7 @@ export function TerminalView({
       (_event, uri) => link.current.onUrl(uri),
       {
         hover: (_event, uri) =>
-          setLinkTarget({ uri, hint: openHint(term, live.current) }),
+          setLinkTarget({ uri, opens: openGesture(term, live.current) }),
         leave: () => setLinkTarget(null),
       },
     )
@@ -860,13 +863,13 @@ export function TerminalView({
     /** The label object this handler put up. xterm's own hover may set one in
      *  the same event, even for the same address, so clearing compares by
      *  identity and takes down only this one. */
-    let trackedLabel: { uri: string; hint: string } | null = null
+    let trackedLabel: { uri: string; opens: OpenGesture } | null = null
     const showTracked = (uri: string | null) => {
       if (uri === trackedUri) return
       trackedUri = uri
       const mine = trackedLabel
       trackedLabel =
-        uri === null ? null : { uri, hint: openHint(term, live.current) }
+        uri === null ? null : { uri, opens: openGesture(term, live.current) }
       const next = trackedLabel
       setLinkTarget((shown) => next ?? (shown === mine ? null : shown))
     }
@@ -982,7 +985,7 @@ export function TerminalView({
         setLinkTarget((shown) =>
           !shown || shown === mine
             ? null
-            : { ...shown, hint: openHint(term, live.current) },
+            : { ...shown, opens: openGesture(term, live.current) },
         )
       }
     }
@@ -1134,7 +1137,9 @@ export function TerminalView({
         earlyHandbacks.current = null
         early.forEach(acceptHandback)
       } catch (error) {
-        term.writeln(`\r\n\x1b[31mfailed to start: ${String(error)}\x1b[0m`)
+        term.writeln(
+          `\r\n\x1b[31m${i18n.t('terminal:failedToStart', { error: String(error) })}\x1b[0m`,
+        )
       }
     }
 
@@ -1517,7 +1522,7 @@ export function TerminalView({
               // about it, so where the buttons are is the only position
               // anything here knows.
               current={walkedKey(stepped, said.length)}
-              label="Your messages in this conversation"
+              label={t('rail.conversation')}
               className="right-[18px] text-agent"
             />
           )}
@@ -1537,13 +1542,13 @@ export function TerminalView({
               // opposite directions on the same edge.
               entries={[...messages].reverse().map((message) => ({
                 key: String(message.row),
-                label: message.label || `Line ${message.row}`,
+                label: message.label || t('rail.line', { row: message.row }),
                 open: () => jumpToMessage(message.row),
               }))}
               current={
                 currentMessage(messages, viewportBottom)?.row.toString() ?? null
               }
-              label="Your messages in the scrollback"
+              label={t('rail.scrollback')}
               className="right-[18px] text-agent"
             />
           )}
@@ -1581,7 +1586,7 @@ export function TerminalView({
           className="pointer-events-none absolute inset-1 flex items-end justify-center rounded-lg border-2 border-dashed border-agent/70 p-4"
         >
           <span className="rounded-sm bg-chrome/95 px-2 py-1 text-[11px] text-muted">
-            Drop to type the path
+            {t('dropToTypePath')}
           </span>
         </div>
       )}
@@ -1690,16 +1695,17 @@ function ScrollPath({
   fraction: number
   onOpen: () => void
 }) {
+  const { t } = useTranslation('terminal')
   return (
     <button
       type="button"
       onClick={onOpen}
-      title={`Open ${file.path}`}
+      title={t('scrollPath.open', { path: file.path })}
       className="absolute right-10 z-10 max-w-[45%] -translate-y-1/2 truncate rounded-sm border border-line bg-chrome/90 px-1.5 py-0.5 font-mono text-[10px] text-muted backdrop-blur-sm hover:border-agent hover:text-ink"
       style={{
         top: `calc(0.75rem + ${fraction} * (100% - ${STEPS_RESERVE}))`,
       }}
-      aria-label={`Showing output about ${file.path} — open it`}
+      aria-label={t('scrollPath.label', { path: file.path })}
     >
       {file.label}
     </button>
@@ -1759,6 +1765,7 @@ function MessageSteps({
   /** Set when there is a session to reopen; absent on a launcher tab. */
   onReplay?: () => void
 }) {
+  const { t } = useTranslation('terminal')
   const steppable = count > 1
   if (!steppable && !onReplay) return null
   return (
@@ -1770,20 +1777,20 @@ function MessageSteps({
         <>
           <button
             type="button"
-            title="Previous message"
-            aria-label="Scroll to the previous message you sent"
+            title={t('steps.previous')}
+            aria-label={t('steps.previousLabel')}
             onClick={() => onStep(-1)}
             className="size-6 text-muted hover:bg-surface-hover hover:text-ink"
           >
             ↑
           </button>
           <span className="sr-only" role="status">
-            {count} messages in this session
+            {t('steps.count', { count })}
           </span>
           <button
             type="button"
-            title="Next message"
-            aria-label="Scroll to the next message you sent"
+            title={t('steps.next')}
+            aria-label={t('steps.nextLabel')}
             onClick={() => onStep(1)}
             className="size-6 border-t border-line text-muted hover:bg-surface-hover hover:text-ink"
           >
@@ -1794,8 +1801,8 @@ function MessageSteps({
       {onReplay && (
         <button
           type="button"
-          title="Redraw the conversation at this width — reopens the session with continue"
-          aria-label="Redraw the conversation at this width by reopening the session"
+          title={t('steps.replay')}
+          aria-label={t('steps.replayLabel')}
           onClick={onReplay}
           className={`size-6 text-muted hover:bg-surface-hover hover:text-ink ${
             steppable ? 'border-t border-line' : ''
@@ -1845,6 +1852,7 @@ function FindBar({
   accent: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('terminal')
   const options = useMemo(() => searchOptions(accent), [accent])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState({ index: -1, count: 0 })
@@ -1882,8 +1890,8 @@ function FindBar({
         ref={input}
         value={query}
         spellCheck={false}
-        placeholder="Find in scrollback"
-        aria-label="Find in scrollback"
+        placeholder={t('find.placeholder')}
+        aria-label={t('find.placeholder')}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -1900,13 +1908,16 @@ function FindBar({
         {query === ''
           ? ''
           : found.count === 0
-            ? 'no matches'
-            : `${found.index + 1} of ${found.count}`}
+            ? t('find.noMatches')
+            : t('find.position', {
+                index: found.index + 1,
+                count: found.count,
+              })}
       </span>
       <button
         type="button"
-        title="Previous match (⇧Enter)"
-        aria-label="Previous match"
+        title={t('find.previous')}
+        aria-label={t('find.previousLabel')}
         onClick={() => step(false)}
         className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
@@ -1914,8 +1925,8 @@ function FindBar({
       </button>
       <button
         type="button"
-        title="Next match (Enter)"
-        aria-label="Next match"
+        title={t('find.next')}
+        aria-label={t('find.nextLabel')}
         onClick={() => step(true)}
         className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
@@ -1923,8 +1934,8 @@ function FindBar({
       </button>
       <button
         type="button"
-        title="Close search (Esc)"
-        aria-label="Close search"
+        title={t('find.close')}
+        aria-label={t('find.closeLabel')}
         onClick={onClose}
         className="size-6 rounded-sm text-muted hover:bg-surface-hover hover:text-ink"
       >
@@ -2009,12 +2020,8 @@ const opensLink = (event: MouseEvent) =>
  * Which click the label says opens a link: a plain one, unless the program
  * in the tab is reading the mouse and takes the plain click itself.
  */
-const openHint = (term: Terminal, live: boolean) =>
-  !agentReadsMouse(term, live)
-    ? 'click to open'
-    : IS_MAC
-      ? '⌘-click to open'
-      : 'Ctrl-click to open'
+const openGesture = (term: Terminal, live: boolean): OpenGesture =>
+  !agentReadsMouse(term, live) ? 'click' : IS_MAC ? 'cmdClick' : 'ctrlClick'
 
 /** The buffer cell under the pointer, 1-based as `ILink.range` counts. */
 function cellAt(term: Terminal, screen: Element, event: MouseEvent) {

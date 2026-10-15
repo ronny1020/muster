@@ -17,7 +17,7 @@ export function parseMovedTab(input: unknown): Tab | null {
   if (!content) return null
   return {
     id: raw.id,
-    title: text(raw.title, 'New session'),
+    title: text(raw.title, ''),
     detail: text(raw.detail, ''),
     dirty: raw.dirty === true,
     exitCode:

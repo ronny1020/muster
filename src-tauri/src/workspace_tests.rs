@@ -16,12 +16,13 @@ fn the_home_shorthand_is_expanded_before_asking_the_filesystem() {
 
 #[test]
 fn the_starred_ref_is_the_current_branch() {
-    let out = "*\0main\x003 hours ago\0origin/main\n \0topic\x002 days ago\0";
+    let out = "*\0main\x001700000000\0origin/main\n \0topic\x001699900000\0";
     let branches = parse_branches(Some(out));
     assert_eq!(branches.len(), 2);
     assert!(branches[0].current);
     assert_eq!(branches[0].name, "main");
     assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
+    assert_eq!(branches[0].at, Some(1_700_000_000));
     assert!(!branches[1].current);
     // A branch with no upstream must read as absent, not as an empty name.
     assert_eq!(branches[1].upstream, None);
@@ -29,7 +30,7 @@ fn the_starred_ref_is_the_current_branch() {
 
 #[test]
 fn a_remote_branch_is_offered_under_the_name_a_checkout_would_create() {
-    let out = " \0origin/feature/nested\x001 day ago\0";
+    let out = " \0origin/feature/nested\x001699950000\0";
     let remote = remote_only(Some(out), &HashSet::new());
     assert_eq!(remote.len(), 1);
     assert_eq!(remote[0].name, "feature/nested");
@@ -40,7 +41,7 @@ fn a_remote_branch_is_offered_under_the_name_a_checkout_would_create() {
 
 #[test]
 fn a_remote_branch_that_already_exists_locally_is_not_offered_twice() {
-    let out = " \0origin/main\x001 day ago\0\n \0origin/other\x002 days ago\0";
+    let out = " \0origin/main\x001699950000\0\n \0origin/other\x001699900000\0";
     let local = HashSet::from(["main".to_string()]);
     let names: Vec<_> = remote_only(Some(out), &local)
         .into_iter()
@@ -51,13 +52,13 @@ fn a_remote_branch_that_already_exists_locally_is_not_offered_twice() {
 
 #[test]
 fn the_remote_head_symref_is_not_a_branch() {
-    let out = " \0origin/HEAD\x001 day ago\0";
+    let out = " \0origin/HEAD\x001699950000\0";
     assert!(remote_only(Some(out), &HashSet::new()).is_empty());
 }
 
 #[test]
 fn two_remotes_carrying_one_branch_offer_it_once() {
-    let out = " \0origin/shared\x001 day ago\0\n \0fork/shared\x002 days ago\0";
+    let out = " \0origin/shared\x001699950000\0\n \0fork/shared\x001699900000\0";
     assert_eq!(remote_only(Some(out), &HashSet::new()).len(), 1);
 }
 
@@ -288,7 +289,7 @@ fn a_windows_home_collapses_on_either_separator() {
 
 /// One `git log` line per commit, NUL-separated fields.
 fn log_line(sha: &str, short: &str, subject: &str, refs: &str) -> String {
-    format!("{sha}\0{short}\0{subject}\0Ada Lovelace\03 hours ago\0{refs}")
+    format!("{sha}\0{short}\0{subject}\0Ada Lovelace\01700000000\0{refs}")
 }
 
 #[test]
@@ -299,7 +300,7 @@ fn parses_a_commit_with_no_decorations() {
     assert_eq!(commits[0].short, "abc123d");
     assert_eq!(commits[0].subject, "Add the tab strip");
     assert_eq!(commits[0].author, "Ada Lovelace");
-    assert_eq!(commits[0].when, "3 hours ago");
+    assert_eq!(commits[0].at, Some(1_700_000_000));
     assert!(commits[0].refs.is_empty());
     assert!(!commits[0].unpushed);
 }
@@ -379,7 +380,7 @@ fn this_repo_reports_its_own_history() {
     // Only meaningful once this working copy has a commit.
     if !commits.is_empty() {
         assert!(!commits[0].short.is_empty());
-        assert!(!commits[0].when.is_empty());
+        assert!(commits[0].at.is_some());
     }
 }
 
@@ -581,4 +582,10 @@ fn switching_to_a_name_that_is_a_directory_never_restores_it() {
 
     assert!(result.is_err(), "there is no branch called docs");
     assert_eq!(kept, "unsaved work\n");
+}
+
+#[test]
+fn a_date_git_did_not_give_as_a_number_is_absent_rather_than_the_epoch() {
+    let out = "abc\0abc\0Subject\0Ada\0yesterday\0";
+    assert_eq!(parse_log(out, &HashSet::new())[0].at, None);
 }

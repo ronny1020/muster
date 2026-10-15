@@ -1,0 +1,126 @@
+{
+  "title": "Settings",
+  "groups": {
+    "general": "General",
+    "newTabs": "New tabs",
+    "terminal": "Terminal",
+    "background": "Background",
+    "editor": "Editor",
+    "notifications": "Notifications",
+    "git": "Git",
+    "sessionRecords": "Session records",
+    "data": "Data"
+  },
+  "language": {
+    "label": "Language",
+    "matchSystem": "Match system"
+  },
+  "defaultAgent": {
+    "label": "Default agent",
+    "hint": "Preselected when a tab opens"
+  },
+  "terminalMode": {
+    "label": "Default terminal mode",
+    "hint": "What a new tab starts on — the start screen offers it per launch, and the status bar switches a tab already running. Clicks lets Claude Code's own prompts, subagents and shells take the mouse; Scrollback keeps the terminal's own history, which is what the scrollbar, the find bar, the path beside the scrollbar and the width repair need. No session can have both.",
+    "control": "Terminal mode",
+    "scrollback": "Scrollback",
+    "clicks": "Clicks"
+  },
+  "defaultDirectory": {
+    "label": "Default directory",
+    "hint": "Blank uses the last directory you opened",
+    "placeholder": "last used",
+    "browse": "Browse…"
+  },
+  "runIn": {
+    "label": "Run in",
+    "hint": "Where a new tab's session starts",
+    "backend": "Default backend",
+    "distro": "Default WSL distro",
+    "defaultDistro": "Default distro"
+  },
+  "theme": {
+    "label": "Theme",
+    "hint": "Applies to running sessions too"
+  },
+  "fontFamily": {
+    "label": "Font family",
+    "reading": "Reading the installed families…",
+    "counted": "{{fixed}} of {{total}} installed families can hold a terminal grid",
+    "unreadable": "The installed families could not be read, so this is the built-in list — most of what you have is missing from it"
+  },
+  "allSystemFonts": {
+    "label": "Show all system fonts",
+    "hint": "Off, the list holds the fixed-pitch families only — which is almost never the whole of what is installed"
+  },
+  "fontSize": "Font size",
+  "lineHeight": "Line height",
+  "textWidth": "Text width",
+  "scrollback": "Scrollback",
+  "cursorBlink": "Blinking cursor",
+  "shellIntegration": {
+    "label": "Shell integration",
+    "hint": "Lets a zsh or bash tab offer a copy control per command and complete what you type from its history — the shell an agent tab hands back to included. Applies to tabs started after the change."
+  },
+  "units": {
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "seconds_one": "{{count}} second",
+    "seconds_other": "{{count}} seconds",
+    "commits_one": "{{count}} commit",
+    "commits_other": "{{count}} commits",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days"
+  },
+  "image": {
+    "label": "Image",
+    "hint": "Drawn behind the terminal in every tab",
+    "clear": "Clear",
+    "change": "Change…",
+    "choose": "Choose…"
+  },
+  "brightness": "Brightness",
+  "preview": {
+    "unreadable": "That file could not be read as an image.",
+    "label": "Background preview"
+  },
+  "editor": {
+    "label": "Open in",
+    "none": "No editor command found on your PATH",
+    "noneValue": "none",
+    "hint": "Used by the button in each tab's status bar",
+    "control": "Editor",
+    "firstFound": "{{name}} (first found)"
+  },
+  "notifyOnDone": {
+    "label": "When a session is done",
+    "hint": "When a session finishes a turn, hands back to the shell, or ends",
+    "control": "Notify when a session is done"
+  },
+  "notifyOnlyWhenUnfocused": {
+    "label": "Only when looking elsewhere",
+    "hint": "Stay quiet while that tab is already on screen",
+    "control": "Only notify when looking elsewhere"
+  },
+  "notifySound": {
+    "label": "Play a sound",
+    "control": "Play a notification sound"
+  },
+  "gitPoll": "Status refresh",
+  "historyLimit": "History length",
+  "journal": {
+    "label": "Record what sessions print",
+    "hint": "Kept verbatim, so earlier sessions in a folder can be listed and reopened"
+  },
+  "journalRetention": "Keep records for",
+  "recentDirs": {
+    "label": "Recent directories",
+    "hint": "{{count}} remembered",
+    "clear": "Clear"
+  },
+  "reset": {
+    "label": "Everything else",
+    "hint": "Restores every setting on this page",
+    "action": "Restore defaults"
+  }
+}

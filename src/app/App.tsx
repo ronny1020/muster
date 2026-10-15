@@ -46,6 +46,7 @@ import { loadDeck, saveDeck } from '../entities/tab/model/persist'
 import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
 import { runningAgent } from '../entities/agent/model/agents'
+import { i18n } from '../shared/i18n/i18n'
 
 /**
  * Tab ids, which also key the backend's PTY map.
@@ -83,9 +84,11 @@ function announceExit(
   const session = tabSession(tab)
   const agent = session
     ? (runningAgent(session.agentId, tab.handedBack)?.name ?? session.agentName)
-    : 'Session'
-  const body =
-    code === 0 ? 'Session ended.' : `Session ended with code ${code}.`
+    : i18n.t('chrome:session.fallbackName')
+  const body = i18n.t('chrome:session.ended', {
+    code,
+    context: code === 0 ? undefined : 'failed',
+  })
   void notify(`${agent} · ${tab.title}`, body, settings.notifySound)
 }
 

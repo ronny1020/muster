@@ -2,6 +2,8 @@
 
 # Muster
 
+**English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+
 **A terminal built for AI agent CLIs.**
 
 <!-- Screenshot goes here, as docs/screenshot.png:
@@ -523,7 +525,7 @@ again.
 
 The dots are found by how your prompt was drawn rather than by what it says — a
 tinted block of cells — so they work for any CLI that renders a prompt that way,
-without Muster knowing anything about it. Two consequences worth knowing:
+without Muster knowing anything about it. Worth knowing:
 
 - **A plain shell contributes nothing.** A default `bash` or `zsh` prompt carries
   no tint, so there is nothing to find. Anything else that tints its first few
@@ -781,6 +783,10 @@ instead, so they reach the next session rather than the ones already going:
 mode** — for which the status bar's
 Clicks / Scrollback control is the way to change a tab that is already open.
 
+- **Language** — English (US or UK), 繁體中文, 简体中文 or 日本語. _Match
+  system_, the default, follows the first of your OS's preferred languages that
+  Muster speaks, and American English otherwise. Switching never restarts a
+  session.
 - **New tabs** — which agent and directory to start on, and the **Terminal
   mode** a tab opens in: _Clicks_, which hands the mouse to Claude Code's own
   prompts, subagents and shells and reads the dots from its transcript, or

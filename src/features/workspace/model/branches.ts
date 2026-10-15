@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 import type { Branch, GitStatus } from '../../../shared/ipc'
 
 /**
@@ -26,11 +28,12 @@ export function matchBranches(branches: Branch[], query: string): Branch[] {
  * rather than predicting the outcome, and the checkout error is what reports a
  * real refusal.
  */
-export function switchWarning(git: GitStatus): string | null {
-  if (git.conflicted > 0) return 'Resolve the conflicts first.'
+export function switchWarning(
+  git: GitStatus,
+  t: TFunction<'workspace'>,
+): string | null {
+  if (git.conflicted > 0) return t('branches.resolveConflicts')
   const pending = git.staged + git.modified
-  if (pending > 0) {
-    return `${pending} uncommitted change${pending === 1 ? '' : 's'} — git will refuse if the branches differ there.`
-  }
+  if (pending > 0) return t('branches.uncommitted', { count: pending })
   return null
 }

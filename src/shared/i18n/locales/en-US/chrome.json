@@ -1,0 +1,59 @@
+{
+  "tab": {
+    "newSession": "New session",
+    "settings": "Settings",
+    "working": "working",
+    "waiting": "waiting for you",
+    "newTab": "New tab",
+    "newTabHint": "New tab ({{shortcut}})",
+    "close": "Close tab",
+    "moveToNewWindow": "Move to new window",
+    "exited": "exited",
+    "exited_failed": "exited {{code}}"
+  },
+  "ghost": {
+    "strip": "Add to this window",
+    "window": "Move this window",
+    "new": "Open in a new window"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
+  "session": {
+    "fallbackName": "Session",
+    "waiting": "Waiting for you.",
+    "noEditor": "No editor found on your PATH.",
+    "ended": "Session ended.",
+    "ended_failed": "Session ended with code {{code}}."
+  },
+  "dragEdge": "Drag to resize · double-click to reset",
+  "noMatch": "No match.",
+  "dialog": {
+    "chooseDirectory": "Choose a working directory",
+    "chooseImage": "Choose a background image",
+    "images": "Images"
+  },
+  "fonts": {
+    "systemDefault": "System default",
+    "notInstalled": "{{name}} (not installed)"
+  },
+  "reveal": {
+    "macos": "Reveal in Finder",
+    "windows": "Show in Explorer",
+    "linux": "Show in file manager"
+  },
+  "closeDialog": {
+    "quitTitle": "Quit Muster?",
+    "closeTitle": "Close this window?",
+    "quit": "Quit",
+    "close": "Close",
+    "cancel": "Cancel",
+    "quitBody_one": "{{count}} session still running. Quitting ends it and anything it started.",
+    "quitBody_other": "{{count}} sessions still running. Quitting ends them and anything they started.",
+    "closeBody_one": "{{count}} session still running. Closing the window ends it and anything it started.",
+    "closeBody_other": "{{count}} sessions still running. Closing the window ends them and anything they started."
+  }
+}

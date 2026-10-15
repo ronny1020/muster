@@ -1,0 +1,57 @@
+{
+  "tab": {
+    "newSession": "新工作階段",
+    "settings": "設定",
+    "working": "執行中",
+    "waiting": "等待你的回應",
+    "newTab": "新分頁",
+    "newTabHint": "新分頁（{{shortcut}}）",
+    "close": "關閉分頁",
+    "moveToNewWindow": "移到新視窗",
+    "exited": "已結束",
+    "exited_failed": "已結束 {{code}}"
+  },
+  "ghost": {
+    "strip": "加入此視窗",
+    "window": "移動此視窗",
+    "new": "在新視窗中開啟"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "還原",
+    "close": "關閉"
+  },
+  "session": {
+    "fallbackName": "工作階段",
+    "waiting": "等待你的回應。",
+    "noEditor": "PATH 中找不到編輯器。",
+    "ended": "工作階段已結束。",
+    "ended_failed": "工作階段已結束，結束代碼 {{code}}。"
+  },
+  "dragEdge": "拖曳以調整大小 · 按兩下以重設",
+  "noMatch": "沒有符合的項目。",
+  "dialog": {
+    "chooseDirectory": "選擇工作目錄",
+    "chooseImage": "選擇背景圖片",
+    "images": "圖片"
+  },
+  "fonts": {
+    "systemDefault": "系統預設",
+    "notInstalled": "{{name}}（未安裝）"
+  },
+  "reveal": {
+    "macos": "在 Finder 中顯示",
+    "windows": "在檔案總管中顯示",
+    "linux": "在檔案管理員中顯示"
+  },
+  "closeDialog": {
+    "quitTitle": "要結束 Muster 嗎？",
+    "closeTitle": "要關閉此視窗嗎？",
+    "quit": "結束",
+    "close": "關閉",
+    "cancel": "取消",
+    "quitBody_other": "仍有 {{count}} 個工作階段在執行。結束會一併終止它們及其啟動的所有程式。",
+    "closeBody_other": "仍有 {{count}} 個工作階段在執行。關閉此視窗會一併終止它們及其啟動的所有程式。"
+  }
+}

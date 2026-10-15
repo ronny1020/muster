@@ -1,0 +1,122 @@
+{
+  "title": "設定",
+  "groups": {
+    "general": "一般",
+    "newTabs": "新しいタブ",
+    "terminal": "ターミナル",
+    "background": "背景",
+    "editor": "エディター",
+    "notifications": "通知",
+    "git": "Git",
+    "sessionRecords": "セッションの記録",
+    "data": "データ"
+  },
+  "language": {
+    "label": "言語",
+    "matchSystem": "システムに合わせる"
+  },
+  "defaultAgent": {
+    "label": "既定のエージェント",
+    "hint": "タブを開いたときに選択済みにします"
+  },
+  "terminalMode": {
+    "label": "既定のターミナルモード",
+    "hint": "新しいタブの開始モードです。スタート画面では起動ごとに選べ、ステータスバーでは実行中のタブを切り替えられます。「クリック」は Claude Code 自身のプロンプト、サブエージェント、シェルにマウスを渡します。「スクロールバック」はターミナル自身の履歴を保持し、スクロールバー、検索バー、スクロールバー横のパス、幅の修復に必要です。1 つのセッションで両方は使えません。",
+    "control": "ターミナルモード",
+    "scrollback": "スクロールバック",
+    "clicks": "クリック"
+  },
+  "defaultDirectory": {
+    "label": "既定のフォルダー",
+    "hint": "空欄の場合は最後に開いたフォルダーを使います",
+    "placeholder": "前回のフォルダー",
+    "browse": "参照…"
+  },
+  "runIn": {
+    "label": "実行環境",
+    "hint": "新しいタブのセッションを開始する場所",
+    "backend": "既定のバックエンド",
+    "distro": "既定の WSL ディストリビューション",
+    "defaultDistro": "既定のディストリビューション"
+  },
+  "theme": {
+    "label": "テーマ",
+    "hint": "実行中のセッションにも適用されます"
+  },
+  "fontFamily": {
+    "label": "フォント",
+    "reading": "インストール済みのフォントを読み込み中…",
+    "counted": "インストール済みの {{total}} 書体のうち {{fixed}} 書体がターミナルのグリッドに使えます",
+    "unreadable": "インストール済みのフォントを読み込めなかったため、組み込みの一覧を表示しています。お持ちのフォントの大半は含まれていません"
+  },
+  "allSystemFonts": {
+    "label": "すべてのシステムフォントを表示",
+    "hint": "オフの場合は等幅フォントのみを表示します。インストール済みのすべてになることはほぼありません"
+  },
+  "fontSize": "フォントサイズ",
+  "lineHeight": "行の高さ",
+  "textWidth": "文字幅",
+  "scrollback": "スクロールバック",
+  "cursorBlink": "カーソルの点滅",
+  "shellIntegration": {
+    "label": "シェル統合",
+    "hint": "zsh または bash のタブで、コマンドごとのコピー操作と、履歴からの入力補完を有効にします。エージェントのタブが引き渡すシェルも対象です。変更後に開始したタブに適用されます。"
+  },
+  "units": {
+    "lines_other": "{{count}} 行",
+    "seconds_other": "{{count}} 秒",
+    "commits_other": "{{count}} コミット",
+    "days_other": "{{count}} 日間"
+  },
+  "image": {
+    "label": "画像",
+    "hint": "すべてのタブでターミナルの背後に描画します",
+    "clear": "クリア",
+    "change": "変更…",
+    "choose": "選択…"
+  },
+  "brightness": "明るさ",
+  "preview": {
+    "unreadable": "そのファイルは画像として読み込めませんでした。",
+    "label": "背景のプレビュー"
+  },
+  "editor": {
+    "label": "開くアプリ",
+    "none": "PATH にエディターのコマンドが見つかりません",
+    "noneValue": "なし",
+    "hint": "各タブのステータスバーのボタンで使います",
+    "control": "エディター",
+    "firstFound": "{{name}}（最初に見つかったもの）"
+  },
+  "notifyOnDone": {
+    "label": "セッションの完了時",
+    "hint": "セッションがターンを終えたとき、シェルに戻ったとき、または終了したとき",
+    "control": "セッションの完了時に通知"
+  },
+  "notifyOnlyWhenUnfocused": {
+    "label": "他を見ているときのみ",
+    "hint": "そのタブがすでに画面に表示されている間は通知しません",
+    "control": "他を見ているときのみ通知"
+  },
+  "notifySound": {
+    "label": "サウンドを再生",
+    "control": "通知音を再生"
+  },
+  "gitPoll": "ステータスの更新間隔",
+  "historyLimit": "履歴の長さ",
+  "journal": {
+    "label": "セッションの出力を記録",
+    "hint": "そのまま保存するため、フォルダー内の過去のセッションを一覧表示して再び開けます"
+  },
+  "journalRetention": "記録の保持期間",
+  "recentDirs": {
+    "label": "最近のフォルダー",
+    "hint": "{{count}} 件を記憶中",
+    "clear": "クリア"
+  },
+  "reset": {
+    "label": "その他すべて",
+    "hint": "このページのすべての設定を元に戻します",
+    "action": "既定に戻す"
+  }
+}

@@ -2,12 +2,14 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 mod attach;
+mod close;
 mod editor;
 mod fonts;
 mod ghost;
 mod image;
 mod journal;
 mod link;
+mod locale;
 mod output;
 mod platform;
 mod pty;
@@ -103,6 +105,7 @@ pub fn run() {
         .manage(window::Handoffs::default())
         .manage(window::Strips::default())
         .manage(ghost::Ghost::default())
+        .manage(close::Words::default())
         .setup(|app| {
             window::restore(app.handle());
             Ok(())
@@ -116,6 +119,8 @@ pub fn run() {
             pty::pty_cwd,
             store::state_read,
             store::state_write,
+            close::close_words,
+            locale::system_locales,
             window::window_open,
             window::window_send,
             window::window_take,
@@ -172,8 +177,8 @@ pub fn run() {
                     return;
                 }
                 api.prevent_close();
-                let window = window.clone();
-                confirm_close(window, live, last);
+                let words = close::current(&window.state::<close::Words>());
+                close::confirm(window.clone(), &words, live, last);
             }
             tauri::WindowEvent::Focused(true) => {
                 window.state::<window::Strips>().focused(window.label());
@@ -362,37 +367,4 @@ fn reopen_window(handle: &tauri::AppHandle) {
     let _ = window.unminimize();
     let _ = window.show();
     let _ = window.set_focus();
-}
-
-/// Asks before closing over running sessions, then closes for real. The last
-/// window's close quits the app, so it says so; any other ends only the
-/// sessions it shows.
-///
-/// The dialog is shown from a callback rather than awaited: blocking inside the
-/// window-event handler deadlocks the event loop that has to draw the dialog.
-fn confirm_close(window: tauri::Window, live: usize, last: bool) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-
-    let plural = if live == 1 { "session" } else { "sessions" };
-    let (title, verb, action) = if last {
-        ("Quit Muster?", "Quitting", "Quit")
-    } else {
-        ("Close this window?", "Closing it", "Close")
-    };
-    window
-        .dialog()
-        .message(format!(
-            "{live} {plural} still running. {verb} ends them and anything they started."
-        ))
-        .title(title)
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            action.to_string(),
-            "Cancel".to_string(),
-        ))
-        .show(move |quit| {
-            if quit {
-                let _ = window.destroy();
-            }
-        });
 }

@@ -2,6 +2,10 @@ import { stackFor } from '../../../shared/lib/fonts'
 import type { Backend } from '../../../shared/lib/platform'
 import { DEFAULT_THEME_ID, THEMES } from '../../../shared/lib/themes'
 import {
+  isLanguageSetting,
+  type LanguageSetting,
+} from '../../../shared/i18n/i18n'
+import {
   appState,
   setAppState,
   watchAppState,
@@ -25,6 +29,8 @@ import {
 export type TerminalMode = 'clicks' | 'scrollback'
 
 export interface Settings {
+  /** Interface language; `system` follows the OS's preferred languages. */
+  language: LanguageSetting
   /** Agent selected when a new tab opens. */
   defaultAgentId: string
   /** Directory a new tab starts on; empty means the last used, then home. */
@@ -97,6 +103,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: 'system',
   defaultAgentId: 'claude',
   defaultDirectory: '',
   defaultBackend: 'native',
@@ -142,7 +149,7 @@ export const LIMITS = {
   backgroundBrightness: { min: 5, max: 100, step: 5 },
 } as const
 
-const STORAGE_KEY = 'muster.settings'
+export const STORAGE_KEY = 'muster.settings'
 
 export function normalizeSettings(input: unknown): Settings {
   const raw = (
@@ -150,6 +157,9 @@ export function normalizeSettings(input: unknown): Settings {
   ) as Record<string, unknown>
 
   return {
+    language: isLanguageSetting(raw.language)
+      ? raw.language
+      : DEFAULT_SETTINGS.language,
     // Not validated against the agent roster, which lives in a sibling slice
     // this one may not import — `test/layers.test.ts` enforces that. The
     // rosters' own `pickableAgent` guards every place the value is displayed

@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import {
   type DiffLine,
@@ -21,6 +23,7 @@ import { useFontMetrics } from '../../../shared/lib/fontmetrics'
 import { useFileDiff } from '../model/useFileDiff'
 import { ChangeRuler } from './ChangeRuler'
 import { TokenLine } from './TokenLine'
+import { currentLocale } from '../../../shared/i18n/i18n'
 
 export interface DiffViewProps {
   cwd: string
@@ -48,12 +51,8 @@ const ROW_TONE: Record<DiffLine['kind'], string> = {
 }
 
 /** What a screen reader hears instead of the tint. */
-const SPOKEN: Record<DiffLine['kind'], string> = {
-  add: 'added line',
-  del: 'removed line',
-  context: '',
-  meta: '',
-}
+const spoken = (kind: DiffLine['kind'], t: TFunction<'review'>): string =>
+  kind === 'add' ? t('diff.added') : kind === 'del' ? t('diff.removed') : ''
 
 const MARKER: Record<DiffLine['kind'], string> = {
   add: '+',
@@ -73,6 +72,7 @@ export function DiffView({
   wrap,
   opener,
 }: DiffViewProps) {
+  const { t } = useTranslation('review')
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
   const { diff, error, loading } = useFileDiff(
@@ -91,15 +91,15 @@ export function DiffView({
 
   // Only when there is nothing to show yet: a re-read of the file already on
   // screen keeps its rows, and its scroll position with them.
-  if (loading && !parsed) return <Notice>Reading the diff…</Notice>
+  if (loading && !parsed) return <Notice>{t('diff.reading')}</Notice>
   if (error) return <Notice tone="text-danger">{error}</Notice>
   if (!parsed) return null
-  if (parsed.binary) return <Notice>Binary file — nothing to show.</Notice>
+  if (parsed.binary) return <Notice>{t('diff.binary')}</Notice>
   if (parsed.hunks.length === 0) {
     // A rename or a mode change has no hunks, and neither does a file that
     // stopped differing between the list being read and the diff being asked
     // for — an agent reverting its own edit, or a commit landing.
-    return <Notice>Nothing textual changed in this file.</Notice>
+    return <Notice>{t('diff.unchanged')}</Notice>
   }
 
   return (
@@ -129,17 +129,19 @@ export function DiffView({
             wrap={wrap}
             opener={opener}
             sides={sides}
+            t={t}
           />
         ))}
         {budget.rows < budget.total && (
           <Notice tone="text-[#d8b165]">
-            {`Showing ${budget.rows.toLocaleString()} of ${budget.total.toLocaleString()} rows — narrow the context to see the rest.`}
+            {t('diff.rowsCapped', {
+              rows: budget.rows.toLocaleString(currentLocale()),
+              total: budget.total.toLocaleString(currentLocale()),
+            })}
           </Notice>
         )}
         {diff?.truncated && (
-          <Notice tone="text-[#d8b165]">
-            Diff cut short — the rest is longer than this panel will read.
-          </Notice>
+          <Notice tone="text-[#d8b165]">{t('diff.truncated')}</Notice>
         )}
       </div>
     </div>
@@ -209,6 +211,7 @@ interface HunkRowsProps {
   wrap: boolean
   opener: LineOpener | null
   sides: { old: boolean; new: boolean }
+  t: TFunction<'review'>
 }
 
 function HunkRows({
@@ -218,6 +221,7 @@ function HunkRows({
   wrap,
   opener,
   sides,
+  t,
 }: HunkRowsProps) {
   return (
     <>
@@ -233,6 +237,7 @@ function HunkRows({
           wrap={wrap}
           opener={opener}
           sides={sides}
+          t={t}
         />
       ))}
     </>
@@ -254,9 +259,11 @@ interface RowProps {
   wrap: boolean
   opener: LineOpener | null
   sides: { old: boolean; new: boolean }
+  t: TFunction<'review'>
 }
 
-function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
+function Row({ row, tokens, wanted, wrap, opener, sides, t }: RowProps) {
+  const said = spoken(row.kind, t)
   const element = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (wanted) element.current?.scrollIntoView({ block: 'center' })
@@ -277,12 +284,10 @@ function Row({ row, tokens, wanted, wrap, opener, sides }: RowProps) {
       {/* The old side is never a link: that number names a line in the file as
           it was, which the editor has no way to open. */}
       {sides.old && <Gutter value={row.oldLine} />}
-      {sides.new && <Gutter value={row.newLine} opener={opener} />}
+      {sides.new && <Gutter value={row.newLine} opener={opener} t={t} />}
       {/* The glyph is decorative; the word is what a screen reader gets, since
           the tint alone carries the meaning otherwise. */}
-      {SPOKEN[row.kind] && (
-        <span className="sr-only">{`${SPOKEN[row.kind]} `}</span>
-      )}
+      {said && <span className="sr-only">{`${said} `}</span>}
       <span
         aria-hidden="true"
         className="flex-none text-center text-faint select-none"
@@ -316,15 +321,17 @@ const GUTTER_WIDTH = { minWidth: '4ch' }
 const Gutter = ({
   value,
   opener,
+  t,
 }: {
   value: number | null
   opener?: LineOpener | null
+  t?: TFunction<'review'>
 }) =>
-  value !== null && opener ? (
+  value !== null && opener && t ? (
     <button
       type="button"
-      title={`Open line ${value} in ${opener.editor}`}
-      aria-label={`Open line ${value} in ${opener.editor}`}
+      title={t('code.openLine', { line: value, editor: opener.editor })}
+      aria-label={t('code.openLine', { line: value, editor: opener.editor })}
       onClick={() => opener.open(value)}
       style={GUTTER_WIDTH}
       className={`${GUTTER} cursor-pointer text-faint hover:text-primary hover:underline`}

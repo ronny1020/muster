@@ -1,4 +1,6 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 
 import { renderMarkdown, type RenderedMarkdown } from '../model/markdown'
 import { useTextFile } from '../model/useTextFile'
@@ -6,6 +8,7 @@ import { codeStyle } from '../model/codestyle'
 import { readImage } from '../../../shared/ipc'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { useFontMetrics } from '../../../shared/lib/fontmetrics'
+import { i18n } from '../../../shared/i18n/i18n'
 
 export interface MarkdownViewProps {
   /** Absolute path of the markdown file. */
@@ -27,6 +30,7 @@ export interface MarkdownViewProps {
  * draw into, and an image has to become a `data:` URI before it can appear.
  */
 export function MarkdownView({ path, revision, onUrl }: MarkdownViewProps) {
+  const { t } = useTranslation('review')
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
   const { file, error } = useTextFile(path, revision)
@@ -65,8 +69,14 @@ export function MarkdownView({ path, revision, onUrl }: MarkdownViewProps) {
     }
   }, [rendered])
 
+  // The placeholders are DOM the image loader wrote outside React, so a
+  // language change has to reach them by hand.
+  useEffect(() => {
+    if (host.current) labelMissingImages(host.current, t)
+  }, [t])
+
   if (error) return <Notice tone="text-danger">{error}</Notice>
-  if (!rendered) return <Notice>Reading…</Notice>
+  if (!rendered) return <Notice>{t('markdown.reading')}</Notice>
 
   return (
     <div
@@ -238,14 +248,37 @@ async function loadImages(
       const { dataUrl } = await readImage(source, within)
       if (live()) image.src = dataUrl
     } catch {
-      image.replaceWith(
-        Object.assign(document.createElement('span'), {
-          className: 'text-[11px] text-faint',
-          textContent: `[missing image: ${source}]`,
-        }),
-      )
+      const placeholder = Object.assign(document.createElement('span'), {
+        className: 'text-[11px] text-faint',
+      })
+      placeholder.dataset.missingImage = source
+      labelMissingImage(placeholder, i18n.getFixedT(null, 'review'))
+      image.replaceWith(placeholder)
     }
   }
+}
+
+/**
+ * Writes every missing-image placeholder's text in `t`'s language.
+ *
+ * The placeholder keeps its source in `data-missing-image` rather than only in
+ * its text, so it can be relabelled when the language changes.
+ */
+function labelMissingImages(host: HTMLElement, t: TFunction<'review'>) {
+  for (const placeholder of host.querySelectorAll<HTMLElement>(
+    '[data-missing-image]',
+  )) {
+    labelMissingImage(placeholder, t)
+  }
+}
+
+const labelMissingImage = (
+  placeholder: HTMLElement,
+  t: TFunction<'review'>,
+) => {
+  placeholder.textContent = t('markdown.missingImage', {
+    source: placeholder.dataset.missingImage ?? '',
+  })
 }
 
 /** The directory a file sits in, for resolving what it points at. */

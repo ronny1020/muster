@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 
 import { basename, folderOf } from '../model/changes'
 import { isMarkdownPath } from '../model/markdown'
@@ -34,10 +36,14 @@ export interface FileViewerProps {
 const DEFAULT_WIDTH = 560
 
 /** How much unchanged code to keep around each hunk, as the header offers it. */
-const CONTEXT_STEPS = [
-  { label: '3', value: 3, title: 'Three lines of context' },
-  { label: '12', value: 12, title: 'Twelve lines of context' },
-  { label: 'All', value: 100_000, title: 'The whole file' },
+const contextSteps = (t: TFunction<'review'>) => [
+  { label: '3', value: 3, title: t('viewer.contextThree') },
+  { label: '12', value: 12, title: t('viewer.contextTwelve') },
+  {
+    label: t('viewer.contextAll'),
+    value: 100_000,
+    title: t('viewer.contextWhole'),
+  },
 ]
 
 /**
@@ -59,6 +65,7 @@ export function FileViewer({
   onUrl,
   onClose,
 }: FileViewerProps) {
+  const { t } = useTranslation('review')
   const [wrap, setWrap] = useState(false)
   const [context, setContext] = useState(3)
   /**
@@ -103,7 +110,7 @@ export function FileViewer({
       // thing left that can keep the terminal on screen.
       className="relative flex flex-col border-l border-line bg-canvas"
     >
-      <DragEdge size={size} label="Resize the file panel" />
+      <DragEdge size={size} label={t('viewer.resize')} />
 
       {/*
         Close must survive a narrow panel, so it sits outside the group that
@@ -124,14 +131,20 @@ export function FileViewer({
             <Action
               label={
                 rendered
-                  ? `Show the ${viewed.kind === 'diff' ? 'diff' : 'source'} instead`
-                  : 'Render this markdown'
+                  ? viewed.kind === 'diff'
+                    ? t('viewer.showDiff')
+                    : t('viewer.showSource')
+                  : t('viewer.renderMarkdown')
               }
               // The button says where a click goes, not where you already are:
               // reading a rendered document, the useful word is what you would
               // switch back to.
               text={
-                rendered ? (viewed.kind === 'diff' ? 'Diff' : 'Raw') : 'Preview'
+                rendered
+                  ? viewed.kind === 'diff'
+                    ? t('viewer.diff')
+                    : t('viewer.raw')
+                  : t('viewer.preview')
               }
               onClick={() => setPreview((was) => !was)}
             >
@@ -150,8 +163,10 @@ export function FileViewer({
 
           {asDiff && !rendered && (
             <>
-              <span className="flex-none text-[10px] text-faint">context</span>
-              {CONTEXT_STEPS.map((step) => (
+              <span className="flex-none text-[10px] text-faint">
+                {t('viewer.contextLabel')}
+              </span>
+              {contextSteps(t).map((step) => (
                 <button
                   key={step.value}
                   type="button"
@@ -173,8 +188,8 @@ export function FileViewer({
 
           {!rendered && (
             <Action
-              label={wrap ? 'Stop wrapping long lines' : 'Wrap long lines'}
-              text="Wrap"
+              label={wrap ? t('viewer.unwrapLines') : t('viewer.wrapLines')}
+              text={t('viewer.wrap')}
               active={wrap}
               onClick={() => setWrap((was) => !was)}
             >
@@ -182,7 +197,7 @@ export function FileViewer({
             </Action>
           )}
           <Action
-            label="Copy path"
+            label={t('viewer.copyPath')}
             onClick={() =>
               void navigator.clipboard.writeText(path).catch(report)
             }
@@ -191,14 +206,14 @@ export function FileViewer({
           </Action>
           {opener && (
             <Action
-              label={`Open in ${opener.editor}`}
+              label={t('viewer.openIn', { editor: opener.editor })}
               onClick={() => opener.open(viewed.line ?? 1)}
             >
               <Icon name="open_in_new" className="size-3.5" />
             </Action>
           )}
         </div>
-        <Action label="Close · Escape" onClick={onClose}>
+        <Action label={t('viewer.close')} onClick={onClose}>
           <Icon name="close" className="size-3.5" />
         </Action>
       </header>

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import {
   closeWindow,
   minimizeWindow,
@@ -18,21 +20,22 @@ import type { IconName } from './icons'
  */
 export function WindowControls() {
   const maximized = useMaximized()
+  const { t } = useTranslation('chrome')
 
   return (
     <div className="flex h-full flex-none items-stretch">
       <CaptionButton
-        label="Minimize"
+        label={t('window.minimize')}
         icon="window_minimize"
         onClick={() => void minimizeWindow().catch(report)}
       />
       <CaptionButton
-        label={maximized ? 'Restore' : 'Maximize'}
+        label={maximized ? t('window.restore') : t('window.maximize')}
         icon={maximized ? 'window_restore' : 'window_maximize'}
         onClick={() => void toggleMaximizeWindow().catch(report)}
       />
       <CaptionButton
-        label="Close"
+        label={t('window.close')}
         icon="close"
         onClick={() => void closeWindow().catch(report)}
         className="hover:bg-[#c42b1c] hover:text-white"

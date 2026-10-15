@@ -1,0 +1,57 @@
+{
+  "tab": {
+    "newSession": "新しいセッション",
+    "settings": "設定",
+    "working": "実行中",
+    "waiting": "入力待ち",
+    "newTab": "新しいタブ",
+    "newTabHint": "新しいタブ（{{shortcut}}）",
+    "close": "タブを閉じる",
+    "moveToNewWindow": "新しいウィンドウに移動",
+    "exited": "終了",
+    "exited_failed": "終了 {{code}}"
+  },
+  "ghost": {
+    "strip": "このウィンドウに追加",
+    "window": "このウィンドウを移動",
+    "new": "新しいウィンドウで開く"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "元に戻す",
+    "close": "閉じる"
+  },
+  "session": {
+    "fallbackName": "セッション",
+    "waiting": "入力を待っています。",
+    "noEditor": "PATH にエディターが見つかりません。",
+    "ended": "セッションが終了しました。",
+    "ended_failed": "セッションがコード {{code}} で終了しました。"
+  },
+  "dragEdge": "ドラッグでサイズ変更・ダブルクリックでリセット",
+  "noMatch": "一致する項目はありません。",
+  "dialog": {
+    "chooseDirectory": "作業ディレクトリを選択",
+    "chooseImage": "背景画像を選択",
+    "images": "画像"
+  },
+  "fonts": {
+    "systemDefault": "システムのデフォルト",
+    "notInstalled": "{{name}}（未インストール）"
+  },
+  "reveal": {
+    "macos": "Finder で表示",
+    "windows": "エクスプローラーで表示",
+    "linux": "ファイルマネージャーで表示"
+  },
+  "closeDialog": {
+    "quitTitle": "Muster を終了しますか？",
+    "closeTitle": "このウィンドウを閉じますか？",
+    "quit": "終了",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "quitBody_other": "{{count}} 件のセッションが実行中です。終了すると、セッションとそこから起動したものがすべて終了します。",
+    "closeBody_other": "{{count}} 件のセッションが実行中です。閉じると、セッションとそこから起動したものがすべて終了します。"
+  }
+}

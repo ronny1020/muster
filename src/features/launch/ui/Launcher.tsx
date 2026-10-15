@@ -3,11 +3,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   AGENTS,
   type Agent,
+  modeText,
   pickableAgent,
   resumeArgs,
   SHELL_AGENT,
 } from '../../../entities/agent/model/agents'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 
 import { Combobox } from '../../../shared/ui/Combobox'
 import type { LauncherStart } from '../../../entities/tab/model/deck'
@@ -107,6 +110,7 @@ export function Launcher({
   /** What a restored tab opens with, in place of the settings defaults. */
   start?: LauncherStart
 }) {
+  const { t } = useTranslation('launch')
   const directory = useRef<HTMLInputElement>(null)
   const { settings } = useSettings()
   const platform = usePlatform()
@@ -130,7 +134,7 @@ export function Launcher({
     start?.backend ?? settings.defaultBackend,
   )
   const [distro, setDistro] = useState(start?.distro ?? settings.defaultDistro)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<LaunchError | null>(null)
   const [missing, setMissing] = useState<MissingDirectory | null>(null)
   /** A directory that is there and unreadable, by path. */
   const [blocked, setBlocked] = useState<string | null>(null)
@@ -154,7 +158,7 @@ export function Launcher({
    * the screen usable.
    */
   const launched = useRef(false)
-  const hint = blocked ? blockedHint(OS) : null
+  const hint = blocked ? blockedHint(OS, t) : null
   /**
    * The conversations Resume is offering, or `null` while it is offering none.
    *
@@ -277,12 +281,12 @@ export function Launcher({
     const { directory: override, as = agent } = options
     const directory = (override ?? cwd).trim()
     if (!directory) {
-      setError('Choose a directory first.')
+      setError('chooseDirectory')
       return
     }
     const workspace = await workspaceInfo(directory, true).catch(() => null)
     if (!workspace) {
-      setError('Could not read that directory.')
+      setError('unreadableDirectory')
       return
     }
     // Warns once, then gets out of the way. The check is `read_dir`, so it
@@ -299,7 +303,7 @@ export function Launcher({
       warned.current.add(workspace.path)
       setBlocked(workspace.path)
       setMissing(null)
-      setError('')
+      setError(null)
       return
     }
     // Past the warning, so the notice comes down: only one of the two should
@@ -309,7 +313,7 @@ export function Launcher({
       // Not an error yet: offer to create it, and remember which mode was
       // clicked so confirming launches straight into it.
       setMissing({ path: workspace.path, modeArgs, as })
-      setError('')
+      setError(null)
       return
     }
     if (launched.current) return
@@ -360,7 +364,7 @@ export function Launcher({
     handling.current = true
     const directory = cwd.trim()
     if (!directory) {
-      setError('Choose a directory first.')
+      setError('chooseDirectory')
       handling.current = false
       return
     }
@@ -400,7 +404,7 @@ export function Launcher({
       chooseCwd(created)
       await launch(pending.modeArgs, { directory: created, as: pending.as })
     } catch (cause) {
-      setError(String(cause))
+      setError({ raw: String(cause) })
     }
   }
 
@@ -408,7 +412,7 @@ export function Launcher({
     const picked = await pickDirectory(cwd || undefined).catch(() => null)
     if (picked) {
       chooseCwd(picked)
-      setError('')
+      setError(null)
       // The third path that moves `cwd`, and both notices name a directory:
       // left up, they describe the folder the user has just navigated away
       // from while the buttons beneath them act on the new one.
@@ -425,10 +429,10 @@ export function Launcher({
     <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-6">
       <div className="flex w-[min(560px,100%)] flex-col gap-3.5">
         <h1 className="m-0 text-[15px] font-semibold tracking-[0.01em]">
-          New session
+          {t('title')}
         </h1>
 
-        <Field label="Directory" htmlFor="launcher-dir">
+        <Field label={t('directory')} htmlFor="launcher-dir">
           <div className="flex gap-1.5">
             <div className="min-w-0 flex-1">
               <TextInput
@@ -451,7 +455,7 @@ export function Launcher({
               onClick={() => void browse()}
               className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
             >
-              Browse…
+              {t('browse')}
             </button>
           </div>
         </Field>
@@ -465,7 +469,7 @@ export function Launcher({
                 title={dir}
                 onClick={() => {
                   chooseCwd(dir)
-                  setError('')
+                  setError(null)
                   setMissing(null)
                   setBlocked(null)
                 }}
@@ -477,10 +481,10 @@ export function Launcher({
           </div>
         )}
 
-        <Field label="Agent">
+        <Field label={t('agent')}>
           <Combobox
-            label="Agent"
-            placeholder="Type to filter…"
+            label={t('agent')}
+            placeholder={t('filterAgents')}
             options={AGENTS.map((choice) => ({
               id: choice.id,
               label: choice.name,
@@ -492,15 +496,15 @@ export function Launcher({
         </Field>
 
         {agent.scrollbackMode && (
-          <Field label="Terminal mode">
+          <Field label={t('terminalMode')}>
             <div className="flex gap-1.5">
               <Choice
-                label="Scrollback"
+                label={t('scrollback')}
                 selected={mode === 'scrollback'}
                 onSelect={() => setMode('scrollback')}
               />
               <Choice
-                label="Clicks"
+                label={t('clicks')}
                 selected={mode === 'clicks'}
                 onSelect={() => setMode('clicks')}
               />
@@ -509,7 +513,7 @@ export function Launcher({
         )}
 
         {distros.length > 0 && (
-          <Field label="Run in">
+          <Field label={t('runIn')}>
             <div className="flex gap-1.5">
               <Choice
                 label="Windows"
@@ -524,11 +528,11 @@ export function Launcher({
               {backend === 'wsl' && (
                 <select
                   value={distro}
-                  aria-label="WSL distro"
+                  aria-label={t('wslDistro')}
                   onChange={(event) => setDistro(event.target.value)}
                   className="h-8 rounded-lg border border-line bg-[#1e1e22] px-2 text-xs text-ink focus:border-primary focus:outline-none"
                 >
-                  <option value="">Default distro</option>
+                  <option value="">{t('defaultDistro')}</option>
                   {distros.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -541,7 +545,7 @@ export function Launcher({
         )}
 
         {agent.acceptsFlags && (
-          <Field label="Extra flags" htmlFor="launcher-flags">
+          <Field label={t('extraFlags')} htmlFor="launcher-flags">
             <TextInput
               id="launcher-flags"
               value={flags}
@@ -560,7 +564,7 @@ export function Launcher({
             }
             className="rounded-lg px-2 py-1 text-[11px] text-muted hover:bg-surface hover:text-ink"
           >
-            Open a plain shell instead
+            {t('openShell')}
           </button>
         </div>
 
@@ -575,9 +579,7 @@ export function Launcher({
                 aria-disabled={
                   mode.id === 'resume' && reading ? true : undefined
                 }
-                title={
-                  unavailable ? 'No past sessions in this directory' : undefined
-                }
+                title={unavailable ? t('noPastSessions') : undefined}
                 aria-expanded={mode.id === 'resume' ? Boolean(past) : undefined}
                 onClick={() =>
                   void (mode.id === 'resume'
@@ -591,9 +593,13 @@ export function Launcher({
                 }
                 className="flex flex-col gap-0.5 rounded-[10px] border border-line bg-surface px-3 py-2.5 text-left enabled:hover:border-[#43434d] enabled:hover:bg-surface-hover disabled:opacity-40"
               >
-                <strong className="font-medium">{mode.label}</strong>
+                <strong className="font-medium">
+                  {modeText(mode, t).label}
+                </strong>
                 <span className="text-[11px] text-muted">
-                  {unavailable ? 'Nothing to continue here yet' : mode.hint}
+                  {unavailable
+                    ? t('nothingToContinue')
+                    : modeText(mode, t).hint}
                 </span>
               </button>
             )
@@ -606,15 +612,15 @@ export function Launcher({
           {(reading || past) && (
             <p className="m-0 text-[11px] text-faint">
               {reading
-                ? 'Reading past conversations…'
-                : `${past?.listed.length ?? 0} past conversations`}
+                ? t('readingPast')
+                : t('pastCount', { count: past?.listed.length ?? 0 })}
             </p>
           )}
         </div>
 
         {past && (
           <ul
-            aria-label="Past conversations"
+            aria-label={t('pastConversations')}
             className="m-0 max-h-56 list-none divide-y divide-line overflow-y-auto rounded-[10px] border border-line p-0"
           >
             {past.listed.map((session) => {
@@ -630,7 +636,7 @@ export function Launcher({
                     className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-surface-hover"
                   >
                     <span className="min-w-0 flex-1 truncate">
-                      {session.summary || 'Nothing typed in this one'}
+                      {session.summary || t('nothingTyped')}
                     </span>
                     <SessionAge at={session.at} />
                   </button>
@@ -648,7 +654,7 @@ export function Launcher({
                   className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-muted hover:bg-surface-hover hover:text-ink"
                 >
                   <span className="min-w-0 flex-1 truncate">
-                    Older conversations — open {agent.name}&rsquo;s own picker
+                    {t('olderConversations', { agent: agent.name })}
                   </span>
                 </button>
               </li>
@@ -663,13 +669,11 @@ export function Launcher({
           {blocked && hint && (
             <div className="flex flex-col gap-2 rounded-[10px] border border-danger/40 bg-surface px-3 py-2.5">
               <span className="text-[11px] text-muted">
-                <span className="font-mono text-ink">{blocked}</span> cannot be
-                listed. {hint.reason}
+                <span className="font-mono text-ink">{blocked}</span>{' '}
+                {t('cannotBeListed')} {hint.reason}
               </span>
               <span className="text-[11px] text-muted">
-                {hint.remedy} Click the same button again to start here anyway —
-                the session may still work if the agent knows the paths it
-                needs.
+                {hint.remedy} {t('startAnyway')}
               </span>
               <div className="flex gap-2">
                 {hint.settings ? (
@@ -680,7 +684,7 @@ export function Launcher({
                   onClick={() => setBlocked(null)}
                   className="h-7 flex-none rounded-lg px-2 text-xs text-muted hover:text-ink"
                 >
-                  Dismiss
+                  {t('dismiss')}
                 </button>
               </div>
             </div>
@@ -690,8 +694,8 @@ export function Launcher({
         {missing ? (
           <div className="flex items-center gap-2 rounded-[10px] border border-line bg-surface px-3 py-2">
             <span className="min-w-0 flex-1 text-[11px] text-muted">
-              <span className="font-mono text-ink">{missing.path}</span> does
-              not exist yet.
+              <span className="font-mono text-ink">{missing.path}</span>{' '}
+              {t('doesNotExist')}
             </span>
             <button
               type="button"
@@ -699,18 +703,20 @@ export function Launcher({
               style={{ borderColor: `${agent.accent}8c` }}
               className="h-7 flex-none rounded-lg border bg-surface px-3 text-xs hover:bg-surface-hover"
             >
-              Create and start
+              {t('createAndStart')}
             </button>
             <button
               type="button"
               onClick={() => setMissing(null)}
               className="h-7 flex-none rounded-lg border border-line px-3 text-xs text-muted hover:bg-surface-hover hover:text-ink"
             >
-              Cancel
+              {t('cancel')}
             </button>
           </div>
         ) : (
-          <p className="m-0 min-h-3.5 text-[11px] text-danger">{error}</p>
+          <p className="m-0 min-h-3.5 text-[11px] text-danger">
+            {error && errorText(error, t)}
+          </p>
         )}
       </div>
     </div>
@@ -802,14 +808,24 @@ function TextInput({
 }
 
 /**
+ * Kept as which message rather than its words, so an error already on screen
+ * follows a language switch. `raw` is the backend's own text, which has none.
+ */
+type LaunchError = 'chooseDirectory' | 'unreadableDirectory' | { raw: string }
+
+const errorText = (error: LaunchError, t: TFunction<'launch'>) =>
+  typeof error === 'string' ? t(error) : error.raw
+
+/**
  * How long ago a past conversation was written. The clock starts when the row
  * mounts, so the first label is never a minute stale.
  */
 function SessionAge({ at }: { at: number }) {
+  const { t: common } = useTranslation('common')
   const now = useNow(AGE_TICK_MS)
   return (
     <span className="flex-none text-[11px] text-faint">
-      {agoLabel(at, now)}
+      {agoLabel(at, now, common)}
     </span>
   )
 }

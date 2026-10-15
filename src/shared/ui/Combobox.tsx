@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
+import { useTranslation } from 'react-i18next'
+
 export interface ComboboxOption {
   id: string
   label: string
@@ -35,6 +37,7 @@ export function Combobox({
   onSelect,
   placeholder,
 }: ComboboxProps) {
+  const { t } = useTranslation('chrome')
   const listId = useId()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -120,7 +123,9 @@ export function Combobox({
           className="absolute inset-x-0 top-[30px] z-30 max-h-56 overflow-y-auto rounded-lg border border-line bg-chrome py-1 shadow-xl"
         >
           {matches.length === 0 && (
-            <li className="px-2.5 py-1 text-[11px] text-faint">No match.</li>
+            <li className="px-2.5 py-1 text-[11px] text-faint">
+              {t('noMatch')}
+            </li>
           )}
           {matches.map((option, at) => (
             <li key={option.id}>

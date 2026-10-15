@@ -1,0 +1,68 @@
+{
+  "title": "新工作階段",
+  "directory": "資料夾",
+  "browse": "瀏覽…",
+  "agent": "代理程式",
+  "filterAgents": "輸入以篩選…",
+  "terminalMode": "終端機模式",
+  "scrollback": "捲動紀錄",
+  "clicks": "點按",
+  "runIn": "執行於",
+  "wslDistro": "WSL 發行版",
+  "defaultDistro": "預設發行版",
+  "extraFlags": "額外參數",
+  "openShell": "改為開啟一般 shell",
+  "noPastSessions": "這個資料夾沒有過去的工作階段",
+  "nothingToContinue": "這裡還沒有可繼續的內容",
+  "readingPast": "正在讀取過去的對話…",
+  "pastConversations": "過去的對話",
+  "nothingTyped": "這則對話沒有輸入任何內容",
+  "olderConversations": "更早的對話 — 開啟 {{agent}} 自己的選擇器",
+  "chooseDirectory": "請先選擇資料夾。",
+  "unreadableDirectory": "無法讀取該資料夾。",
+  "cannotBeListed": "無法列出內容。",
+  "startAnyway": "再按一次同一個按鈕即可照樣在此開始 — 若代理程式知道它需要的路徑，工作階段仍可能正常運作。",
+  "dismiss": "關閉",
+  "doesNotExist": "尚不存在。",
+  "createAndStart": "建立並開始",
+  "cancel": "取消",
+  "modes": {
+    "new": {
+      "label": "新工作階段",
+      "hint": "在這個資料夾重新開始"
+    },
+    "continue": {
+      "label": "繼續",
+      "hint": "重新開啟最近的工作階段"
+    },
+    "continueConversation": {
+      "label": "繼續",
+      "hint": "重新開啟最近的對話"
+    },
+    "resume": {
+      "label": "恢復…",
+      "hint": "從過去的工作階段中挑選"
+    },
+    "shell": {
+      "label": "開啟 shell",
+      "hint": "你的預設 shell"
+    }
+  },
+  "blocked": {
+    "macos": {
+      "reason": "macOS 正在封鎖這個資料夾。「文件」、「桌面」和「下載項目」需要你的許可，而你當時的回答會被記住。",
+      "remedy": "由於回答已被記住，App 無法再次詢問 — 請在「檔案與資料夾」中重新為 Muster 開啟權限，然後再次開始工作階段。",
+      "settings": "開啟隱私權設定"
+    },
+    "windows": {
+      "reason": "Windows 拒絕存取這個資料夾。",
+      "remedy": "若它位於「文件」、「桌面」或「圖片」之下，可能是「受控資料夾存取」封鎖了它 — 請允許 Muster 通過。否則請檢查資料夾本身的權限。",
+      "settings": "開啟 Windows 安全性"
+    },
+    "linux": {
+      "reason": "你的使用者無法讀取這個資料夾。",
+      "remedy": "請檢查它的權限 — 若 Muster 是以 Flatpak 或 Snap 安裝，也請確認沙箱可以存取它。"
+    }
+  },
+  "pastCount_other": "{{count}} 則過去的對話"
+}

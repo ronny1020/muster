@@ -1,0 +1,73 @@
+{
+  "panel": {
+    "resize": "レビューパネルの幅を変更",
+    "changes": "変更",
+    "files": "ファイル",
+    "reread": "再読み込み",
+    "close": "レビューを閉じる",
+    "hiddenFiles": "隠しファイル",
+    "revealDirectory": "{{reveal}}（このディレクトリ）",
+    "sendPath": "このパスをセッションに入力",
+    "notRepo": "git リポジトリではないため、比較する対象がありません。",
+    "readingChanges": "変更を読み込み中…",
+    "noChanges": "変更はありません。",
+    "reading": "読み込み中…",
+    "versus": "比較",
+    "compareAgainst": "比較対象",
+    "uncommitted": "未コミット",
+    "summary_other": "{{count}} ファイル · +{{insertions}} −{{deletions}}"
+  },
+  "list": {
+    "binary": "バイナリ",
+    "notCounted": "行数は未集計：新規ファイルが多すぎるか、途中にシンボリックリンクがあります"
+  },
+  "tree": {
+    "copyPath": "パスをコピー",
+    "copyRelativePath": "相対パスをコピー",
+    "reading": "読み込み中…",
+    "empty": "空",
+    "link": "リンク",
+    "rowTitle": "{{name}} — 右クリックでその他の操作",
+    "rowTitle_ignored": "{{name}}（git で無視）— 右クリックでその他の操作"
+  },
+  "viewer": {
+    "resize": "ファイルパネルの幅を変更",
+    "contextLabel": "コンテキスト",
+    "contextAll": "すべて",
+    "contextThree": "コンテキスト 3 行",
+    "contextTwelve": "コンテキスト 12 行",
+    "contextWhole": "ファイル全体",
+    "showDiff": "差分を表示",
+    "showSource": "ソースを表示",
+    "renderMarkdown": "Markdown をレンダリング",
+    "diff": "差分",
+    "raw": "ソース",
+    "preview": "プレビュー",
+    "wrap": "折り返し",
+    "wrapLines": "長い行を折り返す",
+    "unwrapLines": "長い行を折り返さない",
+    "copyPath": "パスをコピー",
+    "openIn": "{{editor}} で開く",
+    "close": "閉じる · Escape"
+  },
+  "diff": {
+    "reading": "差分を読み込み中…",
+    "binary": "バイナリファイルのため、表示する内容がありません。",
+    "unchanged": "このファイルにテキストの変更はありません。",
+    "rowsCapped": "{{total}} 行中 {{rows}} 行を表示しています。残りを見るにはコンテキストを狭めてください。",
+    "truncated": "差分は途中までです。残りはこのパネルの読み込み上限を超えています。",
+    "added": "追加された行",
+    "removed": "削除された行"
+  },
+  "code": {
+    "pick": "ファイルを選ぶとここに表示されます。",
+    "reading": "読み込み中…",
+    "linesCapped": "{{total}} 行中、先頭の {{shown}} 行を表示しています。",
+    "truncated": "このファイルは先頭部分のみ表示しています。プレビューの読み込み上限を超えています。",
+    "openLine": "{{editor}} で {{line}} 行目を開く"
+  },
+  "markdown": {
+    "reading": "読み込み中…",
+    "missingImage": "［画像が見つかりません：{{source}}］"
+  }
+}

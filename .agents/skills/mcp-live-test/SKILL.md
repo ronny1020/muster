@@ -45,6 +45,13 @@ editing. `single-instance` also means a second launch exits silently, so a
 socket that answers may belong to an app you did not start — check the tab
 list before trusting what you measure.
 
+**The selectors below match English text.** The interface follows the OS
+language unless Settings says otherwise, so on a Chinese or Japanese Mac
+`aria-label^="Your messages"` and `includes('Continue')` find nothing, which
+reads exactly like the feature under test being broken. Check
+`document.documentElement.lang` first; if it is not `en-US`, set Settings →
+Language → English (US) once — muster-dev keeps its own settings, so it stays.
+
 ## Talking to it
 
 `scripts/ask.ts` is the whole client: newline-delimited JSON over the socket,

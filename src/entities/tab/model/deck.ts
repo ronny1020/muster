@@ -1,4 +1,5 @@
 import type { Backend } from '../../../shared/lib/platform'
+import type { TFunction } from 'i18next'
 
 /**
  * Tab deck state. Kept pure and free of React so the tab behaviour that users
@@ -50,7 +51,7 @@ export type ReviewView = 'changes' | 'files'
 export interface Tab {
   id: string
   title: string
-  /** Secondary line in the tab: git branch while running, exit status after. */
+  /** The git branch; `tabDetail` reads the exit status in its place. */
   detail: string
   dirty: boolean
   /** Exit code once the process ended, `null` while it runs or before launch. */
@@ -172,18 +173,38 @@ export function startOf(tab: Tab): LauncherStart | null {
 }
 
 /**
- * What the tab strip says before a session starts.
+ * What the tab strip says before a session starts, or `''` where the label is
+ * a word in the interface's language, which `tabLabel` supplies at render.
  *
  * A restored tab is named after its directory: several restored tabs all
  * reading "New session" is the state the tab strip is least able to help with.
  */
 function tabTitle(content: TabContent): string {
-  if (content.type === 'settings') return 'Settings'
   if (content.type === 'launcher' && content.start?.cwd) {
     return basename(content.start.cwd)
   }
-  return 'New session'
+  return ''
 }
+
+/**
+ * A tab's name as the strip shows it. Stored titles are directory and session
+ * names only, so a language switch relabels every untitled tab in place.
+ */
+export function tabLabel(tab: Tab, t: TFunction<'chrome'>): string {
+  if (tab.title) return tab.title
+  return tab.content.type === 'settings'
+    ? t('tab.settings')
+    : t('tab.newSession')
+}
+
+/** A tab's secondary line: its exit status once ended, else its branch. */
+export const tabDetail = (tab: Tab, t: TFunction<'chrome'>) =>
+  tab.exitCode === null
+    ? tab.detail
+    : t('tab.exited', {
+        code: tab.exitCode,
+        context: tab.exitCode === 0 ? undefined : 'failed',
+      })
 
 const basename = (path: string) =>
   path.split(/[/\\]/).filter(Boolean).pop() ?? path
@@ -267,7 +288,7 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
           type: 'launcher',
           start: startOf(tab) ?? undefined,
         },
-        title: 'New session',
+        title: '',
         detail: '',
         dirty: false,
         exitCode: null,
@@ -340,7 +361,6 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
     case 'exited':
       return patch(deck, action.id, () => ({
         exitCode: action.code,
-        detail: action.code === 0 ? 'exited' : `exited ${action.code}`,
       }))
 
     case 'handedBack':

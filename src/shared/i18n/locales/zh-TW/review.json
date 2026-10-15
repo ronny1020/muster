@@ -1,0 +1,73 @@
+{
+  "panel": {
+    "resize": "調整審閱面板寬度",
+    "changes": "變更",
+    "files": "檔案",
+    "reread": "重新讀取",
+    "close": "關閉審閱",
+    "hiddenFiles": "隱藏檔案",
+    "revealDirectory": "{{reveal}}（此目錄）",
+    "sendPath": "將此路徑輸入到工作階段",
+    "notRepo": "不是 git 儲存庫，沒有可比較的內容。",
+    "readingChanges": "正在讀取變更…",
+    "noChanges": "沒有變更。",
+    "reading": "讀取中…",
+    "versus": "比較",
+    "compareAgainst": "比較對象",
+    "uncommitted": "未提交",
+    "summary_other": "{{count}} 個檔案 · +{{insertions}} −{{deletions}}"
+  },
+  "list": {
+    "binary": "二進位",
+    "notCounted": "未計算行數：新檔案太多，或路徑上有符號連結"
+  },
+  "tree": {
+    "copyPath": "複製路徑",
+    "copyRelativePath": "複製相對路徑",
+    "reading": "讀取中…",
+    "empty": "空的",
+    "link": "連結",
+    "rowTitle": "{{name}} — 按右鍵查看更多",
+    "rowTitle_ignored": "{{name}}（已被 git 忽略）— 按右鍵查看更多"
+  },
+  "viewer": {
+    "resize": "調整檔案面板寬度",
+    "contextLabel": "上下文",
+    "contextAll": "全部",
+    "contextThree": "三行上下文",
+    "contextTwelve": "十二行上下文",
+    "contextWhole": "整個檔案",
+    "showDiff": "改為顯示差異",
+    "showSource": "改為顯示原始碼",
+    "renderMarkdown": "轉譯此 Markdown",
+    "diff": "差異",
+    "raw": "原始碼",
+    "preview": "預覽",
+    "wrap": "換行",
+    "wrapLines": "長行自動換行",
+    "unwrapLines": "停止長行自動換行",
+    "copyPath": "複製路徑",
+    "openIn": "在 {{editor}} 中開啟",
+    "close": "關閉 · Escape"
+  },
+  "diff": {
+    "reading": "正在讀取差異…",
+    "binary": "二進位檔案，沒有可顯示的內容。",
+    "unchanged": "此檔案沒有文字變更。",
+    "rowsCapped": "顯示 {{total}} 列中的 {{rows}} 列。縮小上下文範圍即可查看其餘部分。",
+    "truncated": "差異已截斷：其餘內容超出此面板的讀取上限。",
+    "added": "新增的行",
+    "removed": "移除的行"
+  },
+  "code": {
+    "pick": "選擇一個檔案以在此閱讀。",
+    "reading": "讀取中…",
+    "linesCapped": "僅顯示 {{total}} 行中的前 {{shown}} 行。",
+    "truncated": "只顯示此檔案的前段；檔案超出預覽的讀取上限。",
+    "openLine": "在 {{editor}} 中開啟第 {{line}} 行"
+  },
+  "markdown": {
+    "reading": "讀取中…",
+    "missingImage": "［找不到圖片：{{source}}］"
+  }
+}

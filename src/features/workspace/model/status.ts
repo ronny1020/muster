@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 import type { GitStatus } from '../../../shared/ipc'
 
 export interface GitChip {
@@ -14,7 +16,7 @@ export interface GitChip {
 }
 
 /** Compact chips summarising divergence and worktree state, Chrome-status style. */
-export function gitChips(git: GitStatus): GitChip[] {
+export function gitChips(git: GitStatus, t: TFunction<'workspace'>): GitChip[] {
   const chips: GitChip[] = []
   const push = (
     key: string,
@@ -30,7 +32,7 @@ export function gitChips(git: GitStatus): GitChip[] {
     push(
       'ahead',
       `↑${git.ahead}`,
-      `${git.ahead} commit(s) to push`,
+      t('chips.toPush', { count: git.ahead }),
       'neutral',
       'history',
     )
@@ -38,31 +40,41 @@ export function gitChips(git: GitStatus): GitChip[] {
     push(
       'behind',
       `↓${git.behind}`,
-      `${git.behind} commit(s) to pull`,
+      t('chips.toPull', { count: git.behind }),
       'neutral',
       'history',
     )
   if (git.staged)
-    push('staged', `+${git.staged}`, `${git.staged} staged`, 'staged')
+    push(
+      'staged',
+      `+${git.staged}`,
+      t('chips.staged', { count: git.staged }),
+      'staged',
+    )
   if (git.modified)
-    push('modified', `~${git.modified}`, `${git.modified} modified`, 'modified')
+    push(
+      'modified',
+      `~${git.modified}`,
+      t('chips.modified', { count: git.modified }),
+      'modified',
+    )
   if (git.untracked)
     push(
       'untracked',
       `?${git.untracked}`,
-      `${git.untracked} untracked`,
+      t('chips.untracked', { count: git.untracked }),
       'untracked',
     )
   if (git.conflicted)
     push(
       'conflict',
       `!${git.conflicted}`,
-      `${git.conflicted} conflicted`,
+      t('chips.conflicted', { count: git.conflicted }),
       'conflict',
     )
   if (!git.staged && !git.modified && !git.untracked && !git.conflicted) {
     // Nothing to review, so the chip is a label rather than a way in.
-    push('clean', 'clean', 'working tree clean', 'clean', null)
+    push('clean', t('chips.clean'), t('chips.cleanTitle'), 'clean', null)
   }
   return chips
 }
@@ -83,8 +95,11 @@ export interface ChipGroups {
  * adjacent counts that all open the same view are four targets for one
  * intention, and the space between them is a place to miss.
  */
-export function chipGroups(git: GitStatus): ChipGroups {
-  const chips = gitChips(git)
+export function chipGroups(
+  git: GitStatus,
+  t: TFunction<'workspace'>,
+): ChipGroups {
+  const chips = gitChips(git, t)
   return {
     history: chips.filter((chip) => chip.opens === 'history'),
     review: chips.filter((chip) => chip.opens === 'review'),
@@ -92,8 +107,8 @@ export function chipGroups(git: GitStatus): ChipGroups {
   }
 }
 
-export const branchLabel = (git: GitStatus) =>
-  git.detached ? `detached @ ${git.branch}` : git.branch
+export const branchLabel = (git: GitStatus, t: TFunction<'workspace'>) =>
+  git.detached ? t('chips.detached', { at: git.branch }) : git.branch
 
 /**
  * A string that changes when the working tree does, for the surfaces that

@@ -7,6 +7,7 @@
  * parallel agents are run in. So the comparison is keyed on the directory the
  * worktrees share, never on their own roots.
  */
+import type { TFunction } from 'i18next'
 
 /** What one tab is changing, as the comparison needs it. */
 export interface TabChanges {
@@ -88,13 +89,22 @@ function sharedPaths(group: TabChanges[]): Map<string, TabChanges[]> {
  * Named after the file when there is only one, because the path is the
  * actionable half: `src/auth.ts` sends you somewhere, "1 file" does not.
  */
-export function collisionSummary(collisions: Collision[]): string {
+export function collisionSummary(
+  collisions: Collision[],
+  t: TFunction<'workspace'>,
+): string {
   if (collisions.length === 0) return ''
   const [first] = collisions
   const others = new Set(collisions.flatMap((collision) => collision.others))
-  const where = others.size === 1 ? [...others][0] : `${others.size} other tabs`
+  const where =
+    others.size === 1
+      ? t('collision.namedTab', { title: [...others][0] })
+      : t('collision.otherTabs', { count: others.size })
   const rest = collisions.length - 1
-  return rest > 0
-    ? `${first.path} +${rest} also in ${where}`
-    : `${first.path} also in ${where}`
+  return t('collision.summary', {
+    path: first.path,
+    rest,
+    where,
+    context: rest > 0 ? 'more' : undefined,
+  })
 }

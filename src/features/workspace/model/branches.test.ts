@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 
 import { matchBranches, switchWarning } from './branches'
+import { i18n } from '../../../shared/i18n/i18n'
 import type { Branch, GitStatus } from '../../../shared/ipc'
+
+const t = i18n.getFixedT('en-US', 'workspace')
 
 const branch = (name: string, extra: Partial<Branch> = {}): Branch => ({
   name,
   current: false,
   upstream: null,
-  when: '1 day ago',
+  at: 1_700_000_000,
   remote: false,
   ...extra,
 })
@@ -60,28 +63,37 @@ describe('matchBranches', () => {
 
 describe('switchWarning', () => {
   it('says nothing about a clean tree', () => {
-    expect(switchWarning(status())).toBeNull()
+    expect(switchWarning(status(), t)).toBeNull()
   })
 
   it('counts staged and modified together, since both block a checkout', () => {
-    expect(switchWarning(status({ staged: 1, modified: 2 }))).toContain(
+    expect(switchWarning(status({ staged: 1, modified: 2 }), t)).toContain(
       '3 uncommitted changes',
     )
   })
 
   it('reads as singular for one change', () => {
-    expect(switchWarning(status({ modified: 1 }))).toContain(
+    expect(switchWarning(status({ modified: 1 }), t)).toContain(
       '1 uncommitted change —',
     )
   })
 
   it('does not warn about untracked files, which a checkout carries across', () => {
-    expect(switchWarning(status({ untracked: 4 }))).toBeNull()
+    expect(switchWarning(status({ untracked: 4 }), t)).toBeNull()
   })
 
   it('asks for conflicts to be resolved ahead of anything else', () => {
-    expect(switchWarning(status({ conflicted: 1, modified: 9 }))).toBe(
+    expect(switchWarning(status({ conflicted: 1, modified: 9 }), t)).toBe(
       'Resolve the conflicts first.',
     )
+  })
+
+  it('speaks the catalog it is given', () => {
+    expect(
+      switchWarning(
+        status({ conflicted: 1 }),
+        i18n.getFixedT('ja', 'workspace'),
+      ),
+    ).toBe('先に競合を解決してください。')
   })
 })

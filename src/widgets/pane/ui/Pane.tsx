@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { webHref } from '../../../shared/lib/weburl'
 
@@ -12,8 +14,10 @@ import {
   type DeckAction,
   type ReviewView,
   type Tab,
+  tabDetail,
   tabSession,
 } from '../../../entities/tab/model/deck'
+import { i18n } from '../../../shared/i18n/i18n'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
 import { useHomeDir } from '../model/useHomeDir'
@@ -73,9 +77,12 @@ import { StatusBar } from '../../../features/workspace/ui/StatusBar'
 import { TerminalView } from '../../../features/terminal/ui/TerminalView'
 import { useKeyChange } from '../../../shared/lib/useKeyChange'
 
+/** Why a clicked path could not be shown: the backend's own words, or ours. */
+type PreviewError = { kind: 'noEditor' } | { kind: 'failed'; message: string }
+
 interface ImagePreviewState {
   image: Image | null
-  error: string | null
+  error: PreviewError | null
 }
 
 export interface PaneProps {
@@ -98,6 +105,8 @@ export function Pane({
   onOpenSettings,
   dispatch,
 }: PaneProps) {
+  const { t } = useTranslation('chrome')
+  const { t: tWorkspace } = useTranslation('workspace')
   const { settings } = useSettings()
   const session = tabSession(tab)
   /**
@@ -332,15 +341,23 @@ export function Pane({
     if (isImagePath(path)) {
       void readImage(path)
         .then((image) => setPreview({ image, error: null }))
-        .catch((error) => setPreview({ image: null, error: String(error) }))
+        .catch((error) =>
+          setPreview({
+            image: null,
+            error: { kind: 'failed', message: String(error) },
+          }),
+        )
       return
     }
     if (!editorRef.current) {
-      setPreview({ image: null, error: 'No editor found on your PATH.' })
+      setPreview({ image: null, error: { kind: 'noEditor' } })
       return
     }
     void openInEditor(path, editorRef.current.command, line).catch((error) =>
-      setPreview({ image: null, error: String(error) }),
+      setPreview({
+        image: null,
+        error: { kind: 'failed', message: String(error) },
+      }),
     )
   }, [])
 
@@ -462,8 +479,8 @@ export function Pane({
       if (!shouldNotify) return
       notifiedAt.current = Date.now()
       void notify(
-        `${runningName ?? 'Session'} · ${tab.title}`,
-        body ?? 'Waiting for you.',
+        `${runningName ?? i18n.t('chrome:session.fallbackName')} · ${tab.title}`,
+        body ?? i18n.t('chrome:session.waiting'),
         settings.notifySound,
       )
     },
@@ -493,7 +510,9 @@ export function Pane({
   const onHandback = useCallback(
     (code: number) => {
       dispatch({ type: 'handedBack', id: tab.id })
-      signalAttention(handbackNotice(code), { fresh: true })
+      signalAttention(handbackNotice(code, i18n.getFixedT(null, 'terminal')), {
+        fresh: true,
+      })
     },
     [dispatch, signalAttention, tab.id],
   )
@@ -665,7 +684,7 @@ export function Pane({
           </div>
           <ImagePreview
             preview={preview.image}
-            error={preview.error}
+            error={previewMessage(preview.error, t)}
             onClose={() => setPreview({ image: null, error: null })}
           />
           {tab.exitCode !== null && (
@@ -689,12 +708,12 @@ export function Pane({
         workspace={session ? workspace : null}
         tracked={session ? tracked : false}
         agentName={runningName ?? ''}
-        state={tab.exitCode === null ? '' : tab.detail}
+        state={tab.exitCode === null ? '' : tabDetail(tab, t)}
         exited={tab.exitCode !== null && tab.exitCode !== 0}
         historyOpen={historyOpen}
         reviewOpen={reviewOpen}
         editor={session ? editor : null}
-        collision={session ? collisionSummary(collisions) : ''}
+        collision={session ? collisionSummary(collisions, tWorkspace) : ''}
         mode={
           session && switchMode
             ? { scrollback: session.scrollback, onSwitch: switchMode }
@@ -745,4 +764,9 @@ async function changedFile(
         absolute: absolutePath(changes.root, found.path),
       }
     : null
+}
+
+function previewMessage(error: PreviewError | null, t: TFunction<'chrome'>) {
+  if (!error) return null
+  return error.kind === 'noEditor' ? t('session.noEditor') : error.message
 }

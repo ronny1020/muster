@@ -95,8 +95,11 @@ pub struct Commit {
     pub short: String,
     pub subject: String,
     pub author: String,
-    /// Relative age, e.g. `3 hours ago`.
-    pub when: String,
+    /// When it was written — the author date, which a rebase keeps — in
+    /// seconds since the epoch, or `None` when git's field did not parse.
+    /// The client words the age, so it follows the app's language rather
+    /// than the environment git inherits.
+    pub at: Option<u64>,
     /// Decorations on this commit: branch names, `tag: v1` stripped to `v1`.
     pub refs: Vec<String>,
     /// Committed locally but not yet on the tracked upstream branch.
@@ -104,7 +107,7 @@ pub struct Commit {
 }
 
 /// Field separator for the log format; NUL cannot appear in any git field.
-const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%ar%x00%D";
+const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%at%x00%D";
 
 #[tauri::command]
 pub async fn git_log(cwd: String, limit: u32) -> Vec<Commit> {
@@ -143,7 +146,7 @@ fn parse_log(out: &str, unpushed: &HashSet<String>) -> Vec<Commit> {
                 short: fields.next()?.to_string(),
                 subject: fields.next()?.to_string(),
                 author: fields.next()?.to_string(),
-                when: fields.next()?.to_string(),
+                at: fields.next()?.parse().ok(),
                 refs: parse_refs(fields.next().unwrap_or_default()),
                 unpushed: unpushed.contains(&sha),
                 sha,
@@ -168,15 +171,16 @@ pub struct Branch {
     pub name: String,
     pub current: bool,
     pub upstream: Option<String>,
-    /// Relative age of its tip, e.g. `3 hours ago`.
-    pub when: String,
+    /// When its tip was committed, in seconds since the epoch, or `None` when
+    /// git's field did not parse.
+    pub at: Option<u64>,
     /// Only a remote has it, so checking out starts a local branch from it.
     pub remote: bool,
 }
 
 /// NUL separates the fields; no ref name or date can contain one.
 const BRANCH_FORMAT: &str =
-    "--format=%(HEAD)%00%(refname:short)%00%(committerdate:relative)%00%(upstream:short)";
+    "--format=%(HEAD)%00%(refname:short)%00%(committerdate:unix)%00%(upstream:short)";
 
 #[tauri::command]
 pub async fn git_branches(cwd: String) -> Vec<Branch> {
@@ -214,7 +218,7 @@ fn parse_branches(out: Option<&str>) -> Vec<Branch> {
             Some(Branch {
                 name,
                 current: head.trim() == "*",
-                when: fields.next().unwrap_or_default().to_string(),
+                at: fields.next().and_then(|at| at.parse().ok()),
                 upstream: fields.next().filter(|u| !u.is_empty()).map(str::to_string),
                 remote: false,
             })
@@ -240,7 +244,7 @@ fn remote_only(out: Option<&str>, local: &HashSet<String>) -> Vec<Branch> {
                 name,
                 current: false,
                 upstream: Some(full),
-                when: branch.when,
+                at: branch.at,
                 remote: true,
             })
         })

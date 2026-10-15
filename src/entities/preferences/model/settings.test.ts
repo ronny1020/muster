@@ -169,3 +169,8 @@ test('a terminal mode that is neither of the two falls back to the default', () 
     'clicks',
   )
 })
+
+test('a language the app does not carry falls back to the system one', () => {
+  expect(normalizeSettings({ language: 'fr' }).language).toBe('system')
+  expect(normalizeSettings({ language: 'zh-TW' }).language).toBe('zh-TW')
+})

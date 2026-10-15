@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { type LinkMeta, linkPreview } from '../../../shared/ipc'
 import { webHref } from '../../../shared/lib/weburl'
@@ -10,6 +11,9 @@ const DWELL_MS = 250
 
 const cachedPreview = previewCache(linkPreview)
 
+/** The click that opens a link: plain, or with the platform's modifier. */
+export type OpenGesture = 'click' | 'cmdClick' | 'ctrlClick'
+
 /** What the page said, or why it could not be read. */
 type Answer = { uri: string; meta: LinkMeta } | { uri: string; failure: string }
 
@@ -19,7 +23,15 @@ type Answer = { uri: string; meta: LinkMeta } | { uri: string; failure: string }
  * "Loading preview…" until it answers. It takes no pointer events, so the
  * click goes to the link whatever this shows.
  */
-export function LinkHover({ uri, hint }: { uri: string; hint: string }) {
+export function LinkHover({
+  uri,
+  opens,
+}: {
+  uri: string
+  /** Which click opens it, which depends on whether the agent reads the mouse. */
+  opens: OpenGesture
+}) {
+  const { t } = useTranslation('terminal')
   const [answer, setAnswer] = useState<Answer | null>(null)
   const href = webHref(uri)
 
@@ -52,21 +64,25 @@ export function LinkHover({ uri, hint }: { uri: string; hint: string }) {
       role="status"
       className="pointer-events-none absolute bottom-2 left-2 z-20 w-max max-w-[min(70%,26rem)] overflow-hidden rounded-md border border-line bg-chrome/95 text-[11px] text-ink shadow-lg backdrop-blur-sm"
     >
-      {current && 'meta' in current && <PageCard meta={current.meta} />}
+      {current && 'meta' in current && (
+        <PageCard meta={current.meta} untitled={t('link.untitled')} />
+      )}
       {current && 'failure' in current && (
         <div className="truncate border-b border-line px-2 py-1 text-muted">
-          Preview unavailable — {current.failure}
+          {t('link.unavailable', { reason: current.failure })}
         </div>
       )}
       {loading && (
         <div className="animate-pulse border-b border-line px-2 py-1 text-muted">
-          Loading preview…
+          {t('link.loading')}
         </div>
       )}
       <div className="px-2 py-0.5">
         <div className="flex gap-1">
           <span className="font-medium break-all">{hostOf(href) ?? uri}</span>
-          <span className="flex-none text-muted">· {hint}</span>
+          <span className="flex-none text-muted">
+            · {t(`link.opens.${opens}`)}
+          </span>
         </div>
         {href && <div className="truncate text-muted">{uri}</div>}
       </div>
@@ -81,11 +97,11 @@ export function LinkHover({ uri, hint }: { uri: string; hint: string }) {
  */
 const hostOf = (href: string | null) => (href ? new URL(href).host : null)
 
-function PageCard({ meta }: { meta: LinkMeta }) {
+function PageCard({ meta, untitled }: { meta: LinkMeta; untitled: string }) {
   if (!meta.title && !meta.description && !meta.imageDataUrl)
     return (
       <div className="border-b border-line px-2 py-1 text-muted">
-        This page names no title or picture
+        {untitled}
       </div>
     )
   return (

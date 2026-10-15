@@ -1,4 +1,5 @@
 import { type FontFamily } from '../ipc'
+import type { TFunction } from 'i18next'
 
 /**
  * The font families this machine has, and which of them hold the grid.
@@ -12,6 +13,8 @@ import { type FontFamily } from '../ipc'
 export interface MonoFont {
   name: string
   stack: string
+  /** A stored choice this machine does not have, offered so it is kept. */
+  missing?: boolean
 }
 
 /**
@@ -181,5 +184,14 @@ export function fontChoices(
       font === known ? { ...font, stack: current } : font,
     )
   }
-  return [...available, { name: `${wanted} (not installed)`, stack: current }]
+  return [...available, { name: wanted, stack: current, missing: true }]
+}
+
+/**
+ * A choice as the picker shows it. `name` stays the family, which is what
+ * choices are matched on, so only this adds the interface's own words.
+ */
+export function fontLabel(font: MonoFont, t: TFunction<'chrome'>): string {
+  if (font.stack === SYSTEM.stack) return t('fonts.systemDefault')
+  return font.missing ? t('fonts.notInstalled', { name: font.name }) : font.name
 }

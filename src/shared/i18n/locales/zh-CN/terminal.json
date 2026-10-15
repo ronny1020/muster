@@ -1,0 +1,67 @@
+{
+  "failedToStart": "启动失败：{{error}}",
+  "dropToTypePath": "松开以输入路径",
+  "handback": {
+    "ended": "已结束。标签页已回到你的 shell。",
+    "exited": "已退出，退出代码 {{code}}。标签页已回到你的 shell。"
+  },
+  "sessionEnded": {
+    "ended": "{{agent}} 已结束。",
+    "failed": "{{agent}} 已退出，退出代码 {{code}}。原因见上方它自己的输出。",
+    "backToStart": "返回开始页面"
+  },
+  "imagePreview": {
+    "couldNotOpen": "无法打开图片",
+    "reveal": "显示位置",
+    "close": "关闭预览",
+    "dismissHint": "按 Esc 或点击外部关闭"
+  },
+  "link": {
+    "unavailable": "无法预览：{{reason}}",
+    "loading": "正在加载预览…",
+    "untitled": "此页面未提供标题或图片",
+    "opens": {
+      "click": "点击打开",
+      "cmdClick": "⌘ 点击打开",
+      "ctrlClick": "Ctrl 点击打开"
+    }
+  },
+  "shell": {
+    "copied": "已复制",
+    "copyOutput": "复制输出",
+    "copiedStatus": "输出已复制到剪贴板",
+    "copyOutputOf": "复制“{{command}}”的输出",
+    "copyThisOutput": "复制此输出",
+    "suggestionsLabel": "以此开头的历史命令",
+    "suggestionsStatus_other": "有 {{count}} 条历史命令以“{{typed}}”开头"
+  },
+  "rail": {
+    "conversation": "你在此对话中的消息",
+    "scrollback": "你在回看缓冲中的消息",
+    "line": "第 {{row}} 行"
+  },
+  "steps": {
+    "previous": "上一条消息",
+    "previousLabel": "滚动到你发送的上一条消息",
+    "next": "下一条消息",
+    "nextLabel": "滚动到你发送的下一条消息",
+    "count": "此会话共有 {{count}} 条消息",
+    "replay": "按当前宽度重绘对话（用 continue 重新打开会话）",
+    "replayLabel": "重新打开会话，按当前宽度重绘对话"
+  },
+  "scrollPath": {
+    "open": "打开 {{path}}",
+    "label": "正在显示关于 {{path}} 的输出，点击打开"
+  },
+  "find": {
+    "placeholder": "在回看缓冲中查找",
+    "noMatches": "无匹配项",
+    "position": "{{index}} / {{count}}",
+    "previous": "上一个匹配项（⇧Enter）",
+    "previousLabel": "上一个匹配项",
+    "next": "下一个匹配项（Enter）",
+    "nextLabel": "下一个匹配项",
+    "close": "关闭查找（Esc）",
+    "closeLabel": "关闭查找"
+  }
+}

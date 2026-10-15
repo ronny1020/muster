@@ -275,7 +275,7 @@ working.
 **The mode control draws both modes, never just the current one.** A single
 button labelled with the mode you are in reads as "press for this", which is
 the opposite of what it does — and the mode someone is looking for is the one
-it does not show. `MODES` in `StatusBar` is the pair, the tab's own carries
+it does not show. `modes()` in `StatusBar` is the pair, the tab's own carries
 `aria-pressed`, and only the other one takes a click.
 
 **And it is offered only where there is a conversation to reopen.** Having a

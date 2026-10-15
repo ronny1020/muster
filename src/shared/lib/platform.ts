@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import type { TFunction } from 'i18next'
+
 /** Which world a session runs in. Only Windows offers more than the host. */
 export type Backend = 'native' | 'wsl'
 
@@ -34,12 +36,8 @@ export const IS_MAC = OS === 'macos'
 /** Where the native frame is off, so the tab strip has to draw the caption. */
 export const IS_WINDOWS = OS === 'windows'
 
-/** Where this platform's file manager shows a directory. */
-export const REVEAL_LABEL = {
-  macos: 'Reveal in Finder',
-  windows: 'Show in Explorer',
-  linux: 'Show in file manager',
-}[OS]
+/** Where this platform's file manager shows a directory, in its own words. */
+export const revealLabel = (t: TFunction<'chrome'>) => t(`reveal.${OS}`)
 
 /** An example path, for a directory field that is still empty. */
 export const EXAMPLE_DIRECTORY =

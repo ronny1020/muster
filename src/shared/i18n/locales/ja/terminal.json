@@ -1,0 +1,67 @@
+{
+  "failedToStart": "起動に失敗しました: {{error}}",
+  "dropToTypePath": "ドロップしてパスを入力",
+  "handback": {
+    "ended": "終了しました。タブはシェルに戻りました。",
+    "exited": "終了コード {{code}} で終了しました。タブはシェルに戻りました。"
+  },
+  "sessionEnded": {
+    "ended": "{{agent}} が終了しました。",
+    "failed": "{{agent}} が終了コード {{code}} で終了しました。理由は上の出力を確認してください。",
+    "backToStart": "スタートに戻る"
+  },
+  "imagePreview": {
+    "couldNotOpen": "画像を開けませんでした",
+    "reveal": "場所を表示",
+    "close": "プレビューを閉じる",
+    "dismissHint": "Esc または外側をクリックして閉じる"
+  },
+  "link": {
+    "unavailable": "プレビューを表示できません — {{reason}}",
+    "loading": "プレビューを読み込み中…",
+    "untitled": "このページにはタイトルも画像もありません",
+    "opens": {
+      "click": "クリックで開く",
+      "cmdClick": "⌘ クリックで開く",
+      "ctrlClick": "Ctrl クリックで開く"
+    }
+  },
+  "shell": {
+    "copied": "コピーしました",
+    "copyOutput": "出力をコピー",
+    "copiedStatus": "出力をクリップボードにコピーしました",
+    "copyOutputOf": "「{{command}}」の出力をコピー",
+    "copyThisOutput": "この出力をコピー",
+    "suggestionsLabel": "この入力で始まる過去のコマンド",
+    "suggestionsStatus_other": "「{{typed}}」で始まる過去のコマンドが {{count}} 件あります"
+  },
+  "rail": {
+    "conversation": "この会話でのあなたのメッセージ",
+    "scrollback": "スクロールバック内のあなたのメッセージ",
+    "line": "{{row}} 行目"
+  },
+  "steps": {
+    "previous": "前のメッセージ",
+    "previousLabel": "送信した前のメッセージへスクロール",
+    "next": "次のメッセージ",
+    "nextLabel": "送信した次のメッセージへスクロール",
+    "count": "このセッションのメッセージ: {{count}} 件",
+    "replay": "この幅で会話を再描画 — continue でセッションを開き直します",
+    "replayLabel": "セッションを開き直して、この幅で会話を再描画"
+  },
+  "scrollPath": {
+    "open": "{{path}} を開く",
+    "label": "{{path}} に関する出力を表示中 — クリックで開く"
+  },
+  "find": {
+    "placeholder": "スクロールバック内を検索",
+    "noMatches": "一致なし",
+    "position": "{{index}} / {{count}}",
+    "previous": "前の一致 (⇧Enter)",
+    "previousLabel": "前の一致",
+    "next": "次の一致 (Enter)",
+    "nextLabel": "次の一致",
+    "close": "検索を閉じる (Esc)",
+    "closeLabel": "検索を閉じる"
+  }
+}

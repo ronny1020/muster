@@ -1,0 +1,122 @@
+{
+  "title": "設定",
+  "groups": {
+    "general": "一般",
+    "newTabs": "新分頁",
+    "terminal": "終端機",
+    "background": "背景",
+    "editor": "編輯器",
+    "notifications": "通知",
+    "git": "Git",
+    "sessionRecords": "工作階段紀錄",
+    "data": "資料"
+  },
+  "language": {
+    "label": "語言",
+    "matchSystem": "跟隨系統"
+  },
+  "defaultAgent": {
+    "label": "預設代理程式",
+    "hint": "開啟分頁時預先選取"
+  },
+  "terminalMode": {
+    "label": "預設終端機模式",
+    "hint": "新分頁的起始模式——啟動畫面可在每次啟動時選擇，狀態列可切換已在執行的分頁。「點按」讓 Claude Code 自己的提示、子代理程式與 shell 接管滑鼠；「捲動紀錄」保留終端機自身的歷史，捲軸、搜尋列、捲軸旁的路徑與寬度修復都需要它。一個工作階段無法兩者兼得。",
+    "control": "終端機模式",
+    "scrollback": "捲動紀錄",
+    "clicks": "點按"
+  },
+  "defaultDirectory": {
+    "label": "預設資料夾",
+    "hint": "留空則使用上次開啟的資料夾",
+    "placeholder": "上次使用",
+    "browse": "瀏覽…"
+  },
+  "runIn": {
+    "label": "執行於",
+    "hint": "新分頁的工作階段從哪裡啟動",
+    "backend": "預設後端",
+    "distro": "預設 WSL 發行版",
+    "defaultDistro": "預設發行版"
+  },
+  "theme": {
+    "label": "主題",
+    "hint": "也會套用到執行中的工作階段"
+  },
+  "fontFamily": {
+    "label": "字型",
+    "reading": "正在讀取已安裝的字型…",
+    "counted": "已安裝的 {{total}} 個字型中，有 {{fixed}} 個可用於終端機格線",
+    "unreadable": "無法讀取已安裝的字型，因此這是內建清單——你擁有的字型大多不在其中"
+  },
+  "allSystemFonts": {
+    "label": "顯示所有系統字型",
+    "hint": "關閉時，清單只列出等寬字型——幾乎從來不是已安裝的全部"
+  },
+  "fontSize": "字型大小",
+  "lineHeight": "行高",
+  "textWidth": "字元寬度",
+  "scrollback": "捲動紀錄",
+  "cursorBlink": "游標閃爍",
+  "shellIntegration": {
+    "label": "Shell 整合",
+    "hint": "讓 zsh 或 bash 分頁為每個指令提供複製控制項，並依歷史紀錄補全你輸入的內容——包括代理程式分頁交還的 shell。套用於變更後啟動的分頁。"
+  },
+  "units": {
+    "lines_other": "{{count}} 行",
+    "seconds_other": "{{count}} 秒",
+    "commits_other": "{{count}} 個提交",
+    "days_other": "{{count}} 天"
+  },
+  "image": {
+    "label": "圖片",
+    "hint": "繪製在每個分頁的終端機後方",
+    "clear": "清除",
+    "change": "更換…",
+    "choose": "選擇…"
+  },
+  "brightness": "亮度",
+  "preview": {
+    "unreadable": "無法將該檔案讀取為圖片。",
+    "label": "背景預覽"
+  },
+  "editor": {
+    "label": "開啟方式",
+    "none": "在 PATH 中找不到編輯器指令",
+    "noneValue": "無",
+    "hint": "供每個分頁狀態列中的按鈕使用",
+    "control": "編輯器",
+    "firstFound": "{{name}}（第一個找到的）"
+  },
+  "notifyOnDone": {
+    "label": "工作階段完成時",
+    "hint": "工作階段完成一輪、交還給 shell 或結束時",
+    "control": "工作階段完成時通知"
+  },
+  "notifyOnlyWhenUnfocused": {
+    "label": "僅在看著別處時",
+    "hint": "該分頁已在畫面上時保持安靜",
+    "control": "僅在看著別處時通知"
+  },
+  "notifySound": {
+    "label": "播放音效",
+    "control": "播放通知音效"
+  },
+  "gitPoll": "狀態重新整理",
+  "historyLimit": "歷史長度",
+  "journal": {
+    "label": "紀錄工作階段的輸出",
+    "hint": "原樣保存，以便列出並重新開啟資料夾中先前的工作階段"
+  },
+  "journalRetention": "紀錄保留",
+  "recentDirs": {
+    "label": "最近的資料夾",
+    "hint": "已記住 {{count}} 個",
+    "clear": "清除"
+  },
+  "reset": {
+    "label": "其他所有項目",
+    "hint": "還原此頁面上的所有設定",
+    "action": "還原預設值"
+  }
+}

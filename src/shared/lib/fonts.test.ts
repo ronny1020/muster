@@ -4,11 +4,16 @@ import {
   type MonoFont,
   everyFont,
   fontChoices,
+  fontLabel,
   fontName,
   installedFonts,
   monospacedFonts,
   stackFor,
 } from './fonts'
+import { i18n } from '../i18n/i18n'
+
+const enUS = i18n.getFixedT('en-US', 'chrome')
+const zhTW = i18n.getFixedT('zh-TW', 'chrome')
 
 /**
  * A ruler that models what an engine actually does: it lays out the first
@@ -99,8 +104,19 @@ test('a stored font that is no longer installed is kept and labelled', () => {
   const available: MonoFont[] = [{ name: 'Menlo', stack: stackFor('Menlo') }]
   const choices = fontChoices('"Berkeley Mono", monospace', available)
   expect(choices).toHaveLength(2)
-  expect(choices[1].name).toBe('Berkeley Mono (not installed)')
+  expect(fontLabel(choices[1], enUS)).toBe('Berkeley Mono (not installed)')
   expect(choices[1].stack).toBe('"Berkeley Mono", monospace')
+})
+
+test('a font choice is labelled in the language it is given', () => {
+  const system: MonoFont = { name: 'System default', stack: 'monospace' }
+  expect(fontLabel(system, zhTW)).toBe('系統預設')
+  expect(
+    fontLabel({ name: 'Menlo', stack: stackFor('Menlo'), missing: true }, zhTW),
+  ).toBe('Menlo（未安裝）')
+  expect(fontLabel({ name: 'Menlo', stack: stackFor('Menlo') }, zhTW)).toBe(
+    'Menlo',
+  )
 })
 
 test('a stored font that is installed adds no extra option', () => {

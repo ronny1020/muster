@@ -1,0 +1,74 @@
+{
+  "panel": {
+    "resize": "Resize the review drawer",
+    "changes": "Changes",
+    "files": "Files",
+    "reread": "Re-read",
+    "close": "Close review",
+    "hiddenFiles": "Hidden files",
+    "revealDirectory": "{{reveal}} — this directory",
+    "sendPath": "Type this path into the session",
+    "notRepo": "Not a git repository, so there is nothing to compare.",
+    "readingChanges": "Reading changes…",
+    "noChanges": "No changes.",
+    "reading": "reading…",
+    "versus": "vs",
+    "compareAgainst": "Compare against",
+    "uncommitted": "uncommitted",
+    "summary_one": "{{count}} file · +{{insertions}} −{{deletions}}",
+    "summary_other": "{{count}} files · +{{insertions}} −{{deletions}}"
+  },
+  "list": {
+    "binary": "binary",
+    "notCounted": "Lines not counted: too many new files, or a symlink on the way to this one"
+  },
+  "tree": {
+    "copyPath": "Copy path",
+    "copyRelativePath": "Copy relative path",
+    "reading": "Reading…",
+    "empty": "Empty",
+    "link": "link",
+    "rowTitle": "{{name}} — right-click for more",
+    "rowTitle_ignored": "{{name}} — git-ignored — right-click for more"
+  },
+  "viewer": {
+    "resize": "Resize the file panel",
+    "contextLabel": "context",
+    "contextAll": "All",
+    "contextThree": "Three lines of context",
+    "contextTwelve": "Twelve lines of context",
+    "contextWhole": "The whole file",
+    "showDiff": "Show the diff instead",
+    "showSource": "Show the source instead",
+    "renderMarkdown": "Render this markdown",
+    "diff": "Diff",
+    "raw": "Raw",
+    "preview": "Preview",
+    "wrap": "Wrap",
+    "wrapLines": "Wrap long lines",
+    "unwrapLines": "Stop wrapping long lines",
+    "copyPath": "Copy path",
+    "openIn": "Open in {{editor}}",
+    "close": "Close · Escape"
+  },
+  "diff": {
+    "reading": "Reading the diff…",
+    "binary": "Binary file — nothing to show.",
+    "unchanged": "Nothing textual changed in this file.",
+    "rowsCapped": "Showing {{rows}} of {{total}} rows — narrow the context to see the rest.",
+    "truncated": "Diff cut short — the rest is longer than this panel will read.",
+    "added": "added line",
+    "removed": "removed line"
+  },
+  "code": {
+    "pick": "Pick a file to read it here.",
+    "reading": "Reading…",
+    "linesCapped": "Showing the first {{shown}} of {{total}} lines.",
+    "truncated": "Only the first part of this file is shown; it is larger than the preview will read.",
+    "openLine": "Open line {{line}} in {{editor}}"
+  },
+  "markdown": {
+    "reading": "Reading…",
+    "missingImage": "[missing image: {{source}}]"
+  }
+}

@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 /**
  * The moment an agent session's terminal passes to a shell.
  *
@@ -30,7 +32,5 @@ export function parseHandback(data: string, token: string): number | null {
 const MAX_ANNOUNCEMENT = 64
 
 /** What a notification says once an agent has handed its tab back. */
-export const handbackNotice = (code: number) =>
-  code === 0
-    ? 'Ended. The tab is back at your shell.'
-    : `Exited with code ${code}. The tab is back at your shell.`
+export const handbackNotice = (code: number, t: TFunction<'terminal'>) =>
+  code === 0 ? t('handback.ended') : t('handback.exited', { code })
