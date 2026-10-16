@@ -6,9 +6,7 @@
 
 **A terminal built for AI agent CLIs.**
 
-<!-- Screenshot goes here, as docs/screenshot.png:
-![Muster on macOS: the launcher, with the agent roster and the New / Continue / Resume choice](docs/screenshot.png)
--->
+![Muster on macOS: Claude Code in a tab, reporting the function and tests it just added to a small project](docs/agent.jpg)
 
 `claude`, `codex` and `agy` run exactly as they do in your usual terminal — a
 real PTY, full TUI, colours, keyboard and all. What Muster adds is the part a
@@ -195,6 +193,8 @@ toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🚀 Using it
 
+![The start screen: a directory, the agent picker, Claude Code's terminal mode, and New session / Continue / Resume… — the last two greyed, since this directory has no conversation yet](docs/launcher.jpg)
+
 A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent** — type to filter the list, since
 there are nine of them — and how the session should open. The
@@ -361,6 +361,8 @@ The quoting matches the shell the tab is running, and a file dropped on a WSL
 tab arrives as the path the distro can open — `/mnt/c/…`, not `C:\…`.
 
 ## 🔍 Reviewing what changed
+
+![Claude Code's tab beside the review drawer: the changed files on the right, and one file's diff, syntax-highlighted, between them](docs/review.jpg)
 
 `⌘G`, or `Ctrl+Shift+G`, opens the review drawer on the right. It is a
 navigator, in two views over the same directory, with commit, pull and push

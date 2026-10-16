@@ -68,10 +68,43 @@ bun .agents/skills/mcp-live-test/scripts/ask.ts take_screenshot '{"window_label"
 
 Useful commands: `execute_js`, `get_dom`, `dispatch_pointer`, `press_key`,
 `type_into_focused`, `manage_local_storage`, `invoke`, `query_logs`, and
-`take_screenshot`, which needs `window_label` and answers a
+`take_screenshot`, which needs `window_label` and by default answers a
 `data:image/jpeg;base64,…` string. JPEG is chroma-subsampled, so a screenshot
 **cannot** separate two mark colours in a 10px strip: it corroborates, it never
 proves. The full list is the match in the plugin's `src/tools/mod.rs`.
+
+A screenshot meant to be kept — the README's `docs/*.jpg` — is taken the same
+way, with three more things:
+
+- **Raise the window first.** The capture reads the window's backing store,
+  and WebKit stops painting a covered window (`document.visibilityState` reads
+  `'hidden'`), so the image comes back blank. The app cannot bring itself
+  forward, so System Events does it, with the pid from
+  `pgrep -f 'target/debug/muster$'`:
+  `osascript -e 'tell application "System Events" to set frontmost of (first process whose unix id is <pid>) to true'`.
+  That puts it over the user's windows, so ask first and keep each raise short
+  — a click or keystroke of theirs lands in it.
+- **Pass `max_width`.** The default caps the width at 1024px, and a window wider
+  than the value you pass is still scaled down.
+- **Pass `save_to_disk: true`.** The answer is then a `filePath` in the app
+  process's temp directory (`tauri-mcp-screenshots/`) instead of inline base64,
+  which is refused past 3 MB. `max_size_mb` (default 1) is the budget either
+  way; over it the plugin lowers the quality to about 25, then the width to
+  800px, and reports neither — past both it writes the file over budget.
+
+`{"window_label":"main","save_to_disk":true,"quality":95,"max_width":3200,"max_size_mb":5}`
+
+Stage the scene, because every path, recent directory and transcript on screen
+ends up in the picture: a throwaway repository under a path with no username in
+it (`/Users/Shared/…`), a shell prompt with no Nerd Font glyphs, which this
+app's font cannot draw, and nothing from a real session. An agent tab also
+shows the user's own Claude Code status line — usage, spend, plan — so give the
+throwaway repository a `.claude/settings.local.json` of
+`{"statusLine":{"type":"command","command":"true"}}`, listed in
+`.git/info/exclude` so the review drawer does not count it. A launch flag would
+not do: `⟳` reopens with the mode's own arguments only. Opening the review
+drawer narrows the terminal and ruins what the agent already printed, so press
+`⟳` after opening it, and scroll to the bottom once the reprint lands.
 
 **There may be more than one window.** `js` runs in `main`; any other window
 — `w-<hex>` for one a tab was moved to, `ghost` for the drag label — takes
