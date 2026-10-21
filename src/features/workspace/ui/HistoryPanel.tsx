@@ -305,14 +305,18 @@ function BranchRow({ branch, busy, disabled, now, onPick }: BranchRowProps) {
     return (
       <div
         title={t('branches.heldAt', { path: branch.worktree })}
-        className="flex items-baseline gap-1.5 px-2.5 py-1.5 text-xs"
+        className="flex flex-col gap-0.5 px-2.5 py-1.5 text-xs"
       >
-        <span className="flex-1 truncate text-faint">{branch.name}</span>
-        <span className="flex-none text-[10px] text-faint">
-          {t('branches.held')}
+        <span className="flex items-baseline gap-1.5">
+          <span className="flex-1 truncate text-faint">{branch.name}</span>
+          <span className="flex-none text-[10px] text-faint">
+            {t('branches.held')}
+          </span>
         </span>
-        <span className="sr-only">
-          {t('branches.heldAt', { path: branch.worktree })}
+        {/* Visible rather than in the tooltip alone, which only a pointer
+            reaches. */}
+        <span className="truncate text-[10px] text-faint">
+          {branch.worktree}
         </span>
       </div>
     )

@@ -480,7 +480,7 @@ want it sooner.
 first, with a filter box. Pick one and it checks out. Branches only a remote has
 are listed too, marked `remote`; picking one starts a local branch from it. A
 branch another worktree has checked out is marked `in a worktree` and cannot be
-picked, because git keeps a branch to one worktree; its tooltip says where.
+picked, because git keeps a branch to one worktree; the row shows where.
 
 If the tree has uncommitted work the drawer says so before you pick, because a
 checkout can fail on it — though only when the two branches differ in the files

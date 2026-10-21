@@ -603,6 +603,22 @@ fn a_worktree_nested_in_the_tree_is_not_an_untracked_file() {
 }
 
 #[test]
+fn a_directory_of_ignored_files_is_not_untracked_beside_a_nested_worktree() {
+    // With a nested worktree the untracked count comes from `ls-files`
+    // rather than from `status`, and must ignore what `status` ignores.
+    let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("ignored");
+    std::fs::write(main.join(".gitignore"), "build/\n").expect("write");
+    git(&main, &["add", ".gitignore"]).expect("add");
+    git(&main, &["commit", "--quiet", "-m", "ignore build"]).expect("commit");
+    std::fs::create_dir_all(main.join("build")).expect("mkdir");
+    std::fs::write(main.join("build/out.js"), "x\n").expect("write");
+    let status = git_status(&main);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(status.untracked, 0);
+}
+
+#[test]
 fn a_gitlink_staged_at_a_nested_worktree_still_counts_as_staged() {
     // What an agent's `git add -A` leaves in a main checkout holding one.
     let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("gitlink");
