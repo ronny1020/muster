@@ -400,16 +400,31 @@ number opens that line in your editor**, and Escape closes the column.
 Images show as pictures — on a checkered ground, so a transparent logo is not
 invisible — which is also what a changed image shows instead of "binary file".
 
+**A CSV or TSV file opens as a table** when you pick it from the tree: the
+first row is the header, and a quoted comma or line break stays inside its
+cell. From the Changes list it opens as its diff, with the same **Preview**
+switch markdown has. A table shows at most 60,000 cells, 500 columns of a row
+and 2,000 characters of a cell, and says so under the table when it cuts one
+short.
+
+**Select lines in a diff or a file, then press the send button** in the
+column's header, and `path:12-30` is typed into the session — the file the
+agent needs and the lines you mean, without retyping either. With nothing
+selected it types the path alone, and so does a rendered table or document,
+whose rows are not lines of the file. Code in the column selects and copies
+like any text; the line numbers stay out of a copy.
+
 Two limits worth knowing before they surprise you: a file or diff longer than
-5,000 rows is cut with a line saying how many there were, because drawing a
-quarter of a million elements locks the window; and a symlink is not read
+5,000 rows — and a list of changed files longer than 5,000 files — is cut with
+a line saying how many there were, because drawing a quarter of a million
+elements locks the window; and a symlink is not read
 through, so a linked file shows a refusal rather than its target. **Re-read**
 refreshes both views, the file tree included.
 
 **Markdown you opened from the tree opens rendered**: headings, tables, lists
 and quotes, fenced code highlighted by Shiki, and ```mermaid diagrams drawn as
 diagrams. A markdown file opened from the Changes list opens as its diff — you
-asked to see a change — and The header's button switches between them, and says
+asked to see a change — and the header's button switches between them, and says
 where it goes: **Preview** to render, **Raw** or **Diff** to come back. Agents write a lot of markdown, and reading the source of a
 nested table is not reading the document. Nothing in a document can act on its
 own: its own HTML is escaped, links open in your browser, as the terminal's URLs
@@ -462,9 +477,10 @@ an answer as it would anywhere else. Cancel is the way out of that.
 Nothing else in the drawer or the column writes: nothing is staged except by
 **Commit all**, and there is no discarding and no editing — the agent in the tab is what edits files, and a
 second editable copy of a file being rewritten underneath you is a merge
-conflict waiting to happen. What it offers instead is a button to type the
-file's path into the session — the fastest way to say "look at this one again"
-— plus copy-path and open-in-editor.
+conflict waiting to happen. What it offers instead is a way to type the file's
+path into the session — the fastest way to say "look at this one again": the
+drawer's button types the path, and the column's types it with the lines you
+selected — plus copy-path and open-in-editor.
 
 ## 🌿 History and branches
 
@@ -473,6 +489,14 @@ listing that directory's commits — subject, branch and tag badges, short sha,
 author and age. A dot marks commits that are not on the remote yet. It reloads
 when the directory or branch changes, and there is a refresh button for when you
 want it sooner.
+
+**Click a commit** to list the files it changed, and click one of those for
+that commit's diff in the column, with its short sha beside the file name. The
+column's **history** button does the same from the other side: it lists the
+commits that changed the file you are reading, following it across renames,
+and stays open while you step through them. A commit's diff has no editor link,
+no rendered preview, and nothing to send or copy, because its lines are that
+commit's, not the file's on disk.
 
 **Switch** in the same drawer lists branches instead, most recently committed to
 first, with a filter box. Pick one and it checks out. Branches only a remote has

@@ -360,6 +360,26 @@ export const gitCancel = (op: string) => invoke<boolean>('git_cancel', { op })
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
 
+/** One commit in a file's history, with the name the file had in it. */
+export interface FileCommit extends Commit {
+  /** Repo-relative; before a rename, the old name, which is what that
+   *  commit's diff is filed under. */
+  path: string
+  /** The name before this commit, when this commit renamed the file. */
+  oldPath: string | null
+}
+
+export interface FileHistory {
+  /** Absolute repository root, which every `path` is relative to; empty
+   *  outside a repository. */
+  root: string
+  commits: FileCommit[]
+}
+
+/** The commits that changed one file, following it across renames. */
+export const gitFileLog = (cwd: string, path: string, limit: number) =>
+  invoke<FileHistory>('git_file_log', { cwd, path, limit })
+
 export const onPtyExit = (
   handler: (payload: { id: string; code: number }) => void,
 ) =>
@@ -606,22 +626,42 @@ export interface FileDiff {
   truncated: boolean
 }
 
-/**
- * One file's diff. `context` is the number of unchanged lines kept around each
- * hunk; a number past the file's length is how the panel shows all of it.
- */
+export interface FileDiffOptions {
+  /** A branch to compare against; left out, the uncommitted state. */
+  base?: string
+  /**
+   * Unchanged lines kept around each hunk; a number past the file's length is
+   * how the panel shows all of it.
+   */
+  context?: number
+  /** Read this commit's own change to the file instead, and ignore `base`. */
+  commit?: string
+  /** With `commit`: the name the commit renamed the file from, without which
+   *  a rename reads as a new file. */
+  oldPath?: string
+}
+
+/** One file's diff. */
 export const gitFileDiff = (
   cwd: string,
   path: string,
-  base?: string,
-  context?: number,
+  { base, context, commit, oldPath }: FileDiffOptions = {},
 ) =>
   invoke<FileDiff>('git_file_diff', {
     cwd,
     path,
     base: base ?? null,
     context: context ?? null,
+    commit: commit ?? null,
+    oldPath: oldPath ?? null,
   })
+
+/**
+ * The files one commit changed, against its first parent — or the empty tree
+ * for a first commit. `base` carries the commit's full sha.
+ */
+export const gitCommitFiles = (cwd: string, sha: string) =>
+  invoke<Changes>('git_commit_files', { cwd, sha })
 
 export interface TextFile {
   path: string

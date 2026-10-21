@@ -93,8 +93,14 @@ export function ReviewPanel({
   )
   const root = changes?.root ?? cwd
   const totals = changeTotals(files)
+  // A commit from the history is not any row of the working tree's.
+  const reading = viewed?.kind === 'diff' && viewed.commit ? null : viewed
   const selected =
-    viewed?.kind === 'diff' ? viewed.relative : viewed ? viewed.absolute : null
+    reading?.kind === 'diff'
+      ? reading.relative
+      : reading
+        ? reading.absolute
+        : null
 
   return (
     <aside
@@ -170,11 +176,11 @@ export function ReviewPanel({
             />
           </>
         )}
-        {viewed && (
+        {reading && (
           <IconButton
             icon="terminal"
             label={t('panel.sendPath')}
-            onClick={() => onSend(viewed.absolute)}
+            onClick={() => onSend(reading.absolute)}
           />
         )}
       </div>

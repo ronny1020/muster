@@ -19,7 +19,8 @@
   },
   "list": {
     "binary": "二进制",
-    "notCounted": "未统计行数：新文件太多，或路径上有符号链接"
+    "notCounted": "未统计行数：新文件太多，或路径上有符号链接",
+    "filesCapped": "仅显示 {{total}} 个文件中的前 {{shown}} 个。"
   },
   "tree": {
     "copyPath": "复制路径",
@@ -40,12 +41,14 @@
     "showDiff": "改为显示差异",
     "showSource": "改为显示源代码",
     "renderMarkdown": "渲染此 Markdown",
+    "renderTable": "以表格显示",
     "diff": "差异",
     "raw": "源代码",
     "preview": "预览",
     "wrap": "换行",
     "wrapLines": "长行自动换行",
     "unwrapLines": "停止长行自动换行",
+    "send": "将此路径输入到会话 — 若有选择，附上所选的行",
     "copyPath": "复制路径",
     "openIn": "在 {{editor}} 中打开",
     "close": "关闭 · Escape"
@@ -69,5 +72,25 @@
   "markdown": {
     "reading": "读取中…",
     "missingImage": "［找不到图片：{{source}}］"
+  },
+  "table": {
+    "reading": "读取中…",
+    "empty": "空文件。",
+    "rowsCapped": "仅显示前 {{rows}} 行。",
+    "columnsCapped": "每行只显示前 {{columns}} 列。",
+    "cellsShortened": "超过 {{characters}} 个字符的单元格会被截断。"
+  },
+  "commit": {
+    "reading": "正在读取提交…",
+    "empty": "这个提交没有更改任何文件。",
+    "imageNotShown": "不会显示该提交中的图片版本：这一栏从磁盘读取图片，而磁盘上的是当前版本。"
+  },
+  "history": {
+    "label": "此文件的历史",
+    "show": "显示此文件的历史",
+    "hide": "隐藏此文件的历史",
+    "reading": "正在读取历史…",
+    "empty": "没有任何提交更改过此文件。",
+    "commitDiff": "{{short}} — {{subject}}"
   }
 }

@@ -42,6 +42,7 @@
     "close": "关闭历史记录",
     "reading": "正在读取历史记录…",
     "empty": "还没有提交。",
+    "openCommit": "显示「{{subject}}」更改的内容",
     "unpushed": "尚未推送"
   },
   "branches": {

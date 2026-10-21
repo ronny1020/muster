@@ -46,6 +46,8 @@ import {
 import { lineOpener } from '../../../features/review/model/openline'
 import type { Viewed } from '../../../features/review/model/viewed'
 import { FileViewer } from '../../../features/review/ui/FileViewer'
+import { CommitFiles } from '../../../features/review/ui/CommitFiles'
+import { withSuffix } from '../../../features/review/model/reference'
 import { ReviewPanel } from '../../../features/review/ui/ReviewPanel'
 import { decideBellResponse, notify } from '../../../shared/lib/notify'
 import {
@@ -431,13 +433,16 @@ export function Pane({
     [dispatch, openFile, tab.id],
   )
 
-  /** Puts a path in front of the agent, quoted as a drop would be. */
+  /**
+   * Puts a path in front of the agent, quoted as a drop would be, and `suffix`
+   * — a `:12-30` line range — after it.
+   */
   const sendPath = useCallback(
-    (path: string) => {
+    (path: string, suffix = '') => {
       const backend = session?.backend
       if (!backend) return
       void dropPaths([path], backend)
-        .then((text) => paste.current?.(text))
+        .then((text) => paste.current?.(withSuffix(text, suffix)))
         .catch(report)
     },
     [session?.backend],
@@ -605,6 +610,8 @@ export function Pane({
                 active={active}
                 opener={lineOpener(editor, viewed.absolute)}
                 onUrl={onUrl}
+                onView={setViewed}
+                onSend={session?.backend ? sendPath : undefined}
                 onClose={() => setViewed(null)}
               />
             )}
@@ -671,6 +678,24 @@ export function Pane({
                 onSwitched={refresh}
                 busy={gitRun.running !== null}
                 runGit={gitRun.run}
+                files={(commit) => (
+                  <CommitFiles
+                    cwd={cwd}
+                    commit={commit}
+                    viewed={viewed}
+                    onOpen={(file, root) =>
+                      setViewed({
+                        kind: 'diff',
+                        relative: file.path,
+                        absolute: absolutePath(root, file.path),
+                        line: null,
+                        commit,
+                        oldPath: file.oldPath ?? undefined,
+                        root,
+                      })
+                    }
+                  />
+                )}
                 sync={
                   <GitActions
                     cwd={cwd}

@@ -418,6 +418,8 @@ closing another tab's panel.
 - Highlighted code is rendered as elements, never as markup.
 - The review surfaces re-read on a revision derived from the tree, never on a clock.
 - The review panels mark their own scrollbars, and they measure rows rather than compute them.
+- A surface you read opts back into selection.
+- A commit's diff is history, not the file.
 - A panel's close button may never be the control that clips.
 - The file column never covers the terminal.
 - Code in the review panel is the terminal's own type.

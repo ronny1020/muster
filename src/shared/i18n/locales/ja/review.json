@@ -19,7 +19,8 @@
   },
   "list": {
     "binary": "バイナリ",
-    "notCounted": "行数は未集計：新規ファイルが多すぎるか、途中にシンボリックリンクがあります"
+    "notCounted": "行数は未集計：新規ファイルが多すぎるか、途中にシンボリックリンクがあります",
+    "filesCapped": "{{total}} 個のファイル中、先頭の {{shown}} 個を表示しています。"
   },
   "tree": {
     "copyPath": "パスをコピー",
@@ -40,12 +41,14 @@
     "showDiff": "差分を表示",
     "showSource": "ソースを表示",
     "renderMarkdown": "Markdown をレンダリング",
+    "renderTable": "表として表示",
     "diff": "差分",
     "raw": "ソース",
     "preview": "プレビュー",
     "wrap": "折り返し",
     "wrapLines": "長い行を折り返す",
     "unwrapLines": "長い行を折り返さない",
+    "send": "このパスをセッションに入力 — 選択中の行があれば行番号も",
     "copyPath": "パスをコピー",
     "openIn": "{{editor}} で開く",
     "close": "閉じる · Escape"
@@ -69,5 +72,25 @@
   "markdown": {
     "reading": "読み込み中…",
     "missingImage": "［画像が見つかりません：{{source}}］"
+  },
+  "table": {
+    "reading": "読み込み中…",
+    "empty": "空のファイルです。",
+    "rowsCapped": "最初の {{rows}} 行のみ表示しています。",
+    "columnsCapped": "各行は最初の {{columns}} 列のみ表示しています。",
+    "cellsShortened": "{{characters}} 文字を超えるセルは途中で切り詰められます。"
+  },
+  "commit": {
+    "reading": "コミットを読み込み中…",
+    "empty": "このコミットで変更されたファイルはありません。",
+    "imageNotShown": "このコミット時点の画像は表示されません。列は画像をディスクから読み込み、ディスクにあるのは現在の版だからです。"
+  },
+  "history": {
+    "label": "このファイルの履歴",
+    "show": "このファイルの履歴を表示",
+    "hide": "このファイルの履歴を隠す",
+    "reading": "履歴を読み込み中…",
+    "empty": "このファイルを変更したコミットはありません。",
+    "commitDiff": "{{short}} — {{subject}}"
   }
 }
