@@ -144,6 +144,8 @@ pub fn run() {
             workspace::path_kind,
             review::git_changes,
             review::git_file_diff,
+            review::git_commit_files,
+            review::git_file_log,
             review::read_text_file,
             review::list_directory,
             workspace::home_dir,

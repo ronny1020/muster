@@ -3,13 +3,21 @@
 //!
 //! Read-only on purpose: nothing here stages, discards or writes. An agent is
 //! the thing editing the tree, and the panel is how the user reads what it
-//! did — so the only verbs are "what changed", "show me that diff" and "show
-//! me that file".
+//! did — so the only verbs are "what changed", "show me that diff", "show me
+//! that file", and the same questions asked of a commit in the history.
 
-use std::{collections::HashSet, io::Write, path::Path, process::Stdio};
+use std::{
+    collections::HashSet,
+    io::Write,
+    path::{Component, Path},
+    process::Stdio,
+};
 
 use crate::{
-    workspace::{expand_home, git, git_in, git_verbatim},
+    workspace::{
+        commit_from_fields, expand_home, git, git_in, git_verbatim, unpushed_shas, Commit,
+        LOG_FORMAT,
+    },
     worktree,
 };
 
@@ -144,7 +152,7 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
         return changes;
     };
 
-    changes.files = tracked_changes(root, &rev);
+    changes.files = tracked_changes(root, &[&rev]);
     // A path can reach both passes — `git rm --cached x` leaves `x` deleted
     // against HEAD and untracked in the worktree — and two rows for one file
     // is two rows with the same key, both highlighting when either is picked.
@@ -190,20 +198,77 @@ fn resolve_base(root: &Path, base: Option<&str>) -> Option<String> {
     git(root, &["merge-base", "HEAD", name]).filter(|sha| !sha.is_empty())
 }
 
+/// What a commit changed: the commit against its first parent, or against the
+/// empty tree when it is the first. A merge reads as what it brought into the
+/// branch it was made on, which is what the history drawer lists it under.
+///
+/// `None` unless `sha` is a hex object id that names a commit — it reaches git
+/// as an argument, and a leading dash or a revision expression would be read
+/// as something else.
+fn commit_range(root: &Path, sha: &str) -> Option<[String; 2]> {
+    let id = (7..=64).contains(&sha.len()) && sha.bytes().all(|b| b.is_ascii_hexdigit());
+    if !id {
+        return None;
+    }
+    let commit = git(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{sha}^{{commit}}"),
+        ],
+    )
+    .filter(|sha| !sha.is_empty())?;
+    let parent = git(
+        root,
+        &["rev-parse", "--verify", "--quiet", &format!("{commit}^1")],
+    )
+    .filter(|sha| !sha.is_empty())
+    .unwrap_or_else(|| EMPTY_TREE.to_string());
+    Some([parent, commit])
+}
+
+/// The files one commit changed, for the history drawer. `base` carries the
+/// commit's full sha.
+#[tauri::command]
+pub async fn git_commit_files(cwd: String, sha: String) -> Result<Changes, String> {
+    tauri::async_runtime::spawn_blocking(move || read_commit_files(&cwd, &sha))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn read_commit_files(cwd: &str, sha: &str) -> Result<Changes, String> {
+    let layout = worktree::layout(Path::new(&expand_home(cwd)))
+        .ok_or_else(|| "not a git repository".to_string())?;
+    let root = layout.root.as_path();
+    let [parent, commit] =
+        commit_range(root, sha).ok_or_else(|| format!("no such commit: {sha}"))?;
+    Ok(Changes {
+        repo: true,
+        common_dir: layout.common.to_string_lossy().into_owned(),
+        files: tracked_changes(root, &[&parent, &commit]),
+        base: commit,
+        root: root.to_string_lossy().into_owned(),
+        error: None,
+    })
+}
+
 fn head_or_empty_tree(root: &Path) -> String {
     git(root, &["rev-parse", "--verify", "HEAD"])
         .filter(|sha| !sha.is_empty())
         .unwrap_or_else(|| EMPTY_TREE.to_string())
 }
 
-/// Files git already knows about, with their line counts.
+/// Files git already knows about, with their line counts: one revision against
+/// the working tree, or two against each other.
 ///
 /// Two calls because no single `git diff` reports both the status letter and
 /// the line counts, and the status is what tells a deletion from an edit.
-fn tracked_changes(root: &Path, rev: &str) -> Vec<ChangedFile> {
+fn tracked_changes(root: &Path, revs: &[&str]) -> Vec<ChangedFile> {
     // `--no-relative` because `diff.relative` is a config a user can set, and
     // it would make every path here relative to the cwd instead of the root.
-    let args = ["diff", "-z", "--no-relative", "-M", rev];
+    let args = [&["diff", "-z", "--no-relative", "-M"][..], revs].concat();
     let statuses = git(root, &[&args[..], &["--name-status"]].concat()).unwrap_or_default();
     let counts = git(root, &[&args[..], &["--numstat"]].concat()).unwrap_or_default();
     merge_records(parse_name_status(&statuses), &parse_numstat(&counts))
@@ -388,9 +453,12 @@ pub async fn git_file_diff(
     path: String,
     base: Option<String>,
     context: Option<u32>,
+    commit: Option<String>,
+    old_path: Option<String>,
 ) -> Result<FileDiff, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        read_file_diff(&cwd, &path, base.as_deref(), context)
+    tauri::async_runtime::spawn_blocking(move || match commit {
+        Some(sha) => read_commit_file_diff(&cwd, &path, old_path.as_deref(), &sha, context),
+        None => read_file_diff(&cwd, &path, base.as_deref(), context),
     })
     .await
     .map_err(|error| error.to_string())?
@@ -435,6 +503,188 @@ fn read_file_diff(
         truncated: patch.len() > MAX_BYTES,
         patch: capped(patch),
     })
+}
+
+/// One file's diff within one commit. No untracked fallback: a commit is
+/// history, so an empty patch means the file did not change in it.
+///
+/// A rename needs both names in the pathspec: given only the new one, `-M`
+/// has no old side to pair it with and the file reads as wholly added.
+fn read_commit_file_diff(
+    cwd: &str,
+    path: &str,
+    old_path: Option<&str>,
+    sha: &str,
+    context: Option<u32>,
+) -> Result<FileDiff, String> {
+    let top = repo_root(&expand_home(cwd)).ok_or_else(|| "not a git repository".to_string())?;
+    let root = Path::new(&top);
+    let [parent, commit] =
+        commit_range(root, sha).ok_or_else(|| format!("no such commit: {sha}"))?;
+    let unified = format!("-U{}", context.unwrap_or(3).min(100_000));
+    let specs: Vec<String> = std::iter::once(path)
+        .chain(old_path)
+        .map(literal_spec)
+        .collect();
+    let head = [
+        "diff",
+        &unified,
+        "--no-relative",
+        "-M",
+        &parent,
+        &commit,
+        "--",
+    ];
+    let args: Vec<&str> = head
+        .into_iter()
+        .chain(specs.iter().map(String::as_str))
+        .collect();
+    let patch = git_verbatim(root, &args).unwrap_or_default();
+    Ok(FileDiff {
+        path: path.to_string(),
+        truncated: patch.len() > MAX_BYTES,
+        patch: capped(patch),
+    })
+}
+
+/// One commit in a file's history, with the name the file had in it.
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCommit {
+    #[serde(flatten)]
+    pub commit: Commit,
+    /// Repo-relative. Differs from today's name before a rename, and it is
+    /// the name that commit's diff is filed under.
+    pub path: String,
+    /// The name it had before this commit, when this commit renamed it.
+    pub old_path: Option<String>,
+}
+
+/// A file's history, for the file column.
+#[derive(Debug, Default, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistory {
+    /// Absolute repository root, which every `path` is relative to.
+    pub root: String,
+    pub commits: Vec<FileCommit>,
+}
+
+/// The commits that changed one file, newest first, following it across
+/// renames.
+#[tauri::command]
+pub async fn git_file_log(cwd: String, path: String, limit: u32) -> FileHistory {
+    tauri::async_runtime::spawn_blocking(move || read_file_log(&cwd, &path, limit))
+        .await
+        .unwrap_or_default()
+}
+
+/// The history comes from the file's own repository, found from its folder,
+/// because the tab's directory may hold several repositories or none, and a
+/// submodule's file means nothing to the repository around it. The tab's is
+/// the fallback for a file whose folder is gone too.
+fn read_file_log(cwd: &str, path: &str, limit: u32) -> FileHistory {
+    let file = expand_home(path);
+    let file = Path::new(&file);
+    let folder = file
+        .parent()
+        .filter(|folder| folder.is_dir())
+        .map(|folder| folder.to_string_lossy().into_owned());
+    let Some(top) = folder
+        .and_then(|folder| repo_root(&folder))
+        .or_else(|| repo_root(&expand_home(cwd)))
+    else {
+        return FileHistory::default();
+    };
+    let root = Path::new(&top);
+    let Some(relative) = repo_relative(root, file) else {
+        return FileHistory::default();
+    };
+    let max = format!("--max-count={limit}");
+    let spec = literal_spec(&relative);
+    let args = [
+        "log",
+        "-z",
+        "--name-status",
+        "--follow",
+        LOG_FORMAT,
+        &max,
+        "--",
+        &spec,
+    ];
+    let commits = git_verbatim(root, &args)
+        .map(|out| parse_file_log(&out, &unpushed_shas(root)))
+        .unwrap_or_default();
+    FileHistory {
+        root: top.clone(),
+        commits,
+    }
+}
+
+/// `log -z --name-status` output: each commit's six format fields, then its
+/// status letter behind a newline, then its path — two, old then new, for a
+/// rename or copy — every field NUL-terminated. The newline is what tells a
+/// status from the next commit's sha.
+fn parse_file_log(out: &str, unpushed: &HashSet<String>) -> Vec<FileCommit> {
+    let mut tokens = out.split('\0').peekable();
+    let mut commits = Vec::new();
+    while tokens.peek().is_some_and(|token| !token.trim().is_empty()) {
+        let Some(commit) = commit_from_fields(&mut tokens, unpushed) else {
+            break;
+        };
+        let Some(status) = tokens.next_if(|token| token.starts_with('\n')) else {
+            continue;
+        };
+        let Some(first) = tokens.next() else { break };
+        // Two paths for a rename or a copy. Only a rename's source is kept:
+        // a copy's source still exists with edits of its own, and naming it
+        // in the diff's pathspec would show those under the copy's name.
+        let (path, old_path) = match status[1..].chars().next() {
+            Some('R') => match tokens.next() {
+                Some(path) => (path, Some(first.to_string())),
+                None => break,
+            },
+            Some('C') => match tokens.next() {
+                Some(path) => (path, None),
+                None => break,
+            },
+            _ => (first, None),
+        };
+        commits.push(FileCommit {
+            commit,
+            path: path.to_string(),
+            old_path,
+        });
+    }
+    commits
+}
+
+/// `path` relative to the repository root, in git's forward-slash form, or
+/// `None` for a path outside it.
+///
+/// Only the folder is resolved, never the file: a deleted file still has a
+/// history, and a symlink's history is the link's own, not its target's. The
+/// root is resolved again rather than taken as given, because on Windows
+/// `repo_root` drops the `\\?\` prefix `canonicalize` adds, and a verbatim
+/// path never strips a plain one.
+fn repo_relative(root: &Path, path: &Path) -> Option<String> {
+    let relative = match path.strip_prefix(root) {
+        Ok(relative) => relative.to_path_buf(),
+        Err(_) => {
+            let folder = std::fs::canonicalize(path.parent()?).ok()?;
+            let base = std::fs::canonicalize(root).ok()?;
+            folder.strip_prefix(&base).ok()?.join(path.file_name()?)
+        }
+    };
+    let mut parts = Vec::new();
+    for part in relative.components() {
+        match part {
+            Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            Component::CurDir => {}
+            // `..` would climb back out of the root it was stripped from.
+            _ => return None,
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 /// Whether git has the file in its index, which is what tells a new file from

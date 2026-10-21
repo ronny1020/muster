@@ -530,3 +530,226 @@ fn a_worktree_nested_in_the_tree_is_not_listed_as_a_change() {
         .collect();
     assert_eq!(paths, vec!["new.txt"]);
 }
+
+/// A repository whose commits do not depend on the developer's identity or
+/// signing key, with each commit made from `steps` in order.
+fn history(label: &str, steps: &[(&str, &str, &str)]) -> std::path::PathBuf {
+    let root = scratch(label);
+    for args in [
+        &["init", "--quiet"][..],
+        &["config", "user.name", "Muster Test"],
+        &["config", "user.email", "test@example.invalid"],
+        &["config", "commit.gpgsign", "false"],
+    ] {
+        assert!(git(&root, args).is_some(), "git {args:?}");
+    }
+    for (file, text, message) in steps {
+        std::fs::write(root.join(file), text).expect("write");
+        assert!(git(&root, &["add", "-A"]).is_some(), "add");
+        assert!(
+            git(&root, &["commit", "--quiet", "-m", message]).is_some(),
+            "commit"
+        );
+    }
+    root
+}
+
+fn sha_of(root: &Path, rev: &str) -> String {
+    git(root, &["rev-parse", rev]).expect("rev-parse")
+}
+
+#[test]
+fn a_commit_lists_what_it_changed_and_nothing_since() {
+    // The history drawer opens a commit to read *that* change; the working
+    // tree's later edits belong to the Changes view.
+    let root = history(
+        "commit-files",
+        &[("a.txt", "one\n", "first"), ("b.txt", "two\n", "second")],
+    );
+    std::fs::write(root.join("a.txt"), "edited later\n").expect("write");
+    let cwd = root.to_string_lossy().into_owned();
+
+    let second = read_commit_files(&cwd, &sha_of(&root, "HEAD"))
+        .expect("second")
+        .files;
+    let first = read_commit_files(&cwd, &sha_of(&root, "HEAD~1"))
+        .expect("first")
+        .files;
+    let _ = std::fs::remove_dir_all(&root);
+
+    let names = |files: &[ChangedFile]| files.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&second), ["b.txt"]);
+    assert_eq!(second[0].status, "added");
+    assert_eq!(second[0].insertions, 1);
+    // The first commit has no parent, and still reads as what it added.
+    assert_eq!(names(&first), ["a.txt"]);
+}
+
+#[test]
+fn a_commit_s_file_diff_is_that_commit_s_change() {
+    let root = history(
+        "commit-diff",
+        &[("a.txt", "one\n", "first"), ("a.txt", "two\n", "second")],
+    );
+    std::fs::write(root.join("a.txt"), "uncommitted\n").expect("write");
+    let cwd = root.to_string_lossy().into_owned();
+
+    let diff =
+        read_commit_file_diff(&cwd, "a.txt", None, &sha_of(&root, "HEAD"), None).expect("diff");
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(diff.patch.contains("-one\n+two\n"), "{:?}", diff.patch);
+    assert!(!diff.patch.contains("uncommitted"), "{:?}", diff.patch);
+}
+
+#[test]
+fn only_a_hex_object_id_is_taken_as_a_commit() {
+    // The id reaches git as an argument: an option or a revision expression
+    // would be read as something other than the commit that was clicked.
+    let root = history("commit-id", &[("a.txt", "one\n", "first")]);
+    let refused: Vec<bool> = ["--output=x", "HEAD", "HEAD~1", "abc", "zzzzzzz"]
+        .iter()
+        .map(|sha| commit_range(&root, sha).is_none())
+        .collect();
+    let short = commit_range(&root, &sha_of(&root, "HEAD")[..7]);
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(refused.iter().all(|&r| r), "{refused:?}");
+    assert!(short.is_some(), "an abbreviated sha still names its commit");
+}
+
+#[test]
+fn a_file_s_history_follows_it_across_a_rename_and_skips_other_files() {
+    let root = history(
+        "file-log",
+        &[
+            ("old.txt", "one\n", "create"),
+            ("other.txt", "x\n", "unrelated"),
+        ],
+    );
+    assert!(git(&root, &["mv", "old.txt", "new.txt"]).is_some(), "mv");
+    assert!(
+        git(&root, &["commit", "--quiet", "-m", "rename"]).is_some(),
+        "commit"
+    );
+    let cwd = root.to_string_lossy().into_owned();
+    let path = root.join("new.txt").to_string_lossy().into_owned();
+
+    let history = read_file_log(&cwd, &path, 10);
+    let outside = read_file_log(&cwd, "/", 10);
+    let _ = std::fs::remove_dir_all(&root);
+
+    let entries: Vec<(&str, &str)> = history
+        .commits
+        .iter()
+        .map(|entry| (entry.commit.subject.as_str(), entry.path.as_str()))
+        .collect();
+    // Each commit carries the name the file had in it, which is what that
+    // commit's diff is filed under.
+    assert_eq!(entries, [("rename", "new.txt"), ("create", "old.txt")]);
+    assert_eq!(history.commits[0].old_path.as_deref(), Some("old.txt"));
+    assert_eq!(history.commits[1].old_path, None);
+    assert!(
+        outside.commits.is_empty(),
+        "a path outside the repository has no history"
+    );
+}
+
+#[test]
+fn a_deleted_file_still_has_a_history() {
+    // Opened from Changes as a deletion, the file is gone from disk, and its
+    // commits are exactly what someone reading the deletion wants.
+    let root = history("deleted-log", &[("gone.txt", "one\n", "create")]);
+    std::fs::remove_file(root.join("gone.txt")).expect("remove");
+    let cwd = root.to_string_lossy().into_owned();
+    let path = root.join("gone.txt").to_string_lossy().into_owned();
+
+    let subjects: Vec<String> = read_file_log(&cwd, &path, 10)
+        .commits
+        .into_iter()
+        .map(|entry| entry.commit.subject)
+        .collect();
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert_eq!(subjects, ["create"]);
+}
+
+#[test]
+fn a_rename_s_diff_in_its_commit_is_a_rename_not_a_new_file() {
+    // Named by its new path alone, `-M` has no old side to pair with, and
+    // the whole file reads as added.
+    let root = history("rename-diff", &[("old.txt", "one\ntwo\nthree\n", "create")]);
+    assert!(git(&root, &["mv", "old.txt", "new.txt"]).is_some(), "mv");
+    assert!(
+        git(&root, &["commit", "--quiet", "-m", "rename"]).is_some(),
+        "commit"
+    );
+    let cwd = root.to_string_lossy().into_owned();
+    let sha = sha_of(&root, "HEAD");
+
+    let diff = read_commit_file_diff(&cwd, "new.txt", Some("old.txt"), &sha, None).expect("diff");
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(
+        diff.patch.contains("rename from old.txt"),
+        "{:?}",
+        diff.patch
+    );
+    assert!(!diff.patch.contains("+one"), "{:?}", diff.patch);
+}
+
+#[test]
+fn a_path_that_climbs_out_of_the_repository_is_not_in_it() {
+    let root = scratch("climb");
+    let relative = repo_relative(&root, &root.join("..").join("elsewhere.txt"));
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert_eq!(relative, None);
+}
+
+#[test]
+fn a_copy_in_a_file_s_history_keeps_no_source() {
+    // The source of a copy still exists and may carry edits of its own in the
+    // same commit; naming it in the diff would show them under the copy.
+    let out = format!(
+        "{sha}\0{short}\0copy\0Ann\01\0\0\nC090\0a.txt\0b.txt\0",
+        sha = "a".repeat(40),
+        short = "aaaaaaa"
+    );
+    let commits = parse_file_log(&out, &HashSet::new());
+
+    assert_eq!(commits.len(), 1);
+    assert_eq!(commits[0].path, "b.txt");
+    assert_eq!(commits[0].old_path, None);
+}
+
+#[test]
+fn a_file_s_history_comes_from_its_own_repository() {
+    // The tab may sit above several repositories, or in one that holds
+    // another; the file's folder is what names its repository.
+    let outer = scratch("outer-dir");
+    let inner = outer.join("proj");
+    std::fs::create_dir_all(&inner).expect("mkdir");
+    for args in [
+        &["init", "--quiet"][..],
+        &["config", "user.name", "Muster Test"],
+        &["config", "user.email", "test@example.invalid"],
+        &["config", "commit.gpgsign", "false"],
+    ] {
+        assert!(git(&inner, args).is_some(), "git {args:?}");
+    }
+    std::fs::write(inner.join("a.txt"), "one\n").expect("write");
+    assert!(git(&inner, &["add", "-A"]).is_some(), "add");
+    assert!(
+        git(&inner, &["commit", "--quiet", "-m", "first"]).is_some(),
+        "commit"
+    );
+    let cwd = outer.to_string_lossy().into_owned();
+    let path = inner.join("a.txt").to_string_lossy().into_owned();
+
+    let history = read_file_log(&cwd, &path, 10);
+    let _ = std::fs::remove_dir_all(&outer);
+
+    assert_eq!(history.commits.len(), 1, "{history:?}");
+    assert_eq!(history.commits[0].path, "a.txt");
+}

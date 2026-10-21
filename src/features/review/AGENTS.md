@@ -15,7 +15,8 @@ uncoloured code is a perfectly good diff and an unreadable one is not.
 **Highlighted code is rendered as elements, never as markup.** Shiki can emit
 HTML directly and `dangerouslySetInnerHTML` would be shorter, but the code being
 coloured was written by an agent. `TokenLine` renders tokens as `<span>`s so
-nothing an agent wrote can reach the DOM as markup.
+nothing an agent wrote can reach the DOM as markup, and `TableView` puts every
+CSV cell in a text node for the same reason.
 
 `MarkdownView` is the one exception, and it is only safe because of three
 things in `markdown.ts`: markdown-it runs with `html: false`, so the file's own
@@ -64,6 +65,36 @@ attributes that say nothing. The plain file view marks the same way, from
 `changedLines` over the same patch the diff view reads — reading a file says
 nothing about what changed in it, and a file opened from outside a working tree
 gets no marks rather than wrong ones.
+
+**A surface you read opts back into selection.** The app's `body` is
+`select-none`, so a view that does not say `select-text` cannot be selected at
+all, and nothing reports that. The code bodies opt in; the gutters, the
+`+`/`-` glyph, the spoken "added line", the hunk headers and every `Notice`
+stay `select-none`, so a copy is the code and nothing else. `selectedLines`
+reads the lines from each row's `data-line`, never from offsets, because a wrapped row is several screen lines and only the
+row knows which line of the file it is. A removed row has no `data-line`: it
+has no line in the file as it is now. And a row the selection only touches at
+an edge — it ends at the row's start, or starts past the end of a row with
+text in it — is left out. A blank row's start is its end, so a drag from one
+includes it; blank means only whitespace, since an uncoloured row draws an
+empty line as one space to keep its height. Every edge is measured from the
+row's `code`, because a range counts the gutter's number as text even though
+nobody can select it.
+
+**A commit's diff is history, not the file.** Opened from the history drawer or
+the file's own history, the column shows the commit against its first parent,
+under the name the file had in that commit — `git log --follow` reports it
+per commit, so a commit from before a rename files its diff under the old name.
+The history comes from the file's own repository, found from its folder, and
+the view carries that root, because the tab's directory may hold several
+repositories or a submodule. So the column drops what reads the disk or names
+a path: no rendered preview, no image, no editor link, no copy path, no send —
+in the column or the drawer — since each would show or name today's file
+beside yesterday's lines. A rename names both paths in its pathspec, or `-M`
+has no old side to pair with and the file reads as new; a copy names only
+itself, since its source still exists with edits of its own. A commit id
+reaches git as an argument, so `commit_range` takes only a hex object id that
+resolves to a commit.
 
 **A panel's close button may never be the control that clips.** Every `Action`
 in `FileViewer`'s header is `flex-none`, so a narrow panel overflowed the row

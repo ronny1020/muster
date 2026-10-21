@@ -227,7 +227,7 @@ building.
 | Terminal ↔ PTY binding                                | `src/features/terminal/ui/TerminalView.tsx`                        |
 | New-tab start screen                                  | `src/features/launch/ui/Launcher.tsx`                              |
 | One tab's contents                                    | `src/widgets/pane/ui/Pane.tsx`                                     |
-| Changed files, diffs, file reads, listings            | `src-tauri/src/review.rs`                                          |
+| Changed files, diffs, commits, file reads, listings   | `src-tauri/src/review.rs`                                          |
 | Unified-diff parsing                                  | `src/features/review/model/diff.ts`                                |
 | Changed-file ordering and path matching               | `src/features/review/model/changes.ts`                             |
 | Syntax highlighting, and which grammar                | `src/features/review/model/highlight.ts`                           |
@@ -244,6 +244,13 @@ building.
 | The column a diff or a file is read in                | `src/features/review/ui/FileViewer.tsx`                            |
 | Markdown rendering, and what it refuses               | `src/features/review/model/markdown.ts`                            |
 | Mermaid drawing and image loading                     | `src/features/review/ui/MarkdownView.tsx`                          |
+| CSV and TSV parsing                                   | `src/features/review/model/table.ts`                               |
+| A delimited file, as a table                          | `src/features/review/ui/TableView.tsx`                             |
+| The files a commit changed, under its history row     | `src/features/review/ui/CommitFiles.tsx`                           |
+| One file's commits, in the column                     | `src/features/review/ui/FileHistory.tsx`                           |
+| The `path:12-30` a selection is sent as               | `src/features/review/model/reference.ts`                           |
+| Which file lines a text selection covers              | `src/features/review/ui/selectedLines.ts`                          |
+| A status line in a review view                        | `src/features/review/ui/Notice.tsx`                                |
 | Matching xterm's cell size in CSS                     | `src/shared/lib/fontmetrics.ts`                                    |
 | The diff, rendered row by row                         | `src/features/review/ui/DiffView.tsx`                              |
 | A whole file, as text or as a picture                 | `src/features/review/ui/CodePreview.tsx`                           |

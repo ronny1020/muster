@@ -20,7 +20,8 @@
   },
   "list": {
     "binary": "binary",
-    "notCounted": "Lines not counted: too many new files, or a symlink on the way to this one"
+    "notCounted": "Lines not counted: too many new files, or a symlink on the way to this one",
+    "filesCapped": "Showing the first {{shown}} of {{total}} files."
   },
   "tree": {
     "copyPath": "Copy path",
@@ -41,12 +42,14 @@
     "showDiff": "Show the diff instead",
     "showSource": "Show the source instead",
     "renderMarkdown": "Render this markdown",
+    "renderTable": "Show as a table",
     "diff": "Diff",
     "raw": "Raw",
     "preview": "Preview",
     "wrap": "Wrap",
     "wrapLines": "Wrap long lines",
     "unwrapLines": "Stop wrapping long lines",
+    "send": "Type this path into the session — with the selected lines, if any",
     "copyPath": "Copy path",
     "openIn": "Open in {{editor}}",
     "close": "Close · Escape"
@@ -70,5 +73,25 @@
   "markdown": {
     "reading": "Reading…",
     "missingImage": "[missing image: {{source}}]"
+  },
+  "table": {
+    "reading": "Reading…",
+    "empty": "Empty file.",
+    "rowsCapped": "Showing the first {{rows}} rows.",
+    "columnsCapped": "Only the first {{columns}} columns of a row are shown.",
+    "cellsShortened": "Cells longer than {{characters}} characters are cut short."
+  },
+  "commit": {
+    "reading": "Reading the commit…",
+    "empty": "This commit changed no files.",
+    "imageNotShown": "This commit's version of the image is not shown: the column reads images from disk, which holds today's."
+  },
+  "history": {
+    "label": "This file's history",
+    "show": "Show this file's history",
+    "hide": "Hide this file's history",
+    "reading": "Reading history…",
+    "empty": "No commits have changed this file.",
+    "commitDiff": "{{short}} — {{subject}}"
   }
 }

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
@@ -21,6 +21,7 @@ import { type ImagePreview, readImage } from '../../../shared/ipc'
 import { formatBytes } from '../../../shared/lib/bytes'
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { currentLocale } from '../../../shared/i18n/i18n'
+import { Notice } from './Notice'
 
 /**
  * Rows drawn at once. The backend caps a read at two megabytes, which is some
@@ -109,13 +110,13 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
   // no marks as a missing `cwd`. No context either — the line numbers are all
   // this needs, and a wide one is rows of unchanged file for git to write and
   // for this to parse.
-  const { diff } = useFileDiff(
-    cwd ?? '',
-    cwd ? relativeTo(path, cwd) : null,
-    base ?? '',
-    0,
+  const { diff } = useFileDiff({
+    cwd: cwd ?? '',
+    path: cwd ? relativeTo(path, cwd) : null,
+    base: base ?? '',
+    context: 0,
     revision,
-  )
+  })
   const changed = useMemo(
     () => (diff ? changedLines(diff.patch) : new Set<number>()),
     [diff],
@@ -149,7 +150,7 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
         /* Tailwind's preflight gives `code` the theme's mono stack, which beats
            the family inherited from here — so the font chosen for the terminal
            would be ignored by exactly the elements that show code. */
-        className="min-h-0 flex-1 overflow-auto [&_code]:font-[inherit]"
+        className="min-h-0 flex-1 overflow-auto select-text [&_code]:font-[inherit]"
       >
         {rows.map((text, index) => (
           <div
@@ -157,6 +158,9 @@ function TextBody({ path, wrap, revision, opener, cwd, base }: TextBodyProps) {
             // The bar an editor draws beside a changed line, and what
             // `ChangeRuler` measures — one attribute serves both.
             data-change={changed.has(index + 1) ? 'add' : undefined}
+            // Which line of the file this row is, for a selection sent to the
+            // session.
+            data-line={index + 1}
             className={`flex ${
               changed.has(index + 1)
                 ? 'border-l-2 border-l-[#3f6f4a]'
@@ -266,16 +270,3 @@ const Gutter = ({
       {line}
     </span>
   )
-
-const Notice = ({
-  children,
-  tone = 'text-faint',
-}: {
-  children: ReactNode
-  tone?: string
-}) => (
-  // A status region: these replace each other as reads land.
-  <p role="status" className={`m-0 px-2.5 py-3 text-[11px] ${tone}`}>
-    {children}
-  </p>
-)

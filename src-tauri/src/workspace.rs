@@ -113,7 +113,7 @@ pub struct Commit {
 }
 
 /// Field separator for the log format; NUL cannot appear in any git field.
-const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%at%x00%D";
+pub(crate) const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%at%x00%D";
 
 #[tauri::command]
 pub async fn git_log(cwd: String, limit: u32) -> Vec<Commit> {
@@ -131,10 +131,27 @@ fn read_log(cwd: String, limit: u32) -> Vec<Commit> {
     parse_log(&out, &unpushed_shas(cwd))
 }
 
+/// One commit from the six fields [`LOG_FORMAT`] writes, in order.
+pub(crate) fn commit_from_fields<'a>(
+    fields: &mut impl Iterator<Item = &'a str>,
+    unpushed: &HashSet<String>,
+) -> Option<Commit> {
+    let sha = fields.next()?.to_string();
+    Some(Commit {
+        short: fields.next()?.to_string(),
+        subject: fields.next()?.to_string(),
+        author: fields.next()?.to_string(),
+        at: fields.next()?.parse().ok(),
+        refs: parse_refs(fields.next().unwrap_or_default()),
+        unpushed: unpushed.contains(&sha),
+        sha,
+    })
+}
+
 /// Shas present locally but not where a push goes — the push target when that
 /// differs from the upstream, as the `↑` count is measured. Empty when the
 /// branch has no upstream, where "unpushed" has no meaning.
-fn unpushed_shas(cwd: &Path) -> HashSet<String> {
+pub(crate) fn unpushed_shas(cwd: &Path) -> HashSet<String> {
     let base = push_base(cwd, &git_status(cwd)).unwrap_or_else(|| "@{upstream}".to_string());
     git(cwd, &["rev-list", &format!("{base}..HEAD")])
         .into_iter()
@@ -145,19 +162,7 @@ fn unpushed_shas(cwd: &Path) -> HashSet<String> {
 fn parse_log(out: &str, unpushed: &HashSet<String>) -> Vec<Commit> {
     out.lines()
         .filter(|line| !line.is_empty())
-        .filter_map(|line| {
-            let mut fields = line.split('\0');
-            let sha = fields.next()?.to_string();
-            Some(Commit {
-                short: fields.next()?.to_string(),
-                subject: fields.next()?.to_string(),
-                author: fields.next()?.to_string(),
-                at: fields.next()?.parse().ok(),
-                refs: parse_refs(fields.next().unwrap_or_default()),
-                unpushed: unpushed.contains(&sha),
-                sha,
-            })
-        })
+        .filter_map(|line| commit_from_fields(&mut line.split('\0'), unpushed))
         .collect()
 }
 

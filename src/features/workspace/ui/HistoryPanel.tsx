@@ -18,6 +18,7 @@ import {
 } from '../../../shared/ipc'
 import { useKeyChange } from '../../../shared/lib/useKeyChange'
 import { useKeyedState } from '../../../shared/lib/useKeyedState'
+import { Icon } from '../../../shared/ui/Icon'
 
 export interface HistoryPanelProps {
   cwd: string
@@ -30,6 +31,8 @@ export interface HistoryPanelProps {
   onSwitched: () => void
   /** Drawn under the header — pull and push. */
   sync?: ReactNode
+  /** What a commit changed, drawn under its row while it is open. */
+  files?: (commit: Commit) => ReactNode
   /** A git write is running, so a checkout would race it. */
   busy: boolean
   /**
@@ -63,6 +66,7 @@ export function HistoryPanel({
   onClose,
   onSwitched,
   sync,
+  files,
   busy,
   runGit,
 }: HistoryPanelProps) {
@@ -73,6 +77,8 @@ export function HistoryPanel({
   )
   const now = useNow(AGE_TICK_MS)
   const [switching, setSwitching] = useState(false)
+  /** The commit whose files are listed; one at a time keeps the list a list. */
+  const [open, setOpen] = useState<string | null>(null)
   const size = usePanelWidth('muster.historyWidth', DEFAULT_WIDTH)
 
   const load = useCallback(
@@ -95,7 +101,10 @@ export function HistoryPanel({
 
   // Switching to another directory should not leave a picker open over a
   // branch list that belongs to the tree you have left.
-  useKeyChange([cwd], () => setSwitching(false))
+  useKeyChange([cwd], () => {
+    setSwitching(false)
+    setOpen(null)
+  })
 
   return (
     <aside
@@ -167,7 +176,19 @@ export function HistoryPanel({
           </p>
         ) : (
           commits.map((commit) => (
-            <CommitRow key={commit.sha} commit={commit} now={now} />
+            <CommitRow
+              key={commit.sha}
+              commit={commit}
+              now={now}
+              open={open === commit.sha}
+              onToggle={
+                files &&
+                (() =>
+                  setOpen((was) => (was === commit.sha ? null : commit.sha)))
+              }
+            >
+              {open === commit.sha && files?.(commit)}
+            </CommitRow>
           ))
         )}
       </div>
@@ -352,50 +373,81 @@ function BranchRow({ branch, busy, disabled, now, onPick }: BranchRowProps) {
   )
 }
 
-function CommitRow({ commit, now }: { commit: Commit; now: number }) {
+interface CommitRowProps {
+  commit: Commit
+  now: number
+  open: boolean
+  /** Absent when there is nothing to open a commit into. */
+  onToggle?: () => void
+  /** The commit's files, while it is open. */
+  children?: ReactNode
+}
+
+function CommitRow({ commit, now, open, onToggle, children }: CommitRowProps) {
   const { t } = useTranslation('workspace')
   return (
-    <article
-      title={commit.subject}
-      className="flex flex-col gap-1 border-b border-line/60 px-2.5 py-2 hover:bg-surface"
-    >
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className="size-1.5 flex-none rounded-full"
-          style={{
-            background: commit.unpushed
-              ? 'var(--color-primary)'
-              : 'transparent',
-          }}
-          title={commit.unpushed ? t('history.unpushed') : undefined}
-        />
-        <span className="flex-1 truncate text-xs/snug text-ink">
-          {commit.subject}
-        </span>
-      </div>
-
-      {commit.refs.length > 0 && (
-        <div className="flex flex-wrap gap-1 pl-3">
-          {commit.refs.map((reference) => (
-            <span
-              key={reference}
-              className="rounded-sm border border-line bg-surface px-1 text-[10px] text-[#a8b4c8]"
-            >
-              {reference}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-1.5 pl-3 text-[10px] text-faint">
-        <span className="font-mono">{commit.short}</span>
-        <span className="truncate">{commit.author}</span>
-        {commit.at !== null && (
-          <span className="flex-none">
-            · {relativeAge(commit.at, now, currentLocale())}
+    <article className="border-b border-line/60">
+      <button
+        type="button"
+        title={
+          onToggle
+            ? t('history.openCommit', { subject: commit.subject })
+            : commit.subject
+        }
+        aria-expanded={onToggle ? open : undefined}
+        disabled={!onToggle}
+        onClick={onToggle}
+        className={`flex w-full flex-col gap-1 px-2.5 py-2 text-left hover:bg-surface ${
+          open ? 'bg-surface' : ''
+        }`}
+      >
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="size-1.5 flex-none rounded-full"
+            style={{
+              background: commit.unpushed
+                ? 'var(--color-primary)'
+                : 'transparent',
+            }}
+            title={commit.unpushed ? t('history.unpushed') : undefined}
+          />
+          <span className="flex-1 truncate text-xs/snug text-ink">
+            {commit.subject}
           </span>
+          {onToggle && (
+            <Icon
+              name="chevron_right"
+              className={`size-3.5 flex-none text-faint ${open ? 'rotate-90' : ''}`}
+            />
+          )}
+        </div>
+
+        {commit.refs.length > 0 && (
+          <div className="flex flex-wrap gap-1 pl-3">
+            {commit.refs.map((reference) => (
+              <span
+                key={reference}
+                className="rounded-sm border border-line bg-surface px-1 text-[10px] text-[#a8b4c8]"
+              >
+                {reference}
+              </span>
+            ))}
+          </div>
         )}
-      </div>
+
+        <div className="flex gap-1.5 pl-3 text-[10px] text-faint">
+          <span className="font-mono">{commit.short}</span>
+          <span className="truncate">{commit.author}</span>
+          {commit.at !== null && (
+            <span className="flex-none">
+              · {relativeAge(commit.at, now, currentLocale())}
+            </span>
+          )}
+        </div>
+      </button>
+      {children && (
+        <div className="border-t border-line/60 bg-canvas">{children}</div>
+      )}
     </article>
   )
 }
