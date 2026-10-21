@@ -20,6 +20,8 @@ export interface GitStatus {
   conflicted: number
   /** Push sends this branch under its own name for the first time. */
   publishes: boolean
+  /** The checkout this tree is a linked worktree of; `null` in the main one. */
+  worktreeOf: string | null
 }
 
 export interface Workspace {
@@ -326,6 +328,8 @@ export interface Branch {
   at: number | null
   /** Only a remote has it, so checking out starts a local branch from it. */
   remote: boolean
+  /** Where another worktree has it checked out, which git will not share. */
+  worktree: string | null
 }
 
 export const gitBranches = (cwd: string) =>

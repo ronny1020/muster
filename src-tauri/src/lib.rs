@@ -21,6 +21,7 @@ mod sync;
 mod transcript;
 mod window;
 mod workspace;
+mod worktree;
 
 #[cfg(test)]
 #[path = "config_tests.rs"]

@@ -264,7 +264,9 @@ Along the bottom of each tab:
 - **The directory**, shortened with `~`. Click it for the file tree — it names
   the tree, so it opens the tree.
 - **The branch**, or `detached @ 1a2b3c4` when there is no branch. Click it for
-  the history drawer.
+  the history drawer. In a linked worktree it reads `· worktree`, and its
+  tooltip names the checkout the worktree belongs to. A worktree nested inside
+  the tree, such as `.claude/worktrees/<name>`, is not counted as untracked.
 - **`↑2 ↓1`** — commits you have not pushed, and commits waiting to be pulled.
   Click them for the history drawer, which is where commits are.
 - **`+3 ~5 ?2 !1`** — staged, modified, untracked and conflicted files, as one
@@ -500,7 +502,9 @@ commit's, not the file's on disk.
 
 **Switch** in the same drawer lists branches instead, most recently committed to
 first, with a filter box. Pick one and it checks out. Branches only a remote has
-are listed too, marked `remote`; picking one starts a local branch from it.
+are listed too, marked `remote`; picking one starts a local branch from it. A
+branch another worktree has checked out is marked `in a worktree` and cannot be
+picked, because git keeps a branch to one worktree; the row shows where.
 
 If the tree has uncommitted work the drawer says so before you pick, because a
 checkout can fail on it — though only when the two branches differ in the files

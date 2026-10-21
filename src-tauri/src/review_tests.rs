@@ -516,6 +516,21 @@ fn the_repo_root_is_a_path_git_and_the_frontend_both_understand() {
     assert!(Path::new(&root).join(".git").exists() || Path::new(&root).join("..").exists());
 }
 
+#[test]
+fn a_worktree_nested_in_the_tree_is_not_listed_as_a_change() {
+    let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("review");
+    std::fs::write(main.join("new.txt"), "work\n").expect("write");
+    let changes = read_changes(&main.to_string_lossy(), None, true);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let paths: Vec<_> = changes
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(paths, vec!["new.txt"]);
+}
+
 /// A repository whose commits do not depend on the developer's identity or
 /// signing key, with each commit made from `steps` in order.
 fn history(label: &str, steps: &[(&str, &str, &str)]) -> std::path::PathBuf {

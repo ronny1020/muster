@@ -110,6 +110,17 @@ export function chipGroups(
 export const branchLabel = (git: GitStatus, t: TFunction<'workspace'>) =>
   git.detached ? t('chips.detached', { at: git.branch }) : git.branch
 
+/** The branch control's tooltip: what it opens, and whose worktree this is. */
+export function branchTitle(git: GitStatus, t: TFunction<'workspace'>): string {
+  const opens = t('status.showHistory', {
+    upstream: git.upstream,
+    context: git.upstream ? 'tracking' : undefined,
+  })
+  return git.worktreeOf
+    ? `${opens}\n${t('status.worktreeOf', { path: git.worktreeOf })}`
+    : opens
+}
+
 /**
  * A string that changes when the working tree does, for the surfaces that
  * re-read on it — the changed-file list, an open diff, the file tree.

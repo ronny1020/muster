@@ -582,3 +582,15 @@ fn a_stop_after_the_commit_landed_reports_it_landed() {
     assert_eq!(result, Ok(LANDED_ANYWAY.to_string()));
     assert_eq!(subject.as_deref(), Some("lands"));
 }
+
+#[test]
+fn committing_everything_leaves_a_nested_worktree_out() {
+    let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("commit");
+    std::fs::write(main.join("new.txt"), "work\n").expect("write");
+    let result = commit(&main.to_string_lossy(), "add work", "test-nested-commit");
+    let files = committed_files(&main);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(files, vec!["new.txt"], "no embedded repository is staged");
+}

@@ -15,7 +15,10 @@ use std::{
     time::Duration,
 };
 
-use crate::workspace::{expand_home, git, git_in, git_status, push_remote, tracked_remote};
+use crate::{
+    workspace::{expand_home, git, git_in, git_status, push_remote, tracked_remote},
+    worktree,
+};
 
 /// Commits the working tree with `message`, answering git's one-line summary.
 ///
@@ -84,7 +87,12 @@ fn commit(cwd: &str, message: &str, op: &str) -> Result<String, String> {
     let stages_everything = git(path, &["diff", "--cached", "--quiet"]).is_some();
     let committed = (|| {
         if stages_everything {
-            run(git_in(path).args(["add", "--all"]), Some(&running))?;
+            // A worktree nested in the tree would be staged as an embedded
+            // repository, and the footer and the review panel never show it.
+            let mut add = git_in(path);
+            add.args(["add", "--all", "--"])
+                .args(worktree::nested_pathspecs(path));
+            run(&mut add, Some(&running))?;
         }
         // `-m` takes the next argument as its value, so a message starting
         // with a dash is still a message.

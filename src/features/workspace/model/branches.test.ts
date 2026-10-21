@@ -12,6 +12,7 @@ const branch = (name: string, extra: Partial<Branch> = {}): Branch => ({
   upstream: null,
   at: 1_700_000_000,
   remote: false,
+  worktree: null,
   ...extra,
 })
 
@@ -27,6 +28,7 @@ const status = (extra: Partial<GitStatus> = {}): GitStatus => ({
   untracked: 0,
   conflicted: 0,
   publishes: true,
+  worktreeOf: null,
   ...extra,
 })
 

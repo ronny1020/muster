@@ -126,6 +126,38 @@ Rust tests — so a test's `git add --all` in a scratch repository would have
 written the scratch tree over the commit being made, and nothing would have
 failed until that commit landed.
 
+**A worktree's neighbours are read from `git worktree list`, never inferred,
+and they are not its untracked files.** `-C` answers correctly from inside a
+linked worktree, so no git call needs a worktree's help to read its own tree.
+What it cannot see is the neighbours. The status poll asks
+`worktree::neighbours` in every pane, so it reads the layout with one
+`rev-parse` each tick and runs `git worktree list` only when
+`<common-dir>/worktrees` exists. The branch list, read on a click, runs it
+unconditionally.
+
+A worktree nested in the tree — `.claude/worktrees/<name>`, `.worktrees/<name>`
+— is listed by `status` and `ls-files --others` as an untracked directory, so a
+clean checkout read `?1` and the review panel listed a "file" it could not
+open. `worktree::excluding` turns the nested ones into exclude pathspecs for
+the **untracked** reads and for Commit's `add --all`, which would otherwise
+stage each one as an embedded repository nobody saw. Never for a read of
+tracked state: an exclude on `git status` also hides a gitlink an agent's
+`git add -A` staged at that path, so the footer read clean while Commit carried
+the embedded repository. That is why `git_status` counts untracked files in a
+call of its own when there is anything to exclude. The pathspecs are literal,
+for the reason "A pathspec must be literal" gives, and `git_in` removes
+`PATHSPEC_OVERRIDES`: `GIT_LITERAL_PATHSPECS` would read every magic pathspec
+as a file name, and the glob and icase ones change how the rest match.
+
+A branch another worktree holds is one `git switch` refuses, so
+`read_branches` marks it with where it is and the switcher does not offer it.
+A branch being rebased or bisected elsewhere is listed as detached there and
+is not marked; git's own refusal reports that one. The main checkout is the
+first entry git lists, except that git lists a submodule's main tree by its git directory, so `worktree::list` reads
+that directory's `core.worktree` for the checkout. A repository made with
+`--separate-git-dir` records no checkout at all, and is named by its git
+directory, as a bare one is.
+
 **Paths are stored in the host's own form.** A WSL session keeps the Windows
 path the picker returned — a `\\wsl$\Ubuntu\...` share or a drive letter — and
 translates to `/home/...` or `/mnt/c/...` only at launch, for `wsl.exe --cd`.

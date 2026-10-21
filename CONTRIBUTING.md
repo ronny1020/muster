@@ -166,6 +166,7 @@ building.
 | Shells, WSL, hand-back and process inspection         | `src-tauri/src/platform.rs`                                        |
 | Path, git status, log, branches and checkout          | `src-tauri/src/workspace.rs`                                       |
 | Commit, pull, push, cancel, and how git writes run    | `src-tauri/src/sync.rs`                                            |
+| Linked worktrees: layout, nested trees, held branches | `src-tauri/src/worktree.rs`                                        |
 | Commands exposed to the frontend                      | `src-tauri/src/lib.rs`                                             |
 | Typed wrappers over those commands                    | `src/shared/ipc.ts`                                                |
 | Tab state, as a pure reducer                          | `src/entities/tab/model/deck.ts`                                   |

@@ -1,7 +1,12 @@
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
-import { branchLabel, chipGroups, type GitChip } from '../model/status'
+import {
+  branchLabel,
+  branchTitle,
+  chipGroups,
+  type GitChip,
+} from '../model/status'
 import {
   type Editor,
   openInEditor,
@@ -140,16 +145,16 @@ export function StatusBar({
             type="button"
             aria-expanded={historyOpen}
             onClick={onToggleHistory}
-            title={t('status.showHistory', {
-              upstream: git.upstream,
-              context: git.upstream ? 'tracking' : undefined,
-            })}
+            title={branchTitle(git, t)}
             className={`flex min-w-0 items-center gap-1 overflow-hidden rounded-sm px-1 text-ellipsis hover:bg-surface-hover hover:text-ink ${
               historyOpen ? 'bg-surface text-ink' : 'text-[#a8b4c8]'
             }`}
           >
             <BranchIcon />
             {branchLabel(git, t)}
+            {git.worktreeOf && (
+              <span className="text-faint">{t('status.worktree')}</span>
+            )}
           </button>
           {groups && groups.history.length > 0 && (
             <ChipGroup

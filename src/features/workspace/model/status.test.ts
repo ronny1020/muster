@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test'
 
-import { branchLabel, chipGroups, gitChips, treeRevision } from './status'
+import {
+  branchLabel,
+  branchTitle,
+  chipGroups,
+  gitChips,
+  treeRevision,
+} from './status'
 import type { GitStatus } from '../../../shared/ipc'
 import { i18n } from '../../../shared/i18n/i18n'
 
@@ -18,6 +24,7 @@ const status = (overrides: Partial<GitStatus> = {}): GitStatus => ({
   untracked: 0,
   conflicted: 0,
   publishes: false,
+  worktreeOf: null,
   ...overrides,
 })
 
@@ -147,4 +154,11 @@ test('the chips speak the catalog they are given', () => {
     'プッシュ待ちのコミット 2 件',
     '作業ツリーに変更はありません',
   ])
+})
+
+test('a linked worktree names its main checkout under the branch tooltip', () => {
+  expect(branchTitle(status({ worktreeOf: '~/repo' }), t)).toBe(
+    'Show history · tracking origin/main\nLinked worktree of ~/repo',
+  )
+  expect(branchTitle(status(), t)).toBe('Show history · tracking origin/main')
 })

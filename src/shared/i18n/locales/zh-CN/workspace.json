@@ -19,6 +19,8 @@
     "settingsTitle": "{{settings}}（{{shortcut}}）",
     "showHistory": "显示历史记录 · 没有上游分支",
     "showHistory_tracking": "显示历史记录 · 跟踪 {{upstream}}",
+    "worktree": "· 工作树",
+    "worktreeOf": "{{path}} 的链接工作树",
     "titleSeparator": "，"
   },
   "chips": {
@@ -54,6 +56,8 @@
     "none": "还没有分支。",
     "current": "当前",
     "remote": "远程",
+    "held": "在工作树中",
+    "heldAt": "已在 {{path}} 检出 — git 不允许两个工作树共用一个分支",
     "switching": "切换中…",
     "create": "从 {{upstream}} 创建 {{branch}}",
     "switchTo": "切换到 {{branch}}",

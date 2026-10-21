@@ -18,6 +18,7 @@ const clean: GitStatus = {
   untracked: 0,
   conflicted: 0,
   publishes: false,
+  worktreeOf: null,
 }
 
 describe('commitControl', () => {
