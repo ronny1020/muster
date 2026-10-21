@@ -8,7 +8,10 @@
 
 use std::{collections::HashSet, io::Write, path::Path, process::Stdio};
 
-use crate::workspace::{expand_home, git, git_in, git_verbatim};
+use crate::{
+    workspace::{expand_home, git, git_in, git_verbatim},
+    worktree,
+};
 
 /// One file the review panel lists.
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -124,15 +127,15 @@ pub async fn git_changes(cwd: String, base: Option<String>, counts: Option<bool>
 }
 
 fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
-    let Some(top) = repo_root(&expand_home(cwd)) else {
+    let Some(layout) = worktree::layout(Path::new(&expand_home(cwd))) else {
         return Changes::default();
     };
-    let root = Path::new(&top);
+    let root = layout.root.as_path();
 
     let mut changes = Changes {
         repo: true,
-        root: top.clone(),
-        common_dir: common_dir(root).unwrap_or_else(|| top.clone()),
+        root: root.to_string_lossy().into_owned(),
+        common_dir: layout.common.to_string_lossy().into_owned(),
         base: base.unwrap_or_default().to_string(),
         ..Default::default()
     };
@@ -147,22 +150,20 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
     // is two rows with the same key, both highlighting when either is picked.
     let tracked: HashSet<String> = changes.files.iter().map(|f| f.path.clone()).collect();
     changes.files.extend(
-        untracked_changes(root, counts)
+        untracked_changes(&layout, counts)
             .into_iter()
             .filter(|file| !tracked.contains(&file.path)),
     );
     changes
 }
 
-/// The repository a directory is in, canonicalised, or `None` when it is not
-/// in one.
+/// The repository a directory is in, as [`worktree::Layout::root`], or `None`
+/// when it is not in one.
 ///
-/// Canonicalised for the same reason `common_dir` is: `--show-toplevel` echoes
-/// the spelling of the directory it was asked from, so one worktree reached
-/// through a symlink — `/tmp` for `/private/tmp`, or a linked home — answers
-/// two different strings. Two tabs on one tree would then compare unequal and
-/// warn about every file they share, which is the always-on warning the
-/// collision detector exists to avoid.
+/// Resolved for the reason [`worktree::resolved`] gives. Two tabs on one tree
+/// reached by two spellings would otherwise compare unequal and warn about
+/// every file they share, which is the always-on warning the collision
+/// detector exists to avoid.
 ///
 /// Every git call here runs from the top level rather than the session's own
 /// directory, and that is load-bearing: run from a subdirectory, `git diff`
@@ -172,46 +173,7 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
 /// paths. One directory for all of them is what keeps every path in this
 /// module root-relative.
 fn repo_root(cwd: &str) -> Option<String> {
-    let top = git(Path::new(cwd), &["rev-parse", "--show-toplevel"]).filter(|t| !t.is_empty())?;
-    let resolved = std::fs::canonicalize(&top)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| top.clone());
-    // Windows' `canonicalize` answers an extended-length path (`\\?\C:\repo`).
-    // That spelling is not interchangeable with the one git prints: this value
-    // is handed to the frontend as `Changes.root`, compared against a clicked
-    // path to find its diff, joined back into absolute paths for the editor,
-    // and used as the working directory for every later `git` call — and
-    // `CreateProcessW` will not take a verbatim prefix. So the prefix is
-    // dropped, keeping the resolution without the spelling.
-    Some(match resolved.strip_prefix(r"\\?\UNC\") {
-        Some(share) => format!(r"\\{share}"),
-        None => resolved
-            .strip_prefix(r"\\?\")
-            .unwrap_or(&resolved)
-            .to_string(),
-    })
-}
-
-/// The directory every worktree of this repository shares.
-///
-/// Relative for a main checkout (`.git`) and absolute for a linked worktree,
-/// so it is resolved against the root to give one spelling either way.
-fn common_dir(root: &Path) -> Option<String> {
-    let common = git(root, &["rev-parse", "--git-common-dir"]).filter(|dir| !dir.is_empty())?;
-    let path = Path::new(&common);
-    let joined = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    };
-    // Canonicalised so a path reached through a symlink — a temp directory
-    // usually is one — matches the same repo reached directly.
-    Some(
-        std::fs::canonicalize(&joined)
-            .unwrap_or(joined)
-            .to_string_lossy()
-            .into_owned(),
-    )
+    worktree::layout(Path::new(cwd)).map(|layout| layout.root.to_string_lossy().into_owned())
 }
 
 /// What to diff against: the point the branches diverged for a base branch,
@@ -365,8 +327,13 @@ fn status_name(letter: char) -> &'static str {
 /// Their line counts cannot come from `git diff`, so the file is read and its
 /// lines counted — the same read that decides whether it is text at all. That
 /// read only happens when `counts` says someone is going to show the number.
-fn untracked_changes(root: &Path, counts: bool) -> Vec<ChangedFile> {
-    let Some(out) = git(root, &["ls-files", "-z", "--others", "--exclude-standard"]) else {
+/// A worktree nested in this one is left out — see [`worktree::Neighbours`].
+fn untracked_changes(layout: &worktree::Layout, counts: bool) -> Vec<ChangedFile> {
+    let root = layout.root.as_path();
+    let skip = worktree::excluding(&worktree::neighbours(layout).nested);
+    let mut args = vec!["ls-files", "-z", "--others", "--exclude-standard", "--"];
+    args.extend(skip.iter().map(String::as_str));
+    let Some(out) = git(root, &args) else {
         return Vec::new();
     };
     out.split('\0')

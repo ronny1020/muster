@@ -19,6 +19,8 @@
     "settingsTitle": "{{settings}} ({{shortcut}})",
     "showHistory": "Show history · no upstream",
     "showHistory_tracking": "Show history · tracking {{upstream}}",
+    "worktree": "· worktree",
+    "worktreeOf": "Linked worktree of {{path}}",
     "titleSeparator": ", "
   },
   "chips": {
@@ -55,6 +57,8 @@
     "none": "No branches yet.",
     "current": "current",
     "remote": "remote",
+    "held": "in a worktree",
+    "heldAt": "Checked out in {{path}} — git keeps a branch to one worktree",
     "switching": "switching…",
     "create": "Create {{branch}} from {{upstream}}",
     "switchTo": "Switch to {{branch}}",

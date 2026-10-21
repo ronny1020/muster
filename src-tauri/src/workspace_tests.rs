@@ -589,3 +589,81 @@ fn a_date_git_did_not_give_as_a_number_is_absent_rather_than_the_epoch() {
     let out = "abc\0abc\0Subject\0Ada\0yesterday\0";
     assert_eq!(parse_log(out, &HashSet::new())[0].at, None);
 }
+
+#[test]
+fn a_worktree_nested_in_the_tree_is_not_an_untracked_file() {
+    let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("status");
+    let clean = git_status(&main);
+    std::fs::write(main.join("new.txt"), "work\n").expect("write");
+    let dirty = git_status(&main);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(clean.untracked, 0, "a clean main checkout reads as clean");
+    assert_eq!(dirty.untracked, 1, "a real new file still counts");
+}
+
+#[test]
+fn a_gitlink_staged_at_a_nested_worktree_still_counts_as_staged() {
+    // What an agent's `git add -A` leaves in a main checkout holding one.
+    let (dir, main, _) = crate::worktree::tests::repository_with_worktrees("gitlink");
+    git(&main, &["add", "--all"]).expect("add");
+    let status = git_status(&main);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        status.staged, 1,
+        "the embedded repository is a change to see"
+    );
+    assert_eq!(status.untracked, 0);
+}
+
+#[test]
+fn a_branch_named_like_a_tag_is_still_marked_held() {
+    let (dir, main, sibling) = crate::worktree::tests::repository_with_worktrees("tagged");
+    git(&main, &["tag", "topic"]).expect("tag");
+    let branches = read_branches(&main.to_string_lossy());
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let topic = branches
+        .iter()
+        .find(|branch| branch.name.ends_with("topic"))
+        .expect("listed");
+    let held = topic.worktree.as_deref().expect("held by the sibling");
+    assert!(Path::new(held).ends_with(sibling.file_name().expect("named")));
+}
+
+#[test]
+fn the_footer_learns_which_checkout_a_linked_worktree_belongs_to() {
+    let (dir, main, sibling) = crate::worktree::tests::repository_with_worktrees("linked");
+    let linked = git_status(&sibling);
+    let own = git_status(&main);
+    let expected = collapse_home(&crate::worktree::resolved(&main).to_string_lossy());
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(linked.branch, "topic");
+    assert_eq!(linked.worktree_of, Some(expected));
+    assert_eq!(own.worktree_of, None);
+}
+
+#[test]
+fn a_branch_another_worktree_holds_says_where() {
+    let (dir, _, sibling) = crate::worktree::tests::repository_with_worktrees("held");
+    let branches = read_branches(&sibling.to_string_lossy());
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let held = |name: &str| {
+        branches
+            .iter()
+            .find(|branch| branch.name == name)
+            .map(|branch| branch.worktree.clone())
+            .expect("listed")
+    };
+    // The scratch directory sits under a temp path that resolves differently
+    // per host, so only the tail is portable.
+    let ends =
+        |path: Option<String>, tail: &str| path.is_some_and(|p| Path::new(&p).ends_with(tail));
+    assert!(ends(held("main"), "main"));
+    assert!(ends(held("nested"), ".claude/worktrees/nested"));
+    assert_eq!(held("topic"), None, "the current branch is this tree's own");
+    assert_eq!(held("free"), None);
+}

@@ -19,6 +19,8 @@
     "settingsTitle": "{{settings}}（{{shortcut}}）",
     "showHistory": "履歴を表示 · 上流なし",
     "showHistory_tracking": "履歴を表示 · {{upstream}} を追跡中",
+    "worktree": "· ワークツリー",
+    "worktreeOf": "{{path}} のリンクされたワークツリー",
     "titleSeparator": "、"
   },
   "chips": {
@@ -53,6 +55,8 @@
     "none": "まだブランチはありません。",
     "current": "現在",
     "remote": "リモート",
+    "held": "ワークツリーで使用中",
+    "heldAt": "{{path}} でチェックアウト済み — git は1つのブランチを1つのワークツリーにしか置きません",
     "switching": "切り替え中…",
     "create": "{{upstream}} から {{branch}} を作成",
     "switchTo": "{{branch}} に切り替え",

@@ -1,8 +1,11 @@
 //! Filesystem and git facts about a tab's working directory, for the status bar.
 
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
-use crate::platform;
+use crate::{platform, worktree};
 
 /// Git state of a working directory, or `repo: false` when it isn't one.
 #[derive(Default, serde::Serialize)]
@@ -26,6 +29,9 @@ pub struct GitStatus {
     /// first time — see [`read_push_state`]. The label reads Publish then, and
     /// `sync::push_target` acts on this same field.
     pub publishes: bool,
+    /// The checkout this tree is a linked worktree of, tilde-collapsed, or
+    /// `None` in the main one.
+    pub worktree_of: Option<String>,
 }
 
 impl GitStatus {
@@ -176,6 +182,10 @@ pub struct Branch {
     pub at: Option<u64>,
     /// Only a remote has it, so checking out starts a local branch from it.
     pub remote: bool,
+    /// Another worktree has it checked out, tilde-collapsed. Git refuses to
+    /// switch to a branch two trees would share, so this is why it cannot be
+    /// picked.
+    pub worktree: Option<String>,
 }
 
 /// NUL separates the fields; no ref name or date can contain one.
@@ -197,12 +207,35 @@ fn read_branches(cwd: &str) -> Vec<Branch> {
     let sort = "--sort=-committerdate";
     let mut branches =
         parse_branches(git(path, &["for-each-ref", BRANCH_FORMAT, sort, "refs/heads"]).as_deref());
+    mark_held(&mut branches, &worktree::list(path));
     let local: HashSet<String> = branches.iter().map(|b| b.name.clone()).collect();
     branches.extend(remote_only(
         git(path, &["for-each-ref", BRANCH_FORMAT, sort, "refs/remotes"]).as_deref(),
         &local,
     ));
     branches
+}
+
+/// Marks each branch another worktree has checked out with where it is.
+///
+/// The current branch is this tree's own, so it is never "elsewhere". A
+/// branch sharing its name with a tag is listed as `heads/<name>`, the short
+/// name `%(refname:short)` gives it then.
+fn mark_held(branches: &mut [Branch], trees: &[worktree::Worktree]) {
+    let held: HashMap<&str, String> = trees
+        .iter()
+        .filter_map(|tree| {
+            let path = collapse_home(&tree.path.to_string_lossy());
+            Some((tree.branch.as_deref()?, path))
+        })
+        .collect();
+    for branch in branches.iter_mut().filter(|branch| !branch.current) {
+        let unambiguous = branch.name.strip_prefix("heads/");
+        branch.worktree = held
+            .get(branch.name.as_str())
+            .or_else(|| held.get(unambiguous?))
+            .cloned();
+    }
 }
 
 fn parse_branches(out: Option<&str>) -> Vec<Branch> {
@@ -221,6 +254,7 @@ fn parse_branches(out: Option<&str>) -> Vec<Branch> {
                 at: fields.next().and_then(|at| at.parse().ok()),
                 upstream: fields.next().filter(|u| !u.is_empty()).map(str::to_string),
                 remote: false,
+                worktree: None,
             })
         })
         .collect()
@@ -246,6 +280,7 @@ fn remote_only(out: Option<&str>, local: &HashSet<String>) -> Vec<Branch> {
                 upstream: Some(full),
                 at: branch.at,
                 remote: true,
+                worktree: None,
             })
         })
         .collect()
@@ -294,12 +329,25 @@ const REPOSITORY_OVERRIDES: [&str; 5] = [
     "GIT_COMMON_DIR",
 ];
 
+/// Variables that change how git reads a pathspec. This app's pathspecs use
+/// magic — `:(top,literal)`, `:(exclude,top,literal)`, `:/` — which
+/// `GIT_LITERAL_PATHSPECS` would make a file name that matches nothing; the
+/// glob and icase ones would change how a plain path matches.
+const PATHSPEC_OVERRIDES: [&str; 4] = [
+    "GIT_LITERAL_PATHSPECS",
+    "GIT_GLOB_PATHSPECS",
+    "GIT_NOGLOB_PATHSPECS",
+    "GIT_ICASE_PATHSPECS",
+];
+
 /// `git -C <cwd>`, answering about `cwd` and nothing an environment names.
 pub(crate) fn git_in(cwd: &Path) -> std::process::Command {
     let mut command = platform::command("git");
-    without_repository_overrides(&mut command)
-        .arg("-C")
-        .arg(cwd);
+    without_repository_overrides(&mut command);
+    for name in PATHSPEC_OVERRIDES {
+        command.env_remove(name);
+    }
+    command.arg("-C").arg(cwd);
     command
 }
 
@@ -467,23 +515,32 @@ pub(crate) fn git_verbatim(cwd: &Path, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Reads branch, upstream divergence and worktree counts from one
-/// `git status --porcelain=v2` call.
+/// Reads branch, upstream divergence and worktree counts from
+/// `git status --porcelain=v2`.
+///
+/// A worktree nested in this one is left out of the untracked count, or the
+/// footer would read `?1` for a clean tree — see [`worktree::Neighbours`].
+/// When there is one, [`count_untracked`] counts untracked files, because a
+/// pathspec on `status` would hide a gitlink staged at that path too.
 pub(crate) fn git_status(cwd: &Path) -> GitStatus {
-    let Some(out) = git(
-        cwd,
-        &[
-            "status",
-            "--porcelain=v2",
-            "--branch",
-            "--untracked-files=normal",
-        ],
-    ) else {
+    let around = worktree::layout(cwd)
+        .map(|layout| worktree::neighbours(&layout))
+        .unwrap_or_default();
+    let skip = worktree::excluding(&around.nested);
+    let untracked = if skip.is_empty() {
+        "--untracked-files=normal"
+    } else {
+        "--untracked-files=no"
+    };
+    let Some(out) = git(cwd, &["status", "--porcelain=v2", "--branch", untracked]) else {
         return GitStatus::default();
     };
 
     let mut status = GitStatus {
         repo: true,
+        worktree_of: around
+            .main
+            .map(|main| collapse_home(&main.to_string_lossy())),
         ..Default::default()
     };
     for line in out.lines() {
@@ -492,12 +549,33 @@ pub(crate) fn git_status(cwd: &Path) -> GitStatus {
             _ => count_entry(&mut status, line),
         }
     }
+    if !skip.is_empty() {
+        status.untracked = count_untracked(cwd, &skip);
+    }
     if status.branch.is_empty() {
         status.branch = "(empty)".into();
     }
     status.tracks_own_name = tracks_own_name(&status);
     read_push_state(cwd, &mut status);
     status
+}
+
+/// Untracked entries as `status --untracked-files=normal` counts them — a
+/// wholly untracked directory is one — leaving out what `skip` excludes.
+fn count_untracked(cwd: &Path, skip: &[String]) -> u32 {
+    let mut args = vec![
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--directory",
+        "--no-empty-directory",
+        "--",
+    ];
+    args.extend(skip.iter().map(String::as_str));
+    git(cwd, &args).map_or(0, |out| {
+        out.split('\0').filter(|entry| !entry.is_empty()).count() as u32
+    })
 }
 
 /// Fills in what a push of the current branch would do: whether it publishes,

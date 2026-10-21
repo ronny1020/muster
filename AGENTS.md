@@ -383,6 +383,7 @@ closing another tab's panel.
 - An agent tab hands its terminal to a shell, and the agent never learns.
 - A git write is stopped by the thread that waits for it.
 - No git the app runs may take its repository from the environment.
+- A worktree's neighbours are read from `git worktree list`, never inferred, and they are not its untracked files.
 - Paths are stored in the host's own form.
 - Output is recorded before it is sent, and every bound on it is load-bearing.
 - `Channel` payloads must be owned.

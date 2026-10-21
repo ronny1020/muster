@@ -189,8 +189,9 @@ interface BranchSwitcherProps {
  *
  * Whether a switch is allowed is git's call, not this component's: a dirty
  * tree only blocks a checkout when the two branches differ in the files you
- * have touched. So the warning states what is at stake, the click is never
- * pre-emptively disabled, and a refusal is reported in git's own words.
+ * have touched. So the warning states what is at stake, a dirty tree never
+ * disables the click, and a refusal is reported in git's own words. Only a
+ * branch another worktree holds, which git always refuses, is not offered.
  */
 function BranchSwitcher({
   cwd,
@@ -295,6 +296,23 @@ function BranchRow({ branch, busy, disabled, now, onPick }: BranchRowProps) {
         <span className="flex-1 truncate text-ink">{branch.name}</span>
         <span className="flex-none text-[10px] text-faint">
           {t('branches.current')}
+        </span>
+      </div>
+    )
+  }
+  // Git refuses a branch another worktree holds; the row says where it is.
+  if (branch.worktree) {
+    return (
+      <div
+        title={t('branches.heldAt', { path: branch.worktree })}
+        className="flex items-baseline gap-1.5 px-2.5 py-1.5 text-xs"
+      >
+        <span className="flex-1 truncate text-faint">{branch.name}</span>
+        <span className="flex-none text-[10px] text-faint">
+          {t('branches.held')}
+        </span>
+        <span className="sr-only">
+          {t('branches.heldAt', { path: branch.worktree })}
         </span>
       </div>
     )
