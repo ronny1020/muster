@@ -19,7 +19,8 @@
   },
   "list": {
     "binary": "二進位",
-    "notCounted": "未計算行數：新檔案太多，或路徑上有符號連結"
+    "notCounted": "未計算行數：新檔案太多，或路徑上有符號連結",
+    "filesCapped": "僅顯示 {{total}} 個檔案中的前 {{shown}} 個。"
   },
   "tree": {
     "copyPath": "複製路徑",
@@ -40,12 +41,14 @@
     "showDiff": "改為顯示差異",
     "showSource": "改為顯示原始碼",
     "renderMarkdown": "轉譯此 Markdown",
+    "renderTable": "以表格顯示",
     "diff": "差異",
     "raw": "原始碼",
     "preview": "預覽",
     "wrap": "換行",
     "wrapLines": "長行自動換行",
     "unwrapLines": "停止長行自動換行",
+    "send": "將此路徑輸入到工作階段 — 若有選取，附上所選的行",
     "copyPath": "複製路徑",
     "openIn": "在 {{editor}} 中開啟",
     "close": "關閉 · Escape"
@@ -69,5 +72,25 @@
   "markdown": {
     "reading": "讀取中…",
     "missingImage": "［找不到圖片：{{source}}］"
+  },
+  "table": {
+    "reading": "讀取中…",
+    "empty": "空檔案。",
+    "rowsCapped": "僅顯示前 {{rows}} 列。",
+    "columnsCapped": "每一列只顯示前 {{columns}} 欄。",
+    "cellsShortened": "超過 {{characters}} 個字元的儲存格會被截斷。"
+  },
+  "commit": {
+    "reading": "正在讀取提交…",
+    "empty": "這個提交沒有變更任何檔案。",
+    "imageNotShown": "不會顯示這個提交中的圖片版本：這一欄是從磁碟讀取圖片，而磁碟上的是現在的版本。"
+  },
+  "history": {
+    "label": "此檔案的歷史",
+    "show": "顯示此檔案的歷史",
+    "hide": "隱藏此檔案的歷史",
+    "reading": "正在讀取歷史…",
+    "empty": "沒有任何提交變更過此檔案。",
+    "commitDiff": "{{short}} — {{subject}}"
   }
 }

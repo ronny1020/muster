@@ -4,6 +4,8 @@ import { basename, folderOf, statusMark, statusTone } from '../model/changes'
 import { Icon } from '../../../shared/ui/Icon'
 import { fileIcon } from '../../../shared/ui/fileicon'
 import type { ChangedFile } from '../../../shared/ipc'
+import { currentLocale } from '../../../shared/i18n/i18n'
+import { Notice } from './Notice'
 
 export interface ChangedFilesProps {
   files: ChangedFile[]
@@ -12,11 +14,19 @@ export interface ChangedFilesProps {
   onSelect: (file: ChangedFile) => void
 }
 
+/**
+ * Rows drawn at once. A commit or a tree can change tens of thousands of files
+ * — a vendored directory, a generated one — and every row is several elements
+ * laid out on the thread that draws the window.
+ */
+const MAX_ROWS = 5000
+
 /** The changed-file list: what to read, in the order it sits on disk. */
 export function ChangedFiles({ files, selected, onSelect }: ChangedFilesProps) {
+  const { t } = useTranslation('review')
   return (
     <div>
-      {files.map((file) => (
+      {files.slice(0, MAX_ROWS).map((file) => (
         <Row
           key={file.path}
           file={file}
@@ -24,6 +34,14 @@ export function ChangedFiles({ files, selected, onSelect }: ChangedFilesProps) {
           onSelect={() => onSelect(file)}
         />
       ))}
+      {files.length > MAX_ROWS && (
+        <Notice tone="text-[#d8b165]">
+          {t('list.filesCapped', {
+            shown: MAX_ROWS.toLocaleString(currentLocale()),
+            total: files.length.toLocaleString(currentLocale()),
+          })}
+        </Notice>
+      )}
     </div>
   )
 }

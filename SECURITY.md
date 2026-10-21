@@ -19,7 +19,7 @@ should not have:
 
 | Actor                                      | Why it counts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown and draws its diagrams.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **A hostile repository** you open a tab in | Its filenames, commit messages and file contents reach the parser, the terminal, the editor — and the review panel, which renders its markdown, draws its diagrams and lays out its CSV files as tables.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **An agent CLI's output**                  | It is written into the terminal, scanned for paths and URLs, can carry inline-image escape sequences, and announces its turn boundaries as structured JSON in an `OSC 777` sequence — emitted by a hook plugin the user installed, not by the CLI itself. Its `OSC 8` hyperlinks carry a target that need not match the text shown, so the target is shown at the pane's corner while the pointer is over one, and a click opens it in the browser — which also means a row an agent made one big link opens its page on a click meant only to focus the pane; only `http` and `https` targets are offered. It can put text on your clipboard with `OSC 52`, and never read it back. |
 | **A file an agent just wrote**             | Same reach as a hostile repository: an agent chooses its own filenames and file contents, and both are what the review panel reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **Any other local process**                | New with the single-instance listener: a socket on macOS, a session-bus name on Linux, a message-only window on Windows, none of which authenticate the peer. It can send an arbitrary `argv`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -465,13 +465,16 @@ stream cannot be spelled at all.
 ## What the review panel will not do
 
 The panel reads a working tree an agent has been editing, so the file contents
-and the filenames in it are attacker-controlled in the sense above. Four
+and the filenames in it are attacker-controlled in the sense above. Six
 properties hold, and each has a test:
 
 - **Nothing an agent names reaches a session as keystrokes.** A path carrying a
   control byte is never typed: the text goes through bracketed paste, which
   does not strip an end marker embedded in a filename, so such a path would
   leave paste mode and submit whatever followed.
+- **A commit id is only an object id.** The history's commits reach git as
+  arguments, so one that is not a hex id naming a commit is refused before git
+  sees it — never read as an option or a revision expression.
 - **A pathspec is literal.** A file named `:setup.sh` or `!notes.md` names
   itself and nothing else, so the diff you are shown is the diff of the file you
   clicked.
@@ -563,10 +566,11 @@ Named rather than hidden, because the code carries the same notes:
 - **`create_directory` is unscoped.** It creates any directory you confirm.
   Dominated by the PTY for any attacker who already has webview execution.
 - **The review panel's readers are unscoped too.** `read_text_file`,
-  `list_directory` and `git_file_diff` take the path they are given. Confinement
-  lives at the callers that act without a click — a markdown image, a new
-  file's line count — rather than in the commands, because the file tree and
-  the image preview both legitimately point wherever you pointed them. Same
+  `list_directory`, `git_file_diff` and `git_file_log` take the path they are
+  given. Confinement lives at the callers that act without a click — a
+  markdown image, a new file's line count — rather than in the commands,
+  because the file tree and the image preview both legitimately point wherever
+  you pointed them. Same
   reasoning as `create_directory`: dominated by the PTY for anyone who already
   has webview execution.
 - **Syntax colours are below the contrast bar in a diff.** The dimmest token of

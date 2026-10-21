@@ -44,6 +44,7 @@
     "close": "Close history",
     "reading": "Reading history…",
     "empty": "No commits yet.",
+    "openCommit": "Show what {{subject}} changed",
     "unpushed": "not pushed yet"
   },
   "branches": {

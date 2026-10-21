@@ -9,6 +9,7 @@ import { readImage } from '../../../shared/ipc'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { useFontMetrics } from '../../../shared/lib/fontmetrics'
 import { i18n } from '../../../shared/i18n/i18n'
+import { Notice } from './Notice'
 
 export interface MarkdownViewProps {
   /** Absolute path of the markdown file. */
@@ -286,16 +287,3 @@ function directoryOf(path: string): string {
   const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
   return cut < 0 ? '' : path.slice(0, cut)
 }
-
-const Notice = ({
-  children,
-  tone = 'text-faint',
-}: {
-  children: string
-  tone?: string
-}) => (
-  // A status region: these replace each other as reads land.
-  <p role="status" className={`m-0 px-2.5 py-3 text-[11px] ${tone}`}>
-    {children}
-  </p>
-)

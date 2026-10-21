@@ -1,14 +1,20 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
-import { basename, folderOf } from '../model/changes'
+import { absolutePath, basename, folderOf } from '../model/changes'
 import { isMarkdownPath } from '../model/markdown'
+import { tableDelimiter } from '../model/table'
 import type { LineOpener } from '../model/openline'
 import type { Viewed } from '../model/viewed'
+import { lineSuffix } from '../model/reference'
+import { selectedLines } from './selectedLines'
 import { CodePreview } from './CodePreview'
 import { DiffView } from './DiffView'
+import { FileHistory } from './FileHistory'
+import { Notice } from './Notice'
 import { MarkdownView } from './MarkdownView'
+import { TableView } from './TableView'
 import { Icon } from '../../../shared/ui/Icon'
 import { DragEdge } from '../../../shared/ui/DragEdge'
 import { fileIcon } from '../../../shared/ui/fileicon'
@@ -30,6 +36,13 @@ export interface FileViewerProps {
   opener: LineOpener | null
   /** A link in a rendered document was clicked. */
   onUrl: (url: string) => void
+  /** Show something else in the column — a commit picked from the history. */
+  onView: (viewed: Viewed) => void
+  /**
+   * Types a path into the session, with a `:12-30` suffix when lines are
+   * selected. Absent when there is no session to type into.
+   */
+  onSend?: (path: string, suffix: string) => void
   onClose: () => void
 }
 
@@ -64,29 +77,50 @@ export function FileViewer({
   active,
   opener,
   onUrl,
+  onView,
+  onSend,
   onClose,
 }: FileViewerProps) {
   const { t } = useTranslation('review')
   const [wrap, setWrap] = useState(false)
   const [context, setContext] = useState(3)
   /**
-   * Markdown opens rendered when a file was picked to read, and as its diff
-   * when a change was: what you asked to see decides, not the file type.
+   * Markdown and tables open rendered when a file was picked to read, and as
+   * a diff when a change was: what you asked to see decides, not the file type.
    */
   const [preview, setPreview] = useState(viewed.kind === 'file')
 
   // Re-derived per selection, not just at mount: the column is not remounted
   // between files, so the mode from the last one would decide this one's.
   useKeyChange([viewed], () => setPreview(viewed.kind === 'file'))
+  /**
+   * The file whose history is listed, and what the column showed when the list
+   * last chose it. The list stays while you step through its commits — each
+   * one under the name the file had then — and goes the moment anything else
+   * picks what the column shows, since it would describe another file.
+   */
+  const [history, setHistory] = useState<{
+    of: string
+    shown: Viewed
+    open: boolean
+  } | null>(null)
+  const ownsView = history?.shown === viewed
+  const historyOf = ownsView && history.open ? history.of : null
   const size = usePanelWidth('muster.viewerWidth', DEFAULT_WIDTH)
+  const body = useRef<HTMLDivElement>(null)
 
   const path = viewed.absolute
+  const commit = viewed.kind === 'diff' ? viewed.commit : undefined
+  // A commit's line numbers are that commit's, not the file on disk's.
+  const editor = commit ? null : opener
   const icon = fileIcon(path)
   // An image has no diff worth reading: what the agent did to it is visible
   // only by looking at it.
   const asDiff = viewed.kind === 'diff' && !isImagePath(path)
-  const markdown = isMarkdownPath(path)
-  const rendered = markdown && preview
+  const delimiter = tableDelimiter(path)
+  // A commit's version of the file is not on disk, and the renderers read disk.
+  const renderable = !commit && (isMarkdownPath(path) || delimiter !== null)
+  const rendered = renderable && preview
 
   /**
    * Escape closes the column — but only in the tab you are looking at.
@@ -124,18 +158,31 @@ export function FileViewer({
         <span className="min-w-0 shrink truncate text-xs text-ink">
           {basename(path)}
         </span>
+        {commit && (
+          <span
+            title={t('history.commitDiff', {
+              short: commit.short,
+              subject: commit.subject,
+            })}
+            className="flex-none rounded-sm border border-line bg-surface px-1 font-mono text-[10px] text-muted"
+          >
+            {commit.short}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate text-[10px] text-faint">
           {folderOf(path)}
         </span>
         <div className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
-          {markdown && (
+          {renderable && (
             <Action
               label={
                 rendered
                   ? viewed.kind === 'diff'
                     ? t('viewer.showDiff')
                     : t('viewer.showSource')
-                  : t('viewer.renderMarkdown')
+                  : delimiter
+                    ? t('viewer.renderTable')
+                    : t('viewer.renderMarkdown')
               }
               // The button says where a click goes, not where you already are:
               // reading a rendered document, the useful word is what you would
@@ -155,7 +202,9 @@ export function FileViewer({
                     ? viewed.kind === 'diff'
                       ? 'difference'
                       : 'code'
-                    : 'description'
+                    : delimiter
+                      ? 'table'
+                      : 'description'
                 }
                 className="size-3.5"
               />
@@ -197,7 +246,37 @@ export function FileViewer({
               <Icon name="wrap_text" className="size-3.5" />
             </Action>
           )}
-          {isPlainPath(path) && (
+          {onSend && !commit && isPlainPath(path) && (
+            <Action
+              label={t('viewer.send')}
+              // Keeps the text selection, which is the lines it sends.
+              keepSelection
+              onClick={() =>
+                onSend(
+                  path,
+                  lineSuffix(body.current ? selectedLines(body.current) : []),
+                )
+              }
+            >
+              <Icon name="send" className="size-3.5" />
+            </Action>
+          )}
+          <Action
+            label={historyOf ? t('history.hide') : t('history.show')}
+            active={historyOf !== null}
+            // Hidden and shown again, the list keeps the file it was opened
+            // for: a commit's path is the name the file had then.
+            onClick={() =>
+              setHistory(
+                ownsView
+                  ? { ...history, open: !history.open }
+                  : { of: path, shown: viewed, open: true },
+              )
+            }
+          >
+            <Icon name="history" className="size-3.5" />
+          </Action>
+          {!commit && isPlainPath(path) && (
             <Action
               label={t('viewer.copyPath')}
               onClick={() => void copyPath(path)}
@@ -205,10 +284,10 @@ export function FileViewer({
               <Icon name="content_copy" className="size-3.5" />
             </Action>
           )}
-          {opener && (
+          {editor && (
             <Action
-              label={t('viewer.openIn', { editor: opener.editor })}
-              onClick={() => opener.open(viewed.line ?? 1)}
+              label={t('viewer.openIn', { editor: editor.editor })}
+              onClick={() => editor.open(viewed.line ?? 1)}
             >
               <Icon name="open_in_new" className="size-3.5" />
             </Action>
@@ -219,29 +298,60 @@ export function FileViewer({
         </Action>
       </header>
 
-      {rendered ? (
-        <MarkdownView path={path} revision={revision} onUrl={onUrl} />
-      ) : asDiff && viewed.kind === 'diff' ? (
-        <DiffView
+      {historyOf && (
+        <FileHistory
           cwd={cwd}
-          path={viewed.relative}
-          base={base}
-          context={context}
+          path={historyOf}
           revision={revision}
-          line={viewed.line}
-          wrap={wrap}
-          opener={opener}
-        />
-      ) : (
-        <CodePreview
-          path={path}
-          wrap={wrap}
-          revision={revision}
-          opener={opener}
-          cwd={cwd}
-          base={base}
+          selected={commit?.sha ?? null}
+          onPick={(entry, root) => {
+            const shown: Viewed = {
+              kind: 'diff',
+              relative: entry.path,
+              absolute: absolutePath(root, entry.path),
+              line: null,
+              commit: entry,
+              oldPath: entry.oldPath ?? undefined,
+              root,
+            }
+            setHistory({ of: historyOf, shown, open: true })
+            onView(shown)
+          }}
         />
       )}
+
+      <div ref={body} className="flex min-h-0 flex-1 flex-col">
+        {rendered && delimiter ? (
+          <TableView path={path} delimiter={delimiter} revision={revision} />
+        ) : rendered ? (
+          <MarkdownView path={path} revision={revision} onUrl={onUrl} />
+        ) : asDiff && viewed.kind === 'diff' ? (
+          <DiffView
+            cwd={(commit && viewed.root) || cwd}
+            path={viewed.relative}
+            base={base}
+            commit={commit?.sha}
+            oldPath={viewed.oldPath}
+            context={context}
+            revision={revision}
+            line={viewed.line}
+            wrap={wrap}
+            opener={editor}
+          />
+        ) : commit ? (
+          // Only an image reaches here, and the preview reads today's.
+          <Notice>{t('commit.imageNotShown')}</Notice>
+        ) : (
+          <CodePreview
+            path={path}
+            wrap={wrap}
+            revision={revision}
+            opener={editor}
+            cwd={cwd}
+            base={base}
+          />
+        )}
+      </div>
     </section>
   )
 }
@@ -251,16 +361,26 @@ interface ActionProps {
   /** Shown beside the icon. Worth it for a control nobody would go looking for. */
   text?: string
   active?: boolean
+  /** Pressing it leaves the text selection alone. */
+  keepSelection?: boolean
   onClick: () => void
   children: ReactNode
 }
 
-const Action = ({ label, text, active, onClick, children }: ActionProps) => (
+const Action = ({
+  label,
+  text,
+  active,
+  keepSelection,
+  onClick,
+  children,
+}: ActionProps) => (
   <button
     type="button"
     title={label}
     aria-label={label}
     aria-pressed={active}
+    onMouseDown={keepSelection ? (event) => event.preventDefault() : undefined}
     onClick={onClick}
     className={`flex h-5 flex-none items-center gap-1 rounded-sm text-[11px] ${
       text ? 'px-1.5' : 'w-5 justify-center'

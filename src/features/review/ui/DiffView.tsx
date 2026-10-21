@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
@@ -24,6 +24,7 @@ import { useFileDiff } from '../model/useFileDiff'
 import { ChangeRuler } from './ChangeRuler'
 import { TokenLine } from './TokenLine'
 import { currentLocale } from '../../../shared/i18n/i18n'
+import { Notice } from './Notice'
 
 export interface DiffViewProps {
   cwd: string
@@ -31,6 +32,10 @@ export interface DiffViewProps {
   path: string
   /** Branch being compared against, or `''` for uncommitted work. */
   base: string
+  /** One commit's own change to the file, read instead of `base`. */
+  commit?: string
+  /** With `commit`: the name it renamed the file from. */
+  oldPath?: string
   /** Unchanged lines kept around each hunk. */
   context: number
   /** Changes whenever the tree may have moved, which re-reads the diff. */
@@ -66,6 +71,8 @@ export function DiffView({
   cwd,
   path,
   base,
+  commit,
+  oldPath,
   context,
   revision,
   line,
@@ -75,13 +82,15 @@ export function DiffView({
   const { t } = useTranslation('review')
   const { settings } = useSettings()
   const metrics = useFontMetrics(settings.fontFamily, settings.fontSize)
-  const { diff, error, loading } = useFileDiff(
+  const { diff, error, loading } = useFileDiff({
     cwd,
     path,
     base,
     context,
     revision,
-  )
+    commit,
+    oldPath,
+  })
   const parsed = useMemo(() => (diff ? parsePatch(diff.patch) : null), [diff])
   const highlighted = useHighlightedSides(parsed?.hunks, path)
   const sides = useMemo(() => usedSides(parsed?.hunks ?? []), [parsed])
@@ -118,7 +127,7 @@ export function DiffView({
         /* Tailwind's preflight gives `code` the theme's mono stack, which beats
            the family inherited from here — so the font chosen for the terminal
            would be ignored by exactly the elements that show code. */
-        className="min-h-0 flex-1 overflow-auto [&_code]:font-[inherit]"
+        className="min-h-0 flex-1 overflow-auto select-text [&_code]:font-[inherit]"
       >
         {budget.hunks.map((hunk, index) => (
           <HunkRows
@@ -225,7 +234,7 @@ function HunkRows({
 }: HunkRowsProps) {
   return (
     <>
-      <div className="sticky top-0 flex gap-2 border-y border-line bg-chrome px-2 py-0.5 text-[10px] text-faint">
+      <div className="sticky top-0 flex gap-2 border-y border-line bg-chrome px-2 py-0.5 text-[10px] text-faint select-none">
         <span className="truncate">{hunk.header}</span>
       </div>
       {hunk.lines.map((row, index) => (
@@ -277,6 +286,9 @@ function Row({ row, tokens, wanted, wrap, opener, sides, t }: RowProps) {
       data-change={
         row.kind === 'add' || row.kind === 'del' ? row.kind : undefined
       }
+      // The line in the file as it is now, for a selection sent to the
+      // session; a removed row has none.
+      data-line={row.newLine ?? undefined}
       className={`flex ${ROW_TONE[row.kind]} ${
         wanted ? 'outline outline-primary' : ''
       }`}
@@ -287,7 +299,8 @@ function Row({ row, tokens, wanted, wrap, opener, sides, t }: RowProps) {
       {sides.new && <Gutter value={row.newLine} opener={opener} t={t} />}
       {/* The glyph is decorative; the word is what a screen reader gets, since
           the tint alone carries the meaning otherwise. */}
-      {said && <span className="sr-only">{`${said} `}</span>}
+      {/* Unselectable, so copying a selection of code copies only code. */}
+      {said && <span className="sr-only select-none">{`${said} `}</span>}
       <span
         aria-hidden="true"
         className="flex-none text-center text-faint select-none"
@@ -343,17 +356,3 @@ const Gutter = ({
       {value ?? ''}
     </span>
   )
-
-const Notice = ({
-  children,
-  tone = 'text-faint',
-}: {
-  children: ReactNode
-  tone?: string
-}) => (
-  // A status region: these replace each other as reads land, and a change
-  // nobody is told about is a change a screen reader never hears.
-  <p role="status" className={`m-0 px-2.5 py-3 text-[11px] ${tone}`}>
-    {children}
-  </p>
-)
