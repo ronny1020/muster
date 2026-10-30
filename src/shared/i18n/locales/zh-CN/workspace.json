@@ -109,5 +109,28 @@
     "namedTab": "“{{title}}”",
     "summary": "{{path}} 也在{{where}}中更改",
     "summary_more": "{{path}} +{{rest}} 也在{{where}}中更改"
+  },
+  "pullRequest": {
+    "heading": "拉取请求 {{repo}}#{{number}}：{{title}}",
+    "open": "点击在 GitHub 打开",
+    "missing": "此分支的拉取请求需要 GitHub CLI。请安装 gh，然后运行 gh auth login。",
+    "missingShort": "没有 gh",
+    "signedOut": "此分支的拉取请求需要登录 GitHub。请在终端运行 gh auth login。",
+    "signedOutShort": "gh 未登录",
+    "stage": {
+      "open": "开放中",
+      "draft": "草稿",
+      "merged": "已合并",
+      "closed": "已关闭"
+    },
+    "review": {
+      "approved": "已批准",
+      "changesRequested": "要求修改",
+      "required": "需要审查"
+    },
+    "failed_other": "{{count}} 项检查失败",
+    "pending_other": "{{count}} 项检查运行中",
+    "passed_other": "{{count}} 项检查通过",
+    "label": "拉取请求 {{repo}}#{{number}}，{{state}} — 在 GitHub 打开"
   }
 }

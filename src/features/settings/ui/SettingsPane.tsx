@@ -378,6 +378,13 @@ export function SettingsPane() {
             field="historyLimit"
             format={(value) => t('units.commits', { count: value })}
           />
+          <Row label={t('pullRequests.label')} hint={t('pullRequests.hint')}>
+            <Toggle
+              checked={settings.pullRequests}
+              onChange={(pullRequests) => update({ pullRequests })}
+              label={t('pullRequests.label')}
+            />
+          </Row>
         </Group>
 
         <Group title={t('groups.sessionRecords')}>

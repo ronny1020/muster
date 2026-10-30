@@ -109,5 +109,28 @@
     "namedTab": "「{{title}}」",
     "summary": "{{path}} は{{where}}でも変更中",
     "summary_more": "{{path}} +{{rest}} は{{where}}でも変更中"
+  },
+  "pullRequest": {
+    "heading": "プルリクエスト {{repo}}#{{number}}：{{title}}",
+    "open": "クリックで GitHub で開く",
+    "missing": "このブランチのプルリクエストには GitHub CLI が必要です。gh をインストールして gh auth login を実行してください。",
+    "missingShort": "gh なし",
+    "signedOut": "このブランチのプルリクエストには GitHub へのログインが必要です。ターミナルで gh auth login を実行してください。",
+    "signedOutShort": "gh 未ログイン",
+    "stage": {
+      "open": "オープン",
+      "draft": "ドラフト",
+      "merged": "マージ済み",
+      "closed": "クローズ済み"
+    },
+    "review": {
+      "approved": "承認済み",
+      "changesRequested": "変更要求あり",
+      "required": "レビュー待ち"
+    },
+    "failed_other": "失敗したチェック {{count}} 件",
+    "pending_other": "実行中のチェック {{count}} 件",
+    "passed_other": "成功したチェック {{count}} 件",
+    "label": "プルリクエスト {{repo}}#{{number}}、{{state}} — GitHub で開く"
   }
 }

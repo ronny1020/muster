@@ -109,5 +109,28 @@
     "namedTab": "「{{title}}」",
     "summary": "{{path}} 也在{{where}}中變更",
     "summary_more": "{{path}} +{{rest}} 也在{{where}}中變更"
+  },
+  "pullRequest": {
+    "heading": "拉取請求 {{repo}}#{{number}}：{{title}}",
+    "open": "按一下在 GitHub 開啟",
+    "missing": "此分支的拉取請求需要 GitHub CLI。請安裝 gh，再執行 gh auth login。",
+    "missingShort": "沒有 gh",
+    "signedOut": "此分支的拉取請求需要登入 GitHub。請在終端機執行 gh auth login。",
+    "signedOutShort": "gh 未登入",
+    "stage": {
+      "open": "開啟中",
+      "draft": "草稿",
+      "merged": "已合併",
+      "closed": "已關閉"
+    },
+    "review": {
+      "approved": "已核准",
+      "changesRequested": "要求修改",
+      "required": "需要審查"
+    },
+    "failed_other": "{{count}} 項檢查失敗",
+    "pending_other": "{{count}} 項檢查執行中",
+    "passed_other": "{{count}} 項檢查通過",
+    "label": "拉取請求 {{repo}}#{{number}}，{{state}} — 在 GitHub 開啟"
   }
 }

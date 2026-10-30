@@ -97,8 +97,9 @@ the hand-back is believed, for the reason the `OSC 133` gate in
 The git writes the drawers make — commit, pull, push, checkout — are not
 sessions, but they run the user's programs too: a husky hook calling `bunx`, a
 git-lfs `pre-push`, `gh` as a credential helper. So `sync::login_path` borrows
-the login shell's `PATH`, read on the first click that needs it and bounded by
-a deadline, because it runs the user's startup files; a success is kept and a
+the login shell's `PATH`, read on the first click that needs it — or the first
+pull request read, when the footer's opt-in chip is on — and bounded by a
+deadline, because it runs the user's startup files; a success is kept and a
 failure retried after a minute. Without it the same commit
 passes under `bun run dev`, which inherits a terminal's `PATH`, and fails from
 the Dock.
@@ -125,6 +126,11 @@ login shell above loses them too, since its prompt runs git. Git exports
 Rust tests — so a test's `git add --all` in a scratch repository would have
 written the scratch tree over the commit being made, and nothing would have
 failed until that commit landed.
+
+`gh` runs git to find a branch's remote, so `pull_request.rs` removes the same
+variables from it — and `GH_REPO`, `GH_HOST`, `GH_FORCE_TTY` and `CLICOLOR_FORCE` too, each of
+which would give every tab the same answer: another repository's pull request,
+or none at all.
 
 **A worktree's neighbours are read from `git worktree list`, never inferred,
 and they are not its untracked files.** `-C` answers correctly from inside a

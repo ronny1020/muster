@@ -113,5 +113,31 @@
     "namedTab": "{{title}}",
     "summary": "{{path}} also in {{where}}",
     "summary_more": "{{path}} +{{rest}} also in {{where}}"
+  },
+  "pullRequest": {
+    "heading": "Pull request {{repo}}#{{number}}: {{title}}",
+    "open": "Click to open it on GitHub",
+    "missing": "The pull request for this branch needs the GitHub CLI. Install gh, then run gh auth login.",
+    "missingShort": "no gh",
+    "signedOut": "The pull request for this branch needs a GitHub login. Run gh auth login in a terminal.",
+    "signedOutShort": "gh signed out",
+    "stage": {
+      "open": "Open",
+      "draft": "Draft",
+      "merged": "Merged",
+      "closed": "Closed"
+    },
+    "review": {
+      "approved": "approved",
+      "changesRequested": "changes requested",
+      "required": "review required"
+    },
+    "failed_one": "{{count}} check failing",
+    "failed_other": "{{count}} checks failing",
+    "pending_one": "{{count}} check running",
+    "pending_other": "{{count}} checks running",
+    "passed_one": "{{count}} check passed",
+    "passed_other": "{{count}} checks passed",
+    "label": "Pull request {{repo}}#{{number}}, {{state}} — open on GitHub"
   }
 }

@@ -361,6 +361,35 @@ export const gitPush = (cwd: string, op: string) =>
 /** Stops the command running under `op`; `false` when none is. */
 export const gitCancel = (op: string) => invoke<boolean>('git_cancel', { op })
 
+/** A branch's pull request on GitHub, as the user's own `gh` reports it. */
+export interface PullRequest {
+  number: number
+  title: string
+  url: string
+  stage: 'open' | 'draft' | 'merged' | 'closed'
+  review: 'approved' | 'changesRequested' | 'required' | null
+  /**
+   * Counted from `gh pr checks`; skipped ones are left out. `null` when it
+   * failed to answer.
+   */
+  checks: { passed: number; failed: number; pending: number } | null
+}
+
+/**
+ * What `gh` could say about a directory's branch: `missing` is no `gh`,
+ * `signedOut` no login for any host, and `absent` nothing to show — no pull
+ * request, a host `gh` does not know or holds no working login for, or a
+ * request that failed.
+ */
+export type PullRequestState =
+  | { kind: 'missing' }
+  | { kind: 'signedOut' }
+  | { kind: 'absent' }
+  | ({ kind: 'found' } & PullRequest)
+
+export const pullRequest = (cwd: string) =>
+  invoke<PullRequestState>('pull_request', { cwd })
+
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
 

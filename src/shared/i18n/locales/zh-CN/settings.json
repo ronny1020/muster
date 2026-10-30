@@ -104,6 +104,10 @@
   },
   "gitPoll": "状态刷新",
   "historyLimit": "历史长度",
+  "pullRequests": {
+    "label": "页脚显示拉取请求",
+    "hint": "显示此分支的拉取请求及其检查，由你自己的 GitHub CLI（gh）在标签页显示时每分钟查询一次。需要安装 gh 并已登录。"
+  },
   "journal": {
     "label": "记录会话的输出",
     "hint": "原样保存，以便列出并重新打开文件夹中之前的会话"

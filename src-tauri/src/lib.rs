@@ -13,6 +13,7 @@ mod locale;
 mod output;
 mod platform;
 mod pty;
+mod pull_request;
 mod review;
 mod sessions;
 mod shell;
@@ -141,6 +142,7 @@ pub fn run() {
             sync::git_pull,
             sync::git_push,
             sync::git_cancel,
+            pull_request::pull_request,
             workspace::path_kind,
             review::git_changes,
             review::git_file_diff,
