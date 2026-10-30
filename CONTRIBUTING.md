@@ -167,6 +167,7 @@ building.
 | Path, git status, log, branches and checkout          | `src-tauri/src/workspace.rs`                                       |
 | Commit, pull, push, cancel, and how git writes run    | `src-tauri/src/sync.rs`                                            |
 | Linked worktrees: layout, nested trees, held branches | `src-tauri/src/worktree.rs`                                        |
+| A branch's pull request, asked of the user's `gh`     | `src-tauri/src/pull_request.rs`                                    |
 | Commands exposed to the frontend                      | `src-tauri/src/lib.rs`                                             |
 | Typed wrappers over those commands                    | `src/shared/ipc.ts`                                                |
 | Tab state, as a pure reducer                          | `src/entities/tab/model/deck.ts`                                   |
@@ -211,6 +212,7 @@ building.
 | Remembering tabs across a restart                     | `src/entities/tab/model/persist.ts`                                |
 | Branch filtering and switch warnings                  | `src/features/workspace/model/branches.ts`                         |
 | Git chips, and the revision everything re-reads on    | `src/features/workspace/model/status.ts`                           |
+| The pull request chip, and when it is asked for       | `src/features/workspace/model/pullrequest.ts`, `usePullRequest.ts` |
 | Paths and URLs in terminal output                     | `src/features/terminal/model/termlinks.ts`                         |
 | Which link a click landed on                          | `src/features/terminal/model/termcells.ts`                         |
 | Local image reads                                     | `src-tauri/src/image.rs`                                           |

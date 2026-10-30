@@ -182,7 +182,10 @@ your browser, which makes that request. It has no telemetry, no update check, an
 reads your filesystem and git state, and runs the CLIs you point it at, locally.
 Those CLIs do talk to their own providers, on their own terms, exactly as they
 would in your usual terminal. The drawers' **Pull** and **Push** run your own
-`git` against your own remote, and only when you press them.
+`git` against your own remote, and only when you press them. With **Pull request in
+the footer** on, your own `gh` asks GitHub about the branch of the tab on screen
+once a minute — off by default, because it is the one request made with no
+gesture at all.
 
 The agent CLIs are separate, and Muster deliberately does not bundle them.
 Install whichever you use — `claude`, `codex`, `agy` — and check each runs in
@@ -272,6 +275,15 @@ Along the bottom of each tab:
 - **`+3 ~5 ?2 !1`** — staged, modified, untracked and conflicted files, as one
   button. Click it for the review drawer's Changes view, which is where those
   files are. A clean tree just says `clean`, and goes nowhere.
+- **`#18`** — the branch's pull request on GitHub, when **Pull request in the
+  footer** is on in Settings. Its mark is green while open; a draft, a merged
+  or a closed one is grey, purple or red, with `draft`, `merged` or `closed`
+  beside the number. A check, a cross or an amber dot after
+  it says whether its checks passed, failed or are still running, and the
+  tooltip names the repository and says how many, with the review decision. Click it to open the pull
+  request in your browser. It is asked of your own GitHub CLI, once a minute and
+  only for the tab on screen. Without `gh` it reads `no gh`, and with no
+  GitHub login at all, `gh signed out`.
 - **`src/auth.ts also in …`** — a file another tab is changing at the same time.
   See "When two tabs touch one file".
 - **Clicks / Scrollback** — two buttons with the tab's own mode held down.
@@ -837,7 +849,8 @@ Clicks / Scrollback control is the way to change a tab that is already open.
 - **Editor** — which editor the status bar's button opens.
 - **Notifications** — whether to notify, whether to stay quiet on the tab you
   are watching, whether to play a sound.
-- **Git** — how often to re-read status, how many commits history loads.
+- **Git** — how often to re-read status, how many commits history loads, and
+  whether the footer shows the branch's pull request.
 - **Session records** — whether to record what sessions print, and how long to
   keep those records.
 - **Data** — clear remembered directories, or restore every default.

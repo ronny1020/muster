@@ -108,6 +108,10 @@
   },
   "gitPoll": "Status refresh",
   "historyLimit": "History length",
+  "pullRequests": {
+    "label": "Pull request in the footer",
+    "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI (gh) once a minute while the tab is on screen. Needs gh installed and signed in."
+  },
   "journal": {
     "label": "Record what sessions print",
     "hint": "Kept verbatim, so earlier sessions in a folder can be listed and reopened"

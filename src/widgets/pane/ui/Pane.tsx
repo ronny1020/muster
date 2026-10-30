@@ -22,6 +22,7 @@ import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
 import { useHomeDir } from '../model/useHomeDir'
 import { useWorkspace } from '../../../features/workspace/model/useWorkspace'
+import { usePullRequest } from '../../../features/workspace/model/usePullRequest'
 import {
   canReopen,
   usePastSessions,
@@ -137,6 +138,11 @@ export function Pane({
     editorRef.current = editor
   }, [editor])
   const git = workspace?.git
+  const pullRequest = usePullRequest(
+    cwd,
+    git?.repo && !git.detached ? git.branch : '',
+    settings.pullRequests && active && Boolean(session),
+  )
   const historyOpen = tab.historyOpen && Boolean(git?.repo)
   const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
   const closeFind = useCallback(
@@ -731,6 +737,7 @@ export function Pane({
       <StatusBar
         cwd={session ? cwd : ''}
         workspace={session ? workspace : null}
+        pullRequest={pullRequest}
         tracked={session ? tracked : false}
         agentName={runningName ?? ''}
         state={tab.exitCode === null ? '' : tabDetail(tab, t)}

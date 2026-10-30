@@ -177,15 +177,7 @@ pub(crate) fn run_git_as(cwd: &Path, args: &[&str], op: &str) -> Result<String, 
 /// them — except a terminal to prompt on. See [`login_path`] and
 /// [`without_terminal`].
 fn run(command: &mut Command, running: Option<&Running>) -> Result<String, String> {
-    if let Some(path) = login_path() {
-        command.env("PATH", path);
-    }
-    let child = without_terminal(command)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("could not run git: {error}"))?;
+    let child = spawn_quietly(command).map_err(|error| format!("could not run git: {error}"))?;
     let out = finish(child, &|| running.is_some_and(Running::cancelled))
         .map_err(|error| format!("could not run git: {error}"))?;
     if out.stopped {
@@ -204,6 +196,27 @@ fn run(command: &mut Command, running: Option<&Running>) -> Result<String, Strin
         (true, false) => stdout,
         (true, true) => format!("git exited with {}", out.status),
     })
+}
+
+/// Runs a read of the user's own program — `gh` — that gives up at `deadline`,
+/// since a network call can hang with nobody there to cancel it.
+pub(crate) fn run_bounded(command: &mut Command, deadline: Duration) -> std::io::Result<Finished> {
+    let child = spawn_quietly(command)?;
+    let until = std::time::Instant::now() + deadline;
+    finish(child, &|| std::time::Instant::now() > until)
+}
+
+/// Starts `command` with the login shell's `PATH`, no terminal and no stdin,
+/// its output piped for [`finish`].
+fn spawn_quietly(command: &mut Command) -> std::io::Result<Child> {
+    if let Some(path) = login_path() {
+        command.env("PATH", path);
+    }
+    without_terminal(command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
 }
 
 /// Cancellation requests, keyed by the `op` a command runs under.
@@ -278,13 +291,13 @@ const GRACE: Duration = Duration::from_secs(2);
 /// How long to wait for a stream's end once the command itself has exited.
 const DRAIN_GRACE: Duration = Duration::from_millis(500);
 
-struct Finished {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
+pub(crate) struct Finished {
+    pub(crate) status: ExitStatus,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
     /// Stopped before it succeeded. A command that finished its work in the
     /// moment the stop arrived did not stop, whatever was asked.
-    stopped: bool,
+    pub(crate) stopped: bool,
 }
 
 /// Waits for `child`, stopping it once `stop` answers true.
@@ -445,7 +458,8 @@ fn without_terminal(command: &mut Command) -> &mut Command {
 /// commit runs are the user's own — a husky hook calling `bunx`, a git-lfs
 /// `pre-push`, `gh` as a credential helper — installed where only their
 /// profile looks. Sessions get that `PATH` by running through the login shell;
-/// these commands borrow it. Read on the first click that needs it, because it
+/// these commands borrow it. Read on the first click that needs it — or the
+/// first pull request read, when the footer's opt-in chip is on — because it
 /// runs the user's startup files, and bounded, because those can wait on
 /// something nobody will answer. A success is kept for the life of the app; a
 /// failure only for [`RETRY_AFTER`], since a slow first start — a cold `nvm` —

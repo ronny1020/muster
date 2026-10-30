@@ -26,8 +26,10 @@ should not have:
 
 None of those four is you, and none of them should be able to read a file you
 did not choose or put an argument in front of a program you did not type. The
-network is the one exception, accepted on purpose: hovering a link fetches its
-page for the preview — see "What hovering a link fetches" below.
+network is the exception, twice over and on purpose: hovering a link fetches
+its page for the preview — see "What hovering a link fetches" below — and the
+opt-in pull request chip asks GitHub through your own `gh` — see "The pull
+request chip runs your own gh".
 
 The last one is worth spelling out, because it is the only inbound channel a
 released build has. A development build asked for with `bun run dev:mcp`
@@ -45,7 +47,8 @@ The review and history drawers' buttons run `git commit` — with `git add
 click and never otherwise. They run the same `git` with the same hooks,
 credential helper, SSH agent and remote a terminal in that directory would use,
 and with the `PATH` your login shell sets up: read by starting that shell,
-interactively, on the first click that needs it, and given up on after five
+interactively, on the first click that needs it — or the first pull request
+read, when that chip is on — and given up on after five
 seconds; a success is kept, a failure retried a minute later. They run with
 your full rights, outside any sandbox an agent runs in. That is the reach to weigh: an
 unsandboxed agent could have run `git push` itself, but a sandboxed one allowed
@@ -73,6 +76,33 @@ end of its errors, where its refusal is — so a hook cannot fill the app's
 memory, and a background job a hook leaves holding the output open is waited
 for half a second, not for as long as it runs. The commit message is passed as
 one argument after `-m`, so no message can be read as an option.
+
+## The pull request chip runs your own gh
+
+With **Pull request in the footer** on — it is off by default — the tab on
+screen runs `gh pr view` and `gh pr checks` in its directory once a minute,
+when it comes into view and when the window regains focus. It is your own `gh`, found on the
+`PATH` your login shell sets up, as the git writes above are, with no terminal
+and each stopped after twenty seconds. It signs its requests with whatever login `gh`
+has — the one you gave it, or a `GH_TOKEN` exported in the shell Muster was
+started from; Muster itself never reads or stores a token. `GH_PROMPT_DISABLED` keeps
+it from asking anything, and `GH_NO_UPDATE_NOTIFIER` and `GH_TELEMETRY=0` from
+checking for a newer `gh` and sending its usage data, which would be requests
+nobody asked for.
+
+`GH_REPO` and `GH_HOST`, which name a repository or host over the one a
+directory's remotes do, and `GH_FORCE_TTY` and `CLICOLOR_FORCE`, which colour
+the JSON, are removed
+along with git's repository variables, so an inherited environment cannot give
+every tab the same answer. Which repository is asked
+about is still the tab's own `git remote`, but `gh` asks only hosts it holds a
+login for — `github.com` and any GitHub Enterprise host you signed in to — so a
+repository that repoints `origin` can choose which of those, and which
+repository on it, but cannot send your login anywhere else. That choice is why
+the tooltip and the spoken label name the repository: a pull request elsewhere
+cannot pass for the tab's own. What comes back is a number, a title, a URL and
+a few counts; the title is drawn as text and the URL opens only if it is `http` or
+`https`.
 
 ## The debugging socket, and why a release build has none
 

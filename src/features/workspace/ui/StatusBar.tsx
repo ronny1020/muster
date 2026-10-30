@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 import {
   branchLabel,
@@ -7,15 +8,20 @@ import {
   chipGroups,
   type GitChip,
 } from '../model/status'
+import { type PullRequestChip, pullRequestChip } from '../model/pullrequest'
 import {
   type Editor,
   openInEditor,
+  type PullRequest,
+  type PullRequestState,
   report,
   type Workspace,
 } from '../../../shared/ipc'
+import { webHref } from '../../../shared/lib/weburl'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
 import type { ReviewView } from '../../../entities/tab/model/deck'
 import { Icon } from '../../../shared/ui/Icon'
+import type { IconName } from '../../../shared/ui/icons'
 
 /**
  * The two terminal modes, as the control shows them.
@@ -49,10 +55,28 @@ const CHIP_TONE: Record<GitChip['tone'], string> = {
   clean: 'text-[#5f6b5e]',
 }
 
+/** GitHub's own colours for a pull request's stage, dimmed to the bar's. */
+const STAGE_TONE: Record<PullRequest['stage'], string> = {
+  open: 'text-[#7fb37a]',
+  draft: 'text-faint',
+  merged: 'text-[#a98be0]',
+  closed: 'text-danger',
+}
+
+const CHECK_MARK: Record<
+  'failed' | 'passed',
+  { icon: IconName; tone: string }
+> = {
+  failed: { icon: 'close', tone: 'text-danger' },
+  passed: { icon: 'check', tone: 'text-[#7fb37a]' },
+}
+
 export interface StatusBarProps {
   /** Empty on a tab with no session — the bar then carries settings alone. */
   cwd: string
   workspace: Workspace | null
+  /** The branch's pull request, or `null` when the chip is off or not read yet. */
+  pullRequest: PullRequestState | null
   /** Whether `cwd` follows the session or is still its launch directory. */
   tracked: boolean
   agentName: string
@@ -96,6 +120,7 @@ export interface StatusBarProps {
 export function StatusBar({
   cwd,
   workspace,
+  pullRequest,
   tracked,
   agentName,
   state,
@@ -117,6 +142,7 @@ export function StatusBar({
   const { t } = useTranslation(['workspace', 'settings'])
   const git = workspace?.git
   const groups = git?.repo ? chipGroups(git, t) : null
+  const pullRequestShown = git?.repo ? pullRequestChip(pullRequest, t) : null
   /** A control is "expanded" only when the drawer is showing what it opens. */
   const showing = (view: ReviewView) => reviewOpen && reviewView === view
 
@@ -177,6 +203,7 @@ export function StatusBar({
               {groups.clean.text}
             </span>
           )}
+          {pullRequestShown && <PullRequestControl chip={pullRequestShown} />}
         </span>
       )}
 
@@ -310,6 +337,46 @@ function ChipGroup({ chips, label, expanded, onClick }: ChipGroupProps) {
           {chip.text}
         </span>
       ))}
+    </button>
+  )
+}
+
+/**
+ * The branch's pull request, which opens it on GitHub — or, where `gh` cannot
+ * be asked, a word saying why, as text rather than a control, since nothing
+ * here can install `gh` or sign it in.
+ */
+function PullRequestControl({ chip }: { chip: PullRequestChip }) {
+  if (chip.kind === 'hint') {
+    return (
+      <span title={chip.title} className="flex-none text-faint">
+        {chip.text}
+      </span>
+    )
+  }
+  const href = webHref(chip.url)
+  const mark =
+    chip.checks && chip.checks !== 'pending' && CHECK_MARK[chip.checks]
+  return (
+    <button
+      type="button"
+      title={chip.title}
+      aria-label={chip.label}
+      onClick={() => {
+        if (href) void openUrl(href).catch(report)
+      }}
+      className="flex flex-none items-center gap-0.5 rounded-sm px-1 hover:bg-surface-hover hover:text-ink"
+    >
+      <Icon name="merge" className={`size-3 ${STAGE_TONE[chip.stage]}`} />
+      {chip.text}
+      {chip.stageText && <span className="text-faint">{chip.stageText}</span>}
+      {mark && <Icon name={mark.icon} className={`size-3 ${mark.tone}`} />}
+      {chip.checks === 'pending' && (
+        <span
+          aria-hidden="true"
+          className="ml-0.5 size-1.5 rounded-full bg-[#d8b165]"
+        />
+      )}
     </button>
   )
 }

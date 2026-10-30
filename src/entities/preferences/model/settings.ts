@@ -80,6 +80,12 @@ export interface Settings {
   gitPollSeconds: number
   /** Commits the history drawer fetches. */
   historyLimit: number
+  /**
+   * Whether the footer shows the branch's pull request, asked of the user's
+   * own `gh`. Off by default: unlike Pull and Push, it reaches GitHub without
+   * anyone pressing anything.
+   */
+  pullRequests: boolean
   /** Editor command the status bar opens a directory with; empty means the
    *  first one this machine has. */
   editorCommand: string
@@ -125,6 +131,7 @@ export const DEFAULT_SETTINGS: Settings = {
   allSystemFonts: false,
   gitPollSeconds: 4,
   historyLimit: 60,
+  pullRequests: false,
   editorCommand: '',
   notifyOnDone: true,
   notifyOnlyWhenUnfocused: true,
@@ -219,6 +226,7 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.historyLimit,
       LIMITS.historyLimit,
     ),
+    pullRequests: flag(raw.pullRequests, DEFAULT_SETTINGS.pullRequests),
     editorCommand: text(
       raw.editorCommand,
       DEFAULT_SETTINGS.editorCommand,
