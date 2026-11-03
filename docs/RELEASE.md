@@ -85,8 +85,7 @@ Templates for both live in [`dist-packaging/`](../dist-packaging), and are the
 right thing to copy when first creating those repositories.
 
 **Automatically** — `.github/workflows/update-packages.yml` does exactly the
-above, and today it does it for **no** release on its own. Two things have to
-be true, and neither is:
+above, given two things:
 
 - **It has to be started.** Its `release: published` trigger fires only for a
   release a person published. A tag's release is published by `release.yml`
@@ -96,7 +95,7 @@ be true, and neither is:
 - **It needs `PACKAGES_PAT`**: a fine-grained token with Contents read and
   write on `ronny1020/homebrew-tap` and `ronny1020/scoop-bucket` only. The
   automatic `GITHUB_TOKEN` cannot stand in — it is scoped to this repository,
-  and a tap has to live in its own.
+  and a tap has to live in its own. It is set; renew it before it expires.
 
 The second is the one that hides. Without the secret the run stops at its gate,
 stays **green**, and writes the checksums and the manual edits into the run
@@ -108,8 +107,9 @@ Green because the release itself succeeded: only the manifests are behind. A
 red X there used to say `Input required and not supplied: token`, which names
 neither the secret nor the repository.
 
-Every release therefore needs this by hand, and a release whose event has
-already passed needs it too:
+Every release therefore needs this started by hand, and a release whose event
+has already passed needs it too. A re-run for a version the manifests already
+carry commits nothing and succeeds:
 
 ```bash
 gh workflow run update-packages.yml -f version=v0.2.1

@@ -654,16 +654,17 @@ Releases page while every user's `brew upgrade` reports nothing to do.
 [docs/RELEASE.md](docs/RELEASE.md) is the runbook. The steps that need a human
 are the version number and the decision to ship; everything after the tag is
 the pipeline's job, and where it cannot do something the reason belongs in this
-file rather than in someone's memory. Today that is two things, and both stand
+file rather than in someone's memory. Today that is one thing, and it stands
 between a built release and an installable one.
 
-`PACKAGES_PAT` is the first: without it the manifests cannot move, because a
-tap lives in its own repository and the automatic `GITHUB_TOKEN` is scoped to
-this one. The run without it stays **green** — it stops at a gate and writes
-the manual steps into its summary — so the colour of that run is not evidence
-about the manifests, and only the manifests are.
+The manifests move only with `PACKAGES_PAT`, a fine-grained token on the tap
+and the bucket, because a tap lives in its own repository and the automatic
+`GITHUB_TOKEN` is scoped to this one. It is set; if it lapses, the run stays
+**green** — it stops at a gate and writes the manual steps into its summary —
+so the colour of that run is not evidence about the manifests, and only the
+manifests are.
 
-The second is that nothing starts that workflow. Its trigger is
+What remains is that nothing starts that workflow. Its trigger is
 `release: published`, and a tag's release is published by `release.yml` under
 the automatic `GITHUB_TOKEN`, which GitHub does not let raise events that start
 other workflows. Publishing on a tag is what made the release reliable and it

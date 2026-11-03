@@ -113,7 +113,9 @@ jobs:
           }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "muster $PLAIN_VERSION" && git push
+          # A re-run for a version already published has nothing to commit,
+          # and `git commit` fails on that; an unchanged manifest is success.
+          git diff --quiet || { git commit -am "muster $PLAIN_VERSION" && git push; }
 
       - name: Check out the Scoop bucket
         if: steps.token.outputs.present == 'true'
@@ -137,4 +139,6 @@ jobs:
           ' "$manifest" > tmp && mv tmp "$manifest"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "muster $PLAIN_VERSION" && git push
+          # A re-run for a version already published has nothing to commit,
+          # and `git commit` fails on that; an unchanged manifest is success.
+          git diff --quiet || { git commit -am "muster $PLAIN_VERSION" && git push; }
