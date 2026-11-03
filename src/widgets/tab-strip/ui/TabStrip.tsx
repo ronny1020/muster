@@ -14,6 +14,7 @@ import {
   tabDetail,
   tabLabel,
   tabSession,
+  tabSignal,
 } from '../../../entities/tab/model/deck'
 import { useTranslation } from 'react-i18next'
 import { runningAgent } from '../../../entities/agent/model/agents'
@@ -337,31 +338,39 @@ function TabButton({
 }
 
 /**
+ * A solid ring a pixel clear of the dot, drawn outside it with a negative
+ * margin so the label does not shift. The ring is the only cue that tells
+ * unread from waiting, so it is the accent at full strength, for 3:1 against
+ * the strip (WCAG 1.4.11). It is a border so that it follows the dot's radius.
+ */
+const UNREAD_RING =
+  '-m-0.5 box-content border border-solid p-px bg-clip-content'
+
+/**
  * What the tab's agent is doing, in one dot.
  *
- * Working pulses, waiting is solid in the agent's accent, and anything else is
- * grey — an agent that announces nothing stays grey rather than being called
- * idle. `title` alone would leave the state unreadable to a screen reader, so
- * the same words go in an `sr-only` span.
+ * Working pulses, unread is ringed in the agent's accent, waiting is solid,
+ * and anything else is grey unless the tree has uncommitted changes — an
+ * agent that announces nothing stays grey rather than being called idle.
+ * `title` alone would leave the state unreadable to a screen reader, so the
+ * same words go in an `sr-only` span.
  */
 function StatusDot({ tab, accent }: { tab: Tab; accent: string }) {
   const { t } = useTranslation('chrome')
-  const said =
-    tab.status === 'working'
-      ? t('tab.working')
-      : tab.status === 'waiting' || tab.attention
-        ? t('tab.waiting')
-        : null
+  const signal = tabSignal(tab)
+  const said = signal && t(`tab.${signal}`)
 
   return (
     <>
       <span
         aria-hidden="true"
         className={`size-1.5 flex-none rounded-full ${
-          tab.status === 'working' || tab.attention ? 'animate-pulse' : ''
-        }`}
+          signal === 'working' ? 'animate-pulse' : ''
+        } ${signal === 'unread' ? UNREAD_RING : ''}`}
         style={{
-          background: said || tab.dirty ? accent : '#48484f',
+          // The longhand, so the ring's `bg-clip-content` survives.
+          backgroundColor: signal || tab.dirty ? accent : '#48484f',
+          borderColor: accent,
         }}
         title={said ?? undefined}
       />

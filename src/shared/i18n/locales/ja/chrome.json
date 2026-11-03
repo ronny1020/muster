@@ -4,6 +4,7 @@
     "settings": "設定",
     "working": "実行中",
     "waiting": "入力待ち",
+    "unread": "完了 · 未読",
     "newTab": "新しいタブ",
     "newTabHint": "新しいタブ（{{shortcut}}）",
     "close": "タブを閉じる",

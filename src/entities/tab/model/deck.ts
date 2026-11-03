@@ -91,6 +91,8 @@ export type DeckAction =
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
   | { type: 'activate'; id: string }
+  /** The window regained focus, so the user is looking at the active tab. */
+  | { type: 'seen' }
   | { type: 'move'; id: string; index: number }
   | { type: 'adopt'; tab: Tab; index?: number }
   | { type: 'activateIndex'; index: number }
@@ -125,6 +127,22 @@ export type DeckAction =
  * nothing stay there rather than claiming to be idle.
  */
 export type AgentStatus = 'unknown' | 'working' | 'waiting'
+
+/**
+ * What a tab's dot says, most urgent first.
+ *
+ * `unread` is a session signal — a finished turn, a handback, an exit — that
+ * arrived while the user was looking elsewhere and nobody has seen yet. A new
+ * turn outranks it, since the dot then has something live to report.
+ */
+export type TabSignal = 'working' | 'unread' | 'waiting' | null
+
+export function tabSignal(tab: Tab): TabSignal {
+  if (tab.status === 'working') return 'working'
+  if (tab.attention) return 'unread'
+  if (tab.status === 'waiting') return 'waiting'
+  return null
+}
 
 export const newTab = (
   id: string,
@@ -235,6 +253,11 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       if (!deck.tabs.some((tab) => tab.id === action.id)) return deck
       // Looking at a tab is how its notice gets acknowledged.
       return { ...clearAttention(deck, action.id), activeId: action.id }
+
+    // Uses the deck's own active tab: the dispatcher's view can lag a tab
+    // that is arriving.
+    case 'seen':
+      return clearAttention(deck, deck.activeId)
 
     case 'move':
       return moveTab(deck, action.id, action.index)
@@ -400,11 +423,14 @@ function closeTab(deck: Deck, id: string, replacementId: string): Deck {
   return { tabs, activeId }
 }
 
-/** Takes in a tab from another window, at `index` or else at the end. */
+/**
+ * Takes in a tab from another window, at `index` or else at the end. It comes
+ * forward, so it arrives read.
+ */
 function adoptTab(deck: Deck, tab: Tab, index = deck.tabs.length): Deck {
   if (deck.tabs.some((held) => held.id === tab.id)) return deck
   const tabs = [...deck.tabs]
-  tabs.splice(index, 0, tab)
+  tabs.splice(index, 0, { ...tab, attention: false })
   return { tabs, activeId: tab.id }
 }
 

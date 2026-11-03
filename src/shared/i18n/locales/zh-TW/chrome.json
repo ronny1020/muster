@@ -4,6 +4,7 @@
     "settings": "設定",
     "working": "執行中",
     "waiting": "等待你的回應",
+    "unread": "已完成 · 未讀",
     "newTab": "新分頁",
     "newTabHint": "新分頁（{{shortcut}}）",
     "close": "關閉分頁",

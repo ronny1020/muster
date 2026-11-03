@@ -263,27 +263,41 @@ export function App({ adopted }: AppProps) {
     openSettings,
   })
 
+  // Takes run one after another, so a caller awaiting this one knows every
+  // tab queued before it has landed. The chain never rejects, so one failed
+  // take does not stop every later one.
+  const adopting = useRef(Promise.resolve())
+  const takeHandoffs = useCallback(() => {
+    adopting.current = adopting.current
+      .then(() => adoptSent(dispatch))
+      .catch(() => undefined)
+    return adopting.current
+  }, [])
+
   // The window regaining focus is how a cancelled close prompt is noticed:
   // `close` stored an empty deck before asking, and the tabs are still here.
+  // It also means the user is looking at the active tab again, so a turn that
+  // ended while they were in another app is no longer unread. A tab dropped
+  // here is queued before this window is focused, so it is taken first: it is
+  // the tab the user is now looking at, not the one it displaces.
   useEffect(() => {
-    const restore = () => saveDeck(current.current.deck)
-    window.addEventListener('focus', restore)
-    return () => window.removeEventListener('focus', restore)
-  }, [])
+    const markSeen = async () => {
+      saveDeck(current.current.deck)
+      await takeHandoffs()
+      dispatch({ type: 'seen' })
+    }
+    const onFocus = () => void markSeen()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [takeHandoffs])
 
   // Tabs sent here after this window drew. Taken once on subscribing as well,
   // for any that arrived between the first take and the listener.
   useEffect(() => {
-    const adoptSent = async () => {
-      for (const { tab, dropX } of await adoptHandoffs()) {
-        const index = dropX === null ? undefined : stripIndexAt(dropX)
-        dispatch({ type: 'adopt', tab, index })
-      }
-    }
-    const unlisten = onHandoff(() => void adoptSent())
-    void adoptSent()
+    const unlisten = onHandoff(() => void takeHandoffs())
+    void takeHandoffs()
     return () => void unlisten.then((stop) => stop())
-  }, [])
+  }, [takeHandoffs])
 
   useEffect(() => {
     const unlisten = onPtyExit(({ id, code }) => {
@@ -396,8 +410,22 @@ const byId = (tabs: Tab[]) =>
 type Destination =
   { kind: 'new'; grab?: Point } | { kind: 'window'; label: string; x: number }
 
+/** Adopts the tabs other windows have queued for this one. */
+async function adoptSent(dispatch: (action: DeckAction) => void) {
+  for (const { tab, dropX } of await adoptHandoffs()) {
+    const index = dropX === null ? undefined : stripIndexAt(dropX)
+    dispatch({ type: 'adopt', tab, index })
+  }
+}
+
 /** The tabs a window opens with: any sent to it, else what it last showed. */
 const initialTabs = (adopted: Tab[]): Deck =>
   adopted.length > 0
-    ? { tabs: adopted, activeId: adopted.at(-1)!.id }
+    ? adopted.reduce<Deck>(
+        (deck, tab) => deckReducer(deck, { type: 'adopt', tab }),
+        {
+          tabs: [],
+          activeId: '',
+        },
+      )
     : loadDeck(nextTabId)

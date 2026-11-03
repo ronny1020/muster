@@ -4,6 +4,7 @@
     "settings": "Settings",
     "working": "working",
     "waiting": "waiting for you",
+    "unread": "ready · unread",
     "newTab": "New tab",
     "newTabHint": "New tab ({{shortcut}})",
     "close": "Close tab",

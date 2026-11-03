@@ -9,6 +9,7 @@ import {
   tabDetail,
   tabLabel,
   tabSession,
+  tabSignal,
 } from './deck'
 
 const labels = i18n.getFixedT('en-US', 'chrome')
@@ -294,6 +295,41 @@ test('acknowledging one tab leaves other waiting tabs marked', () => {
   deck = deckReducer(deck, { type: 'attention', id: 'tab-3' })
   deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
   expect(deck.tabs.map((tab) => tab.attention)).toEqual([false, false, true])
+})
+
+test('regaining window focus reads the active tab and no other', () => {
+  let deck = deckReducer(deckOf(2), { type: 'attention', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'attention', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'seen' })
+  expect(deck.tabs.map((tab) => tab.attention)).toEqual([false, true])
+})
+
+test('a tab adopted from another window arrives read, since it comes forward', () => {
+  const moved = { ...deckOf(1).tabs[0], id: 'moved', attention: true }
+  const deck = deckReducer(deckOf(2), { type: 'adopt', tab: moved })
+  expect(deck.tabs.at(-1)?.attention).toBe(false)
+})
+
+test('a turn that ended unseen reads as unread until the tab is looked at', () => {
+  let deck = deckReducer(deckOf(2), {
+    type: 'status',
+    id: 'tab-2',
+    status: 'waiting',
+  })
+  deck = deckReducer(deck, { type: 'attention', id: 'tab-2' })
+  expect(tabSignal(deck.tabs[1])).toBe('unread')
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
+  expect(tabSignal(deck.tabs[1])).toBe('waiting')
+})
+
+test('a new turn outranks an unread one on the dot', () => {
+  let deck = deckReducer(deckOf(2), { type: 'attention', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'status', id: 'tab-2', status: 'working' })
+  expect(tabSignal(deck.tabs[1])).toBe('working')
+})
+
+test('a tab that announces nothing has no signal', () => {
+  expect(tabSignal(initialDeck('tab-1').tabs[0])).toBeNull()
 })
 
 test('a tab can go back to the launcher after its session ends', () => {

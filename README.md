@@ -40,7 +40,8 @@ years. The point is that Muster knows what is _in_ the tab:
 - 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
   session is still printing, solid once it goes quiet and wants you. It reads
   the output itself, so it works for every agent and for a plain shell.
-- 🔔 **A finished agent raises a dot on its tab, and a desktop notification**
+- 🔔 **A finished agent raises a ringed dot on its tab until you look,
+  and a desktop notification**
   where the turn is announced — for Claude Code, by a plugin you install —
   because the reason to run several is that you are not watching this one.
 - 🌿 **The footer follows the directory and its git state** as the agent changes
@@ -797,7 +798,7 @@ permissions, or a Flatpak or Snap sandbox.
 When an agent finishes a turn and hands control back, that is the moment you
 hear about:
 
-- the tab's dot lights up and pulses, and
+- the tab's dot gains a ring until you look at that tab, and
 - a desktop notification names the agent and the tab, and quotes its closing
   words where the agent published them.
 
@@ -805,7 +806,7 @@ Agents announce that moment two different ways — some ring the terminal bell,
 others broadcast a structured event instead — and both are read. The bell needs
 nothing. The structured event Claude Code sessions use comes from a hook plugin
 you install into that CLI, so a session without one still shows a solid
-"waiting" dot and the status bar, but no pulse and no notification. A turn that
+"waiting" dot and the status bar, but no ring and no notification. A turn that
 ends in an API error — a rate limit, an overload — is announced the same way as
 one that finished.
 
