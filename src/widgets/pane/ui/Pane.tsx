@@ -50,10 +50,14 @@ import { FileViewer } from '../../../features/review/ui/FileViewer'
 import { CommitFiles } from '../../../features/review/ui/CommitFiles'
 import { withSuffix } from '../../../features/review/model/reference'
 import { ReviewPanel } from '../../../features/review/ui/ReviewPanel'
+import { EditCards } from '../../../features/review/ui/EditCards'
+import { useEdits } from '../../../features/review/model/useEdits'
+import type { Edit } from '../../../features/review/model/edits'
 import { decideBellResponse, notify } from '../../../shared/lib/notify'
 import {
   type AgentEvent,
   endsTurn,
+  wroteFile,
 } from '../../../features/terminal/model/agentevents'
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { isUnder } from '../../../features/terminal/model/termlinks'
@@ -304,10 +308,22 @@ export function Pane({
     resumeHere({ agent, args })
 
   const reviewOpen = tab.reviewOpen
+  // A view remembered from before Activity was switched off. Mapped here, so
+  // the drawer and the status bar's chips name the same view.
+  const reviewView =
+    tab.reviewView === 'activity' && !settings.editActivity
+      ? 'changes'
+      : tab.reviewView
   const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
   /** A control naming a view: open it, switch to it, or close it. */
-  const showReview = (view: ReviewView) =>
+  const showReview = (view: ReviewView) => {
+    // The reducer toggles against the stored view, so a stored Activity that
+    // is drawn as Changes is stored as Changes first.
+    if (tab.reviewView !== reviewView) {
+      dispatch({ type: 'setReviewView', id: tab.id, view: reviewView })
+    }
     dispatch({ type: 'showReview', id: tab.id, view })
+  }
   /**
    * What the content column is showing.
    *
@@ -322,6 +338,39 @@ export function Pane({
   /** Changes when the working tree does, which is what re-reads git. */
   const revision = treeRevision(cwd, git ?? null)
   const gitRun = useGitRun(refresh)
+  const { edits, nudge } = useEdits({
+    cwd,
+    enabled:
+      Boolean(session) &&
+      (settings.editCards || settings.editActivity || settings.editPulse),
+    working: tab.status === 'working',
+    pollSeconds: settings.gitPollSeconds,
+    revision,
+  })
+  /**
+   * An edit opens as a diff in the column, at the first line it wrote. One
+   * that took the file back to its committed state has no diff left, so it
+   * opens as the file.
+   */
+  const openEdit = (edit: Edit) => {
+    const absolute = absolutePath(edit.root, edit.path)
+    // The first line the edit added. One that only took lines back has none
+    // in the file as it is now, so it opens at the top.
+    const line =
+      edit.lines.find((row) => row.kind === 'add' && row.newLine !== null)
+        ?.newLine ?? null
+    setViewed(
+      edit.status === null
+        ? { kind: 'file', absolute, line }
+        : {
+            kind: 'diff',
+            relative: edit.path,
+            absolute,
+            line,
+            oldPath: edit.oldPath,
+          },
+    )
+  }
 
   // A session that `cd`s elsewhere is looking at another tree: a file from the
   // last one, and a base branch that may not exist in this one, are both stale
@@ -512,8 +561,9 @@ export function Pane({
   const onAgentEvent = useCallback(
     (event: AgentEvent) => {
       if (endsTurn(event)) signalAttention(event.response)
+      if (wroteFile(event)) nudge()
     },
-    [signalAttention],
+    [signalAttention, nudge],
   )
 
   // A separate moment from a turn ending, so it is never merged into one:
@@ -606,6 +656,32 @@ export function Pane({
                 onCloseFind={closeFind}
                 paste={paste}
               />
+              {settings.editCards && (
+                <EditCards
+                  edits={edits}
+                  lowered={tab.findOpen}
+                  accent={runningAccent}
+                  onOpen={openEdit}
+                  onShowAll={
+                    settings.editActivity
+                      ? () => {
+                          // Opened, never toggled: the drawer may already be
+                          // on Activity, and this click asks to see it.
+                          dispatch({
+                            type: 'setReviewView',
+                            id: tab.id,
+                            view: 'activity',
+                          })
+                          dispatch({
+                            type: 'setReview',
+                            id: tab.id,
+                            open: true,
+                          })
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </div>
             {viewed && (
               <FileViewer
@@ -637,7 +713,7 @@ export function Pane({
                     />
                   )
                 }
-                view={tab.reviewView}
+                view={reviewView}
                 onView={(view) =>
                   dispatch({ type: 'setReviewView', id: tab.id, view })
                 }
@@ -648,6 +724,7 @@ export function Pane({
                     relative: file.path,
                     absolute: absolutePath(root, file.path),
                     line: null,
+                    oldPath: file.oldPath ?? undefined,
                   })
                 }
                 onOpenFile={(path) =>
@@ -655,6 +732,10 @@ export function Pane({
                 }
                 onSend={sendPath}
                 onClose={toggleReview}
+                edits={edits}
+                activity={settings.editActivity}
+                pulse={settings.editPulse}
+                onOpenEdit={openEdit}
               />
             )}
             {journalOpen && (
@@ -754,7 +835,7 @@ export function Pane({
         journal={Boolean(journalCwd)}
         journalOpen={journalOpen}
         onToggleJournal={toggleJournal}
-        reviewView={tab.reviewView}
+        reviewView={reviewView}
         onToggleHistory={toggleHistory}
         onShowReview={showReview}
         // Toggles, like the branch button beside it and the review
@@ -778,7 +859,7 @@ async function changedFile(
   cwd: string,
   path: string,
   base: string,
-): Promise<{ relative: string; absolute: string } | null> {
+): Promise<{ relative: string; absolute: string; oldPath?: string } | null> {
   // The same base the drawer is listing against, or a path changed in an
   // earlier commit on this branch would match nothing and open in the editor
   // while the drawer shows it as a change.
@@ -794,6 +875,7 @@ async function changedFile(
         // Rebuilt from the root rather than reusing the clicked path: the two
         // can differ in case or separators, and the editor gets this one.
         absolute: absolutePath(changes.root, found.path),
+        oldPath: found.oldPath ?? undefined,
       }
     : null
 }

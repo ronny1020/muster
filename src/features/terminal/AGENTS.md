@@ -656,7 +656,9 @@ boundary reached through an API error; `endsTurn` treats them alike, because
 a rate limit is exactly when the person who walked away needs telling. Their
 payload carries the agent's own closing words — which become the notification
 body — alongside fields `parseAgentEvent` deliberately drops, its transcript
-path among them.
+path among them. A `tool_complete` keeps its `tool_name`, and `wroteFile`
+reads it: a finished Edit or Write sends the live-edit reader to git at once
+rather than at the next poll.
 `parseAgentEvent` reads it and `Pane`'s `signalAttention` is where both routes
 meet, so an agent that rings _and_ broadcasts notifies once — the cooldown in
 `decideBellResponse` is what makes that true.

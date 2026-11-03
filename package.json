@@ -83,6 +83,7 @@
     "@types/react-dom": "^19.2.7",
     "bun-plugin-tailwind": "^0.1.2",
     "husky": "^9.1.7",
+    "material-icon-theme": "5.40.0",
     "tauri-plugin-mcp": "0.3.1"
   }
 }

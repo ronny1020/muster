@@ -1,5 +1,13 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
+import fileIcons from '../fileicons.plugin'
+
+/**
+ * The file icons' tables, generated from the installed theme as the dev server
+ * and the build generate them — without it a test reads the empty stand-in.
+ */
+await Bun.plugin(fileIcons)
+
 /**
  * A DOM for the component tests, registered before anything imports React.
  *

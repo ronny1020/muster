@@ -61,8 +61,15 @@ pub struct Changes {
     pub common_dir: String,
     /// What the diff is against: a branch name, or empty for uncommitted work.
     pub base: String,
-    /// Set when a base branch was asked for and git could not resolve it.
+    /// Set when a base branch was asked for and git could not resolve it, or
+    /// when git could not list the changes at all — an empty `files` beside it
+    /// means "unknown", never "nothing changed".
     pub error: Option<String>,
+    /// The commit `files` is measured against, as git resolved it for this
+    /// very read: `HEAD` for uncommitted work. The list and this sha come from
+    /// one resolution, so a commit landing mid-read cannot pair one with the
+    /// other — which is how the live-edit reader tells a commit from a revert.
+    pub head: String,
     pub files: Vec<ChangedFile>,
 }
 
@@ -118,6 +125,12 @@ const MAX_ENTRIES: usize = 4096;
 /// runs a build — otherwise turns every read into thousands of them.
 const MAX_COUNTED: usize = 512;
 
+/// Every diff the app runs ignores the repository's diff drivers. A
+/// `diff.external` or a textconv command in `.git/config` is a program, and an
+/// agent that can write its workspace can write that file: the live-edit
+/// reader diffs with no click at all, and a click is no consent to run it.
+pub(crate) const NO_DRIVERS: [&str; 2] = ["--no-ext-diff", "--no-textconv"];
+
 /// Git's hash of the empty tree, which is what a repository with no commits
 /// has to be diffed against — `HEAD` does not resolve there.
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -152,7 +165,12 @@ fn read_changes(cwd: &str, base: Option<&str>, counts: bool) -> Changes {
         return changes;
     };
 
-    changes.files = tracked_changes(root, &[&rev]);
+    let Some(tracked) = tracked_changes(root, &[&rev]) else {
+        changes.error = Some("git could not list the changes".to_string());
+        return changes;
+    };
+    changes.head = rev;
+    changes.files = tracked;
     // A path can reach both passes — `git rm --cached x` leaves `x` deleted
     // against HEAD and untracked in the worktree — and two rows for one file
     // is two rows with the same key, both highlighting when either is picked.
@@ -196,6 +214,27 @@ fn resolve_base(root: &Path, base: Option<&str>) -> Option<String> {
         return None;
     }
     git(root, &["merge-base", "HEAD", name]).filter(|sha| !sha.is_empty())
+}
+
+/// `id` itself, when it is a hex object id naming a commit or a tree — the
+/// empty tree is what `head` is before a repository's first commit. Checked
+/// for the reason [`commit_range`] gives: it reaches git as an argument.
+fn exact_rev(root: &Path, id: &str) -> Option<String> {
+    let hex = (7..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_hexdigit());
+    if !hex {
+        return None;
+    }
+    git(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{id}^{{tree}}"),
+        ],
+    )
+    .filter(|tree| !tree.is_empty())
+    .map(|_| id.to_string())
 }
 
 /// What a commit changed: the commit against its first parent, or against the
@@ -247,7 +286,9 @@ fn read_commit_files(cwd: &str, sha: &str) -> Result<Changes, String> {
     Ok(Changes {
         repo: true,
         common_dir: layout.common.to_string_lossy().into_owned(),
-        files: tracked_changes(root, &[&parent, &commit]),
+        files: tracked_changes(root, &[&parent, &commit])
+            .ok_or_else(|| "git could not list the commit's changes".to_string())?,
+        head: commit.clone(),
         base: commit,
         root: root.to_string_lossy().into_owned(),
         error: None,
@@ -265,13 +306,21 @@ fn head_or_empty_tree(root: &Path) -> String {
 ///
 /// Two calls because no single `git diff` reports both the status letter and
 /// the line counts, and the status is what tells a deletion from an edit.
-fn tracked_changes(root: &Path, revs: &[&str]) -> Vec<ChangedFile> {
+fn tracked_changes(root: &Path, revs: &[&str]) -> Option<Vec<ChangedFile>> {
     // `--no-relative` because `diff.relative` is a config a user can set, and
     // it would make every path here relative to the cwd instead of the root.
-    let args = [&["diff", "-z", "--no-relative", "-M"][..], revs].concat();
-    let statuses = git(root, &[&args[..], &["--name-status"]].concat()).unwrap_or_default();
+    let args = [
+        &["diff", "-z", "--no-relative", "-M"][..],
+        &NO_DRIVERS,
+        revs,
+    ]
+    .concat();
+    let statuses = git(root, &[&args[..], &["--name-status"]].concat())?;
     let counts = git(root, &[&args[..], &["--numstat"]].concat()).unwrap_or_default();
-    merge_records(parse_name_status(&statuses), &parse_numstat(&counts))
+    Some(merge_records(
+        parse_name_status(&statuses),
+        &parse_numstat(&counts),
+    ))
 }
 
 /// A `--name-status -z` record: the letter, the path, and a rename's source.
@@ -455,48 +504,90 @@ pub async fn git_file_diff(
     context: Option<u32>,
     commit: Option<String>,
     old_path: Option<String>,
+    rev: Option<String>,
 ) -> Result<FileDiff, String> {
-    tauri::async_runtime::spawn_blocking(move || match commit {
-        Some(sha) => read_commit_file_diff(&cwd, &path, old_path.as_deref(), &sha, context),
-        None => read_file_diff(&cwd, &path, base.as_deref(), context),
+    tauri::async_runtime::spawn_blocking(move || {
+        let against = match rev.as_deref() {
+            Some(sha) => Against::Exact(sha),
+            None => Against::Base(base.as_deref()),
+        };
+        match commit {
+            Some(sha) => read_commit_file_diff(&cwd, &path, old_path.as_deref(), &sha, context),
+            None => read_file_diff(&cwd, &path, old_path.as_deref(), against, context),
+        }
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
+/// What a working-tree diff is measured from.
+pub(crate) enum Against<'a> {
+    /// `HEAD`, or the point a branch diverged — see [`resolve_base`].
+    Base(Option<&'a str>),
+    /// One exact commit or tree, by id: the live-edit reader passes the `head`
+    /// its change list was read against, so a commit landing between the two
+    /// reads cannot measure the patch from a newer base than the list.
+    Exact(&'a str),
+}
+
+/// `old_path` is where a staged rename came from: named beside `path` in the
+/// pathspec, `-M` pairs the two and the patch holds only what changed, where
+/// `path` alone reads as the whole file added.
 fn read_file_diff(
     cwd: &str,
     path: &str,
-    base: Option<&str>,
+    old_path: Option<&str>,
+    against: Against,
     context: Option<u32>,
 ) -> Result<FileDiff, String> {
     let top = repo_root(&expand_home(cwd)).ok_or_else(|| "not a git repository".to_string())?;
     let root = Path::new(&top);
-    let rev = resolve_base(root, base).ok_or_else(|| "no such branch".to_string())?;
+    let rev = match against {
+        Against::Base(base) => {
+            resolve_base(root, base).ok_or_else(|| "no such branch".to_string())?
+        }
+        Against::Exact(id) => {
+            exact_rev(root, id).ok_or_else(|| format!("no such revision: {id}"))?
+        }
+    };
     // `-U` past the file's length just means the whole file, which is how the
     // panel offers full context without a second command.
     let unified = format!("-U{}", context.unwrap_or(3).min(100_000));
-    let spec = literal_spec(path);
+    let specs: Vec<String> = std::iter::once(path)
+        .chain(old_path)
+        .map(literal_spec)
+        .collect();
+    let head = [
+        "diff",
+        NO_DRIVERS[0],
+        NO_DRIVERS[1],
+        &unified,
+        "--no-relative",
+        "-M",
+        &rev,
+        "--",
+    ];
+    let args: Vec<&str> = head
+        .into_iter()
+        .chain(specs.iter().map(String::as_str))
+        .collect();
 
     // Verbatim: a blank context line is a single space, and trimming the patch
     // would drop the diff's last rows for any file ending in blank lines.
-    let patch = git_verbatim(
-        root,
-        &["diff", &unified, "--no-relative", "-M", &rev, "--", &spec],
-    )
-    .filter(|patch| !patch.is_empty())
-    .map(Ok)
-    // No diff from a file git has never seen means the whole of it is the
-    // change, which is what a new file from an agent looks like. For a tracked
-    // file it means exactly what it says — nothing textual moved — and
-    // synthesising an all-added patch there would show an unchanged file as new.
-    .unwrap_or_else(|| {
-        if tracked(root, path) {
-            Ok(String::new())
-        } else {
-            added_patch(root, path)
-        }
-    })?;
+    let patch = git_verbatim(root, &args)
+        .filter(|patch| !patch.is_empty())
+        .map(Ok)
+        // No diff from a file git has never seen means the whole of it is the
+        // change, which is what a new file from an agent looks like. For a tracked
+        // file it means exactly what it says — nothing textual moved — and
+        // synthesising an all-added patch there would show an unchanged file as new.
+        .unwrap_or_else(|| {
+            if tracked(root, path) {
+                Ok(String::new())
+            } else {
+                added_patch(root, path)
+            }
+        })?;
 
     Ok(FileDiff {
         path: path.to_string(),
@@ -528,6 +619,8 @@ fn read_commit_file_diff(
         .collect();
     let head = [
         "diff",
+        NO_DRIVERS[0],
+        NO_DRIVERS[1],
         &unified,
         "--no-relative",
         "-M",
@@ -711,7 +804,14 @@ fn literal_spec(path: &str) -> String {
 /// which differs per host — and the output would then be filed under a path
 /// that is not the one asked about.
 fn added_patch(root: &Path, path: &str) -> Result<String, String> {
-    let file = read_capped(&root.join(path)).map_err(|error| error.to_string())?;
+    let full = root.join(path);
+    // Checked for every caller, not only the automatic one: the live-edit
+    // reader asks for this patch with no click, and a click gains nothing from
+    // following a linked directory that the line count already refuses.
+    if links_above(root, &full) {
+        return Err("reached through a symlinked directory; not read".to_string());
+    }
+    let file = read_capped(&full).map_err(|error| error.to_string())?;
     let mut patch = format!("--- /dev/null\n+++ b/{path}\n");
     if file.text.is_empty() {
         return Ok(patch);

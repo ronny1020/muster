@@ -11,7 +11,10 @@ export type Viewed =
       line: number | null
       /** One commit's own change, from the history; absent, the working tree's. */
       commit?: Commit
-      /** With `commit`: the name it renamed the file from. */
+      /**
+       * The name a rename came from — in `commit`, or staged in the working
+       * tree — so the diff pairs the two instead of showing a new file.
+       */
       oldPath?: string
       /**
        * With `commit`: the repository it belongs to. A file's history comes

@@ -125,8 +125,8 @@ app stops taking the pointer, check `document.elementFromPoint` before
 suspecting the code; `document.querySelector('bun-hmr').remove()` clears it.
 
 Colours depend on the tab: the message marks on the ruler, the find bar's
-current match, the rails, the drop outline and the path and copy controls'
-hover take the agent's own accent — the step buttons stay neutral
+current match, the rails, the drop outline, the edit cards' left border and
+the path and copy controls' hover take the agent's own accent — the step buttons stay neutral
 (`--color-agent` on the terminal's root), so compare against the agent the tab
 runs, never a fixed hex.
 
@@ -182,6 +182,15 @@ on the _next_ commit — so dispatching and querying inside one `js()` call
 always finds nothing, which reads exactly like the handler not firing. Split
 them: dispatch in one call, query in the next. This cost a working hover
 control an hour of looking like a broken one.
+
+**Edit cards sit over the terminal's top-right corner.** With live edits on,
+an edit in the tab puts a stack there for about eight seconds — a
+`[role=log]` inside the terminal's column, so scope the query to it, because
+the drawer's Activity list is a `[role=log]` too —
+and it takes the pointer: an `elementFromPoint` probe or a synthetic click in
+that corner can land on a card rather than the grid. Hovering or focusing the
+stack freezes it, so a probe that dispatches `pointerover` there must also
+dispatch `pointerout`, or the stack stays held for the rest of the run.
 
 **A terminal's grid is a canvas, so there is nothing to read in the DOM.**
 Assert on what the app exposes instead — an `aria-label`, `scrollTop`, a

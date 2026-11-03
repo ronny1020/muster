@@ -86,6 +86,16 @@ export interface Settings {
    * anyone pressing anything.
    */
   pullRequests: boolean
+  /**
+   * A card over the terminal for each file that changes in the tab's
+   * working tree: its name, its `+N −M` and the lines written. The three live-edit surfaces share one
+   * reader, which runs only while at least one of them is on.
+   */
+  editCards: boolean
+  /** An Activity view in the review drawer listing recent edits as they land. */
+  editActivity: boolean
+  /** A just-edited file's row pulses in the Changes list and the file tree. */
+  editPulse: boolean
   /** Editor command the status bar opens a directory with; empty means the
    *  first one this machine has. */
   editorCommand: string
@@ -132,6 +142,9 @@ export const DEFAULT_SETTINGS: Settings = {
   gitPollSeconds: 4,
   historyLimit: 60,
   pullRequests: false,
+  editCards: true,
+  editActivity: true,
+  editPulse: true,
   editorCommand: '',
   notifyOnDone: true,
   notifyOnlyWhenUnfocused: true,
@@ -227,6 +240,9 @@ export function normalizeSettings(input: unknown): Settings {
       LIMITS.historyLimit,
     ),
     pullRequests: flag(raw.pullRequests, DEFAULT_SETTINGS.pullRequests),
+    editCards: flag(raw.editCards, DEFAULT_SETTINGS.editCards),
+    editActivity: flag(raw.editActivity, DEFAULT_SETTINGS.editActivity),
+    editPulse: flag(raw.editPulse, DEFAULT_SETTINGS.editPulse),
     editorCommand: text(
       raw.editorCommand,
       DEFAULT_SETTINGS.editorCommand,

@@ -22,6 +22,63 @@
   --color-agent: var(--color-primary);
   --color-danger: #e26d63;
 
+  /* An edit card's whole life: in, read, gone. It ends on `forwards`, and its
+     `animationend` is what removes the card, so no timer runs per pane. */
+  --animate-edit-card: edit-card 8s ease-out forwards;
+  /* A just-edited row: a flash that settles, played once per edit. */
+  --animate-edit-pulse: edit-pulse 2.4s ease-out forwards;
+  /* The flash's own `+N −M`, gone when the flash is. */
+  --animate-edit-fade: edit-fade 2.4s ease-in forwards;
+  /* A card's bar, filled block by block as the card arrives. */
+  --animate-edit-bar: edit-bar 0.45s ease-out both;
+
+  @keyframes edit-fade {
+    0%,
+    60% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes edit-bar {
+    0% {
+      opacity: 0;
+      transform: scaleY(0);
+    }
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes edit-card {
+    0% {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    4% {
+      opacity: 1;
+      transform: none;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes edit-pulse {
+    0% {
+      background-color: rgb(127 179 122 / 0.45);
+    }
+    100% {
+      background-color: rgb(127 179 122 / 0);
+    }
+  }
+
   --font-sans: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono:
     'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -86,4 +143,29 @@
  */
 bun-hmr {
   pointer-events: none;
+}
+
+/* Reduced motion keeps the fades and drops the slide and the growth. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes edit-bar {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes edit-card {
+    0% {
+      opacity: 0;
+    }
+    4%,
+    85% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
 }

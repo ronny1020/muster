@@ -3,6 +3,7 @@
     "resize": "Resize the review drawer",
     "changes": "Changes",
     "files": "Files",
+    "activity": "Activity",
     "reread": "Re-read",
     "close": "Close review",
     "hiddenFiles": "Hidden files",
@@ -93,5 +94,22 @@
     "reading": "Reading history…",
     "empty": "No commits have changed this file.",
     "commitDiff": "{{short}} — {{subject}}"
+  },
+  "edits": {
+    "cards": "Edits as they land",
+    "open": "Open the diff of {{path}}",
+    "dismiss": "Dismiss",
+    "more_one": "and {{count}} more edit",
+    "more_other": "and {{count}} more edits",
+    "moreLines_one": "{{count}} more line",
+    "moreLines_other": "{{count}} more lines",
+    "created": "new",
+    "deleted": "deleted",
+    "reverted": "reverted",
+    "none": "No edits yet. They appear here as the working tree changes while this tab works.",
+    "noLines": "Only the line counts are known for this edit.",
+    "openDiff": "Open the full diff",
+    "summary_one": "{{count}} recent edit",
+    "summary_other": "{{count}} recent edits"
   }
 }

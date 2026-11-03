@@ -635,8 +635,13 @@ export interface Changes {
   commonDir: string
   /** The branch being compared against, or `''` for uncommitted work. */
   base: string
-  /** Set when a base branch was asked for and git could not resolve it. */
+  /**
+   * Set when a base branch was asked for and git could not resolve it, or
+   * when git could not list the changes — `files` is then unknown, not empty.
+   */
   error: string | null
+  /** The commit `files` is measured against, resolved by this same read. */
+  head: string
   files: ChangedFile[]
 }
 
@@ -669,16 +674,22 @@ export interface FileDiffOptions {
   context?: number
   /** Read this commit's own change to the file instead, and ignore `base`. */
   commit?: string
-  /** With `commit`: the name the commit renamed the file from, without which
-   *  a rename reads as a new file. */
+  /** The name a rename came from — in `commit`, or staged in the working
+   *  tree — without which a rename reads as a new file. */
   oldPath?: string
+  /**
+   * The working tree against this exact commit or tree id instead of `HEAD`,
+   * ignoring `base`: the live-edit reader's patches must share the base its
+   * change list was read against.
+   */
+  rev?: string
 }
 
 /** One file's diff. */
 export const gitFileDiff = (
   cwd: string,
   path: string,
-  { base, context, commit, oldPath }: FileDiffOptions = {},
+  { base, context, commit, oldPath, rev }: FileDiffOptions = {},
 ) =>
   invoke<FileDiff>('git_file_diff', {
     cwd,
@@ -687,6 +698,7 @@ export const gitFileDiff = (
     context: context ?? null,
     commit: commit ?? null,
     oldPath: oldPath ?? null,
+    rev: rev ?? null,
   })
 
 /**

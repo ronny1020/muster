@@ -253,6 +253,30 @@ app. The three `window_*` glyphs are the exception to the tracing: Material's
 window icons are several times the weight of the hairline squares a titlebar
 draws, so those are drawn to the same 960 grid rather than copied.
 
+**File-type icons are a dependency's, not ours, and the plugin is what wires
+them.** The file tree, the changed-file list, the edit cards, the Activity view
+and the column's header draw the `material-icon-theme` package's own SVGs,
+picked by its own filename, extension and folder-name tables — the VS Code
+theme's, so `readme.md`, `agents.md`, `.tsx` and `.rs` each get theirs, and so
+do `src/`, `test/` and `.github/`, open or closed — and the package is never
+copied into the repository: a version bump is the whole of an update, and
+Dependabot opens each one as a pull request of its own, outside the weekly
+group, against an exact pin — SECURITY.md has why. `fileicons.plugin.ts`
+generates `src/shared/ui/materialicons.ts` from the package's documented
+`generateManifest`, and it is registered three times — `bunfig.toml` for the
+dev server, `build.ts` for the release, `test/setup.ts` for the tests — because
+each is a separate Bun. Miss one and that build reads the file's empty stand-in
+and draws no icons. `fileicon.test.ts` catches a missing test registration and
+`build.ts` refuses a release with no SVG in it; a dev server without it is
+noticed only by looking. They are `<img>`s rather than inline SVG because the
+theme's icons carry gradients, transforms and several colours, and an image
+draws all of that and runs nothing an SVG holds; the policy's `img-src 'self'`
+is what lets the bundled files load. Matching follows VS Code's name and
+extension steps — a name the theme ties to a folder, the whole name, then the
+longest extension, case ignored — but not its last, the file's language, which
+needs VS Code's language registry: a name neither table knows gets the theme's
+default here, where VS Code may pick one by language.
+
 **Nothing may put a control at the strip's far right.** That corner is close —
 drawn by Windows before this app took the frame off, and by `WindowControls`
 after — so a gear or a menu one pixel from it is a misclick that quits the app.
@@ -383,6 +407,7 @@ closing another tab's panel.
 - An agent tab hands its terminal to a shell, and the agent never learns.
 - A git write is stopped by the thread that waits for it.
 - No git the app runs may take its repository from the environment.
+- What git runs on its own is narrowed, not closed.
 - A worktree's neighbours are read from `git worktree list`, never inferred, and they are not its untracked files.
 - Paths are stored in the host's own form.
 - Output is recorded before it is sent, and every bound on it is load-bearing.
@@ -418,6 +443,7 @@ closing another tab's panel.
 - Nothing in the review panel may need WASM.
 - Highlighted code is rendered as elements, never as markup.
 - The review surfaces re-read on a revision derived from the tree, never on a clock.
+- Live edits are read by comparing passes, and only while the tab works.
 - The review panels mark their own scrollbars, and they measure rows rather than compute them.
 - A surface you read opts back into selection.
 - A commit's diff is history, not the file.
@@ -745,9 +771,9 @@ These are the seams for common asks:
   including the one a model function must follow: it takes a `TFunction` rather
   than calling `i18n.t`.
 - **A new icon** is one entry in `src/shared/ui/icons.ts`; CONTRIBUTING.md's
-  "Adding an icon" has where the path data comes from. A new file-type icon is
-  one more line in `src/shared/ui/fileicon.ts`, and its test asserts every
-  icon that table can return is one the set actually holds.
+  "Adding an icon" has where the path data comes from. A file-type icon is
+  not added here at all: it comes with the `material-icon-theme` package —
+  see the file-type icon invariant above.
 - **A new syntax-highlighted language** is one entry in `GRAMMARS` and one in
   `BY_EXTENSION`, both in `src/features/review/model/highlight.ts`. The test
   pins the second to the first, so a grammar id that does not exist fails there

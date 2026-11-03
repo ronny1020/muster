@@ -1,109 +1,101 @@
-import { IMAGE_EXTENSIONS } from '../lib/imagepaths'
-import type { IconName } from './icons'
+import {
+  DEFAULT_FOLDER,
+  DEFAULT_ICON,
+  FILE_EXTENSIONS,
+  FILE_NAMES,
+  FOLDER_NAMES,
+  ICON_URLS,
+} from './materialicons'
 
 /**
- * Which icon and tint a filename gets.
+ * Which Material Icon Theme icon a filename gets, by the theme's file-name and
+ * extension tables.
  *
- * Extension-driven, like every file tree: the contents are not read to draw a
- * row. The tints are deliberately few — a tree where every row is a different
- * colour reads as noise, so related languages share one.
+ * A name the theme ties to a folder first — `.config/graphqlrc` — then the
+ * whole name — `readme.md`, `agents.md`, `package.json` — then the longest
+ * extension the theme knows, so `app.test.ts` is a test, `x.d.ts` a
+ * declaration and `x.ts` plain TypeScript. A name neither table knows gets the
+ * theme's default, where VS Code may still pick one by the file's language,
+ * which needs its language registry. Case never matters, because filesystems
+ * disagree about it. The contents are never read to draw a row.
  */
-export interface FileIcon {
-  name: IconName
-  /** Tailwind text colour for the glyph. */
-  tone: string
-}
-
-const CODE: FileIcon = { name: 'code', tone: 'text-[#6f9ede]' }
-const DATA: FileIcon = { name: 'data_object', tone: 'text-[#d8b165]' }
-const TEXT: FileIcon = { name: 'description', tone: 'text-muted' }
-const SHELL: FileIcon = { name: 'terminal', tone: 'text-[#7fb37a]' }
-const IMAGE: FileIcon = { name: 'image', tone: 'text-[#b58cd8]' }
-
-/** Extension to icon. Anything absent falls back to a plain document. */
-const BY_EXTENSION: Record<string, FileIcon> = {
-  ts: CODE,
-  tsx: CODE,
-  js: { name: 'javascript', tone: 'text-[#d8b165]' },
-  jsx: { name: 'javascript', tone: 'text-[#d8b165]' },
-  mjs: { name: 'javascript', tone: 'text-[#d8b165]' },
-  cjs: { name: 'javascript', tone: 'text-[#d8b165]' },
-  rs: CODE,
-  go: CODE,
-  py: CODE,
-  rb: CODE,
-  java: CODE,
-  kt: CODE,
-  swift: CODE,
-  c: CODE,
-  h: CODE,
-  cpp: CODE,
-  hpp: CODE,
-  cs: CODE,
-  php: CODE,
-  lua: CODE,
-  vue: CODE,
-  svelte: CODE,
-  html: { name: 'html', tone: 'text-[#e08a5f]' },
-  css: { name: 'css', tone: 'text-[#6f9ede]' },
-  scss: { name: 'css', tone: 'text-[#6f9ede]' },
-  json: DATA,
-  jsonc: DATA,
-  yaml: DATA,
-  yml: DATA,
-  toml: DATA,
-  ini: DATA,
-  env: { name: 'lock', tone: 'text-[#d8b165]' },
-  lock: { name: 'lock', tone: 'text-faint' },
-  sql: { name: 'table', tone: 'text-[#6f9ede]' },
-  csv: { name: 'table', tone: 'text-[#7fb37a]' },
-  sh: SHELL,
-  bash: SHELL,
-  zsh: SHELL,
-  fish: SHELL,
-  ps1: SHELL,
-  bat: SHELL,
-  cmd: SHELL,
-  md: TEXT,
-  mdx: TEXT,
-  txt: TEXT,
-}
-
-/** Filenames worth recognising whole, because their extension says nothing. */
-const BY_NAME: Record<string, FileIcon> = {
-  dockerfile: SHELL,
-  makefile: SHELL,
-  '.gitignore': { name: 'settings', tone: 'text-faint' },
-  '.gitattributes': { name: 'settings', tone: 'text-faint' },
-  '.editorconfig': { name: 'settings', tone: 'text-faint' },
-}
-
-// From the one list of image extensions rather than a second copy of it: the
-// tree's icon and the preview's decision to show a picture have to agree.
-for (const extension of IMAGE_EXTENSIONS) BY_EXTENSION[extension] = IMAGE
-
-export function fileIcon(path: string): FileIcon {
+export function fileIconName(path: string): string {
   const name = basename(path).toLowerCase()
-  const known = BY_NAME[name]
-  if (known) return known
-  // `bun.lock` and `Cargo.lock` are locks whatever they are locking, and a
-  // dotfile like `.env.local` keeps the meaning of its first suffix.
-  if (name.endsWith('.lock')) return BY_EXTENSION.lock
-  if (name.startsWith('.env')) return BY_EXTENSION.env
-  return BY_EXTENSION[extensionOf(name)] ?? TEXT
+  return (
+    byQualifiedName(FILE_NAMES, path) ??
+    own(FILE_NAMES, name) ??
+    byExtension(name) ??
+    DEFAULT_ICON
+  )
 }
 
-export const folderIcon = (open: boolean): IconName =>
-  open ? 'folder_open' : 'folder'
+/**
+ * Each table's names that include a folder — `.config/graphqlrc`,
+ * `.github/workflows` — found once rather than on every row.
+ */
+const qualifiedNames = new Map(
+  [FILE_NAMES, FOLDER_NAMES].map((table) => [
+    table,
+    Object.keys(table).filter((name) => name.includes('/')),
+  ]),
+)
+
+/** A folder-qualified name the path ends with, matched as VS Code does. */
+function byQualifiedName(
+  table: Readonly<Record<string, string>>,
+  path: string,
+): string | undefined {
+  const full = path.replace(/\\/g, '/').toLowerCase()
+  const match = qualifiedNames
+    .get(table)
+    ?.find((name) => full === name || full.endsWith(`/${name}`))
+  return match && table[match]
+}
+
+/** The icon's URL, bundled from the theme's own SVG. */
+export const fileIconUrl = (path: string) =>
+  ICON_URLS[fileIconName(path)] ?? ICON_URLS[DEFAULT_ICON]
+
+/**
+ * The longest extension the theme maps. Each dot starts a candidate, earliest
+ * first, which is longest first: `a.test.ts` tries `test.ts`, then `ts`.
+ */
+function byExtension(name: string): string | undefined {
+  for (
+    let dot = name.indexOf('.');
+    dot !== -1;
+    dot = name.indexOf('.', dot + 1)
+  ) {
+    const icon = own(FILE_EXTENSIONS, name.slice(dot + 1))
+    if (icon) return icon
+  }
+  return undefined
+}
+
+/**
+ * A table's own entry only. The tables are plain objects and the key is a
+ * filename anyone can choose, so `constructor` must not find `Object`.
+ */
+const own = (table: Readonly<Record<string, string>>, key: string) =>
+  Object.hasOwn(table, key) ? table[key] : undefined
+
+/**
+ * A folder's icon by its name, as the theme picks it — `src`, `test`,
+ * `.github`, `node_modules` — open or closed. An open folder's icon is always
+ * the closed one's name plus `-open`.
+ */
+export function folderIconName(path: string, open: boolean): string {
+  const icon =
+    byQualifiedName(FOLDER_NAMES, path) ??
+    own(FOLDER_NAMES, basename(path).toLowerCase()) ??
+    DEFAULT_FOLDER
+  return open ? `${icon}-open` : icon
+}
+
+/** The folder icon's URL, bundled from the theme's own SVG. */
+export const folderIconUrl = (path: string, open: boolean) =>
+  ICON_URLS[folderIconName(path, open)] ??
+  ICON_URLS[open ? `${DEFAULT_FOLDER}-open` : DEFAULT_FOLDER]
 
 const basename = (path: string) =>
   path.split(/[/\\]/).filter(Boolean).pop() ?? path
-
-/**
- * The extension, or `''` for a name that has none. A leading dot is part of
- * the name rather than the start of an extension, so `.gitignore` has none.
- */
-function extensionOf(name: string): string {
-  const dot = name.lastIndexOf('.')
-  return dot <= 0 ? '' : name.slice(dot + 1)
-}

@@ -16,5 +16,11 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "test", ".agents/**/*.ts", "build.ts"]
+  "include": [
+    "src",
+    "test",
+    ".agents/**/*.ts",
+    "build.ts",
+    "fileicons.plugin.ts"
+  ]
 }

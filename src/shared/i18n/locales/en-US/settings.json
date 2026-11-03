@@ -8,6 +8,7 @@
     "editor": "Editor",
     "notifications": "Notifications",
     "git": "Git",
+    "edits": "Live edits",
     "sessionRecords": "Session records",
     "data": "Data"
   },
@@ -111,6 +112,18 @@
   "pullRequests": {
     "label": "Pull request in the footer",
     "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI (gh) once a minute while the tab is on screen. Needs gh installed and signed in."
+  },
+  "editCards": {
+    "label": "Edit cards over the terminal",
+    "hint": "A card for each file that changes in the tab's working tree — usually the agent's edits: its name, how many lines, and the lines themselves. Click one to open its diff."
+  },
+  "editActivity": {
+    "label": "Activity in the review drawer",
+    "hint": "A timeline of the edits in this tab's working tree, newest first."
+  },
+  "editPulse": {
+    "label": "Flash edited files",
+    "hint": "A file's row flashes in Changes and Files as it is edited."
   },
   "journal": {
     "label": "Record what sessions print",

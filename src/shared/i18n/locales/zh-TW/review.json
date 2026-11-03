@@ -3,6 +3,7 @@
     "resize": "調整審閱面板寬度",
     "changes": "變更",
     "files": "檔案",
+    "activity": "活動",
     "reread": "重新讀取",
     "close": "關閉審閱",
     "hiddenFiles": "隱藏檔案",
@@ -92,5 +93,19 @@
     "reading": "正在讀取歷史…",
     "empty": "沒有任何提交變更過此檔案。",
     "commitDiff": "{{short}} — {{subject}}"
+  },
+  "edits": {
+    "cards": "即時的編輯",
+    "open": "開啟 {{path}} 的差異",
+    "dismiss": "關閉",
+    "more_other": "還有 {{count}} 次編輯",
+    "moreLines_other": "還有 {{count}} 行",
+    "created": "新增",
+    "deleted": "刪除",
+    "reverted": "還原",
+    "none": "尚無編輯。此分頁工作時工作樹一有變更，就會出現在這裡。",
+    "noLines": "這次編輯只知道行數。",
+    "openDiff": "開啟完整差異",
+    "summary_other": "最近 {{count}} 次編輯"
   }
 }

@@ -132,6 +132,21 @@ variables from it — and `GH_REPO`, `GH_HOST`, `GH_FORCE_TTY` and `CLICOLOR_FOR
 which would give every tab the same answer: another repository's pull request,
 or none at all.
 
+**What git runs on its own is narrowed, not closed.** `.git/config` and
+`.gitattributes` are files an agent writing its workspace can write, and
+several of their keys are programs git runs on a read. The footer polls
+`status` and the live-edit reader diffs with no click at all, so `git_in`
+passes `-c core.fsmonitor=false` to every call and every `diff` carries
+`NO_DRIVERS` (`--no-ext-diff --no-textconv`); the planted-program tests in
+`review_tests.rs` fail if either goes. Three still run, measured against git
+2.50: a `filter.<name>.clean` (or `process`) the repository assigns runs on
+`status` and `diff` of a file whose stat data moved; a `post-index-change`
+hook runs when `status` refreshes the index; and `log.showSignature` makes
+`log` run `gpg.program` for each signed commit. None is blocked yet — a
+blanket filter block would break Git LFS, which is a clean filter, and hooks
+are wanted on Commit, Pull and Push — so SECURITY.md says so. `gh`'s own git
+runs outside `git_in` and gets none of this.
+
 **A worktree's neighbours are read from `git worktree list`, never inferred,
 and they are not its untracked files.** `-C` answers correctly from inside a
 linked worktree, so no git call needs a worktree's help to read its own tree.
@@ -487,7 +502,10 @@ that will not show a number reads nothing at all — the click that opens a diff
 from the terminal asks only which files differ, because a read is what raises a
 filesystem permission prompt and asking for one before the panel is even open
 is asking too early. Confinement lives at the callers that have no click,
-not in the commands — `read_image` must stay unconfined, because the terminal's
+not in the commands — with one exception: `added_patch`, the patch of a new
+file, checks `links_above` itself, because the live-edit reader asks for it
+with no click and a click loses nothing by being refused the same file the
+line count already refuses. `read_image` must stay unconfined, because the terminal's
 overlay and the background picker legitimately point anywhere, while
 `resolveAgainst` refuses a markdown image that climbs out of its document's own
 folder.

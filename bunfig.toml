@@ -1,5 +1,7 @@
 [serve.static]
-plugins = ["bun-plugin-tailwind"]
+# `fileicons.plugin.ts` generates the file icons' tables from the installed
+# `material-icon-theme`; `build.ts` and `test/setup.ts` register it too.
+plugins = ["bun-plugin-tailwind", "./fileicons.plugin.ts"]
 
 [test]
 preload = ["./test/setup.ts"]

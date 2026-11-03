@@ -3,7 +3,7 @@
 #
 # Grouped on purpose: one pull request per ecosystem per week is reviewable,
 # where twenty separate ones are not — and this project's Rust tree alone has
-# over five hundred crates.
+# over five hundred crates. The one exception is named where it is excluded.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -24,6 +24,9 @@ updates:
     groups:
       frontend:
         patterns: ['*']
+        # Its code runs inside the build and can write the bundle, so each
+        # bump is a pull request of its own — see SECURITY.md.
+        exclude-patterns: ['material-icon-theme']
         update-types: [minor, patch]
     # An xterm addon's 0.x minor is the build for xterm's next major, so it
     # moves with the core by hand — see src/features/terminal/AGENTS.md.

@@ -46,7 +46,7 @@ export type TabContent =
   | { type: 'session'; session: Session }
 
 /** Which view the review drawer is on. */
-export type ReviewView = 'changes' | 'files'
+export type ReviewView = 'changes' | 'files' | 'activity'
 
 export interface Tab {
   id: string

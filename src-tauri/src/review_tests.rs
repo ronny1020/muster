@@ -258,7 +258,14 @@ fn a_patch_keeps_the_blank_lines_a_file_ends_with() {
     assert!(git(&root, &["add", "f.txt"]).is_some(), "add");
     std::fs::write(root.join("f.txt"), "one\nCHANGED\nthree\n \n \n").expect("write");
 
-    let diff = read_file_diff(&root.to_string_lossy(), "f.txt", None, None).expect("diff");
+    let diff = read_file_diff(
+        &root.to_string_lossy(),
+        "f.txt",
+        None,
+        Against::Base(None),
+        None,
+    )
+    .expect("diff");
     let _ = std::fs::remove_dir_all(&root);
 
     let rows = diff
@@ -312,7 +319,14 @@ fn a_new_file_named_like_a_pathspec_shows_its_own_diff() {
     // The agent's new file, named to be read as pathspec magic.
     std::fs::write(root.join(":setup.sh"), "echo hostile\n").expect("write");
 
-    let diff = read_file_diff(&root.to_string_lossy(), ":setup.sh", None, None).expect("diff");
+    let diff = read_file_diff(
+        &root.to_string_lossy(),
+        ":setup.sh",
+        None,
+        Against::Base(None),
+        None,
+    )
+    .expect("diff");
     let _ = std::fs::remove_dir_all(&root);
 
     assert!(diff.patch.contains("hostile"), "{:?}", diff.patch);
@@ -437,6 +451,28 @@ fn a_directory_that_is_a_link_hides_everything_under_it() {
     assert!(through_link, "a path through a linked directory is refused");
     assert!(!ordinary, "an ordinary nested path is not");
     assert!(!root_itself, "the components of the root are not checked");
+}
+
+#[test]
+fn a_new_file_behind_a_linked_directory_is_not_read_into_a_patch() {
+    // The live-edit reader asks for this patch with no click at all.
+    let root = scratch("added-through-link");
+    let outside = scratch("added-outside");
+    std::fs::write(outside.join("secret.txt"), "sensitive\n").expect("write");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, root.join("docs")).expect("symlink");
+    // Without the right to make links there is no link to test, and the
+    // missing file would pass for a refusal.
+    #[cfg(windows)]
+    if std::os::windows::fs::symlink_dir(&outside, root.join("docs")).is_err() {
+        return;
+    }
+
+    let patch = added_patch(&root, "docs/secret.txt");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&outside);
+
+    assert!(patch.is_err(), "the linked directory's file is refused");
 }
 
 #[test]
@@ -752,4 +788,168 @@ fn a_file_s_history_comes_from_its_own_repository() {
 
     assert_eq!(history.commits.len(), 1, "{history:?}");
     assert_eq!(history.commits[0].path, "a.txt");
+}
+
+#[test]
+fn the_change_list_names_the_commit_it_was_measured_against() {
+    // The live-edit reader tells a commit from a revert by this sha moving,
+    // so it must be the one this very read diffed against.
+    let root = history("changes-head", &[("a.txt", "one\n", "first")]);
+    std::fs::write(root.join("a.txt"), "two\n").expect("write");
+    let before = read_changes(&root.to_string_lossy(), None, true);
+    assert!(git(&root, &["commit", "--quiet", "-am", "second"]).is_some());
+    let after = read_changes(&root.to_string_lossy(), None, true);
+    let head = sha_of(&root, "HEAD");
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert_eq!(before.files.len(), 1);
+    assert_ne!(before.head, head);
+    assert_eq!(after.head, head);
+    assert!(after.files.is_empty());
+}
+
+/// A script that leaves `marker` behind if anything runs it.
+#[cfg(unix)]
+fn planted_program(dir: &Path, marker: &Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let script = dir.join("planted.sh");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .expect("write");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    script.to_string_lossy().into_owned()
+}
+
+#[cfg(unix)]
+#[test]
+fn a_diff_driver_planted_in_the_repository_config_never_runs() {
+    // The live-edit reader diffs with no click, and `.git/config` is a file an
+    // agent writing its workspace can write.
+    let root = history("planted-driver", &[("a.txt", "one\n", "first")]);
+    let outside = scratch("planted-driver-out");
+    let marker = outside.join("ran");
+    let program = planted_program(&outside, &marker);
+    assert!(git(&root, &["config", "diff.external", &program]).is_some());
+    assert!(git(&root, &["config", "diff.planted.textconv", &program]).is_some());
+    std::fs::write(root.join(".gitattributes"), "*.txt diff=planted\n").expect("write");
+    std::fs::write(root.join("a.txt"), "two\n").expect("write");
+
+    let diff = read_file_diff(
+        &root.to_string_lossy(),
+        "a.txt",
+        None,
+        Against::Base(None),
+        None,
+    );
+    let changes = read_changes(&root.to_string_lossy(), None, true);
+    let ran = marker.exists();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&outside);
+
+    assert!(diff.expect("diff").patch.contains("+two"));
+    assert!(!changes.files.is_empty());
+    assert!(!ran, "a planted diff driver ran");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_fsmonitor_planted_in_the_repository_config_never_runs() {
+    let root = history("planted-fsmonitor", &[("a.txt", "one\n", "first")]);
+    let outside = scratch("planted-fsmonitor-out");
+    let marker = outside.join("ran");
+    let program = planted_program(&outside, &marker);
+    assert!(git(&root, &["config", "core.fsmonitor", &program]).is_some());
+    std::fs::write(root.join("a.txt"), "two\n").expect("write");
+
+    let _ = read_changes(&root.to_string_lossy(), None, true);
+    let _ = crate::workspace::git_status(&root);
+    let ran = marker.exists();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&outside);
+
+    assert!(!ran, "a planted fsmonitor ran");
+}
+
+#[test]
+fn a_diff_against_an_exact_revision_ignores_a_newer_head() {
+    // The live-edit reader pins its patches to the `head` its list was read
+    // against, so a commit landing in between cannot empty them.
+    let root = history("exact-rev", &[("a.txt", "one\n", "first")]);
+    let first = sha_of(&root, "HEAD");
+    std::fs::write(root.join("a.txt"), "two\n").expect("write");
+    assert!(git(&root, &["commit", "--quiet", "-am", "second"]).is_some());
+
+    let exact = read_file_diff(
+        &root.to_string_lossy(),
+        "a.txt",
+        None,
+        Against::Exact(&first),
+        Some(0),
+    );
+    let refused = read_file_diff(
+        &root.to_string_lossy(),
+        "a.txt",
+        None,
+        Against::Exact("--help"),
+        None,
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(exact.expect("diff").patch.contains("+two"));
+    assert!(refused.is_err(), "a non-id revision is refused");
+}
+
+#[test]
+fn a_repository_with_no_commits_diffs_against_the_empty_tree() {
+    // `head` is the empty tree's id until the first commit, and the live-edit
+    // reader passes it as the exact revision.
+    let root = scratch("exact-empty");
+    for args in [
+        &["init", "--quiet"][..],
+        &["config", "user.name", "Muster Test"],
+    ] {
+        assert!(git(&root, args).is_some());
+    }
+    std::fs::write(root.join("a.txt"), "one\n").expect("write");
+    assert!(git(&root, &["add", "a.txt"]).is_some());
+
+    let diff = read_file_diff(
+        &root.to_string_lossy(),
+        "a.txt",
+        None,
+        Against::Exact(EMPTY_TREE),
+        Some(0),
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    assert!(diff.expect("diff").patch.contains("+one"));
+}
+
+#[test]
+fn a_staged_rename_diffed_with_its_old_name_shows_only_what_changed() {
+    // Named alone, the new path reads as the whole file added.
+    let root = history("rename-diff", &[("a.txt", "one\ntwo\nthree\n", "first")]);
+    assert!(git(&root, &["mv", "a.txt", "b.txt"]).is_some());
+    std::fs::write(root.join("b.txt"), "one\ntwo\nfour\n").expect("write");
+
+    let paired = read_file_diff(
+        &root.to_string_lossy(),
+        "b.txt",
+        Some("a.txt"),
+        Against::Base(None),
+        Some(0),
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    let patch = paired.expect("diff").patch;
+    assert!(
+        patch.contains("+four") && patch.contains("-three"),
+        "{patch}"
+    );
+    assert!(
+        !patch.contains("+one"),
+        "an unchanged line reads as added: {patch}"
+    );
 }

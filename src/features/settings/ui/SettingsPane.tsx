@@ -387,6 +387,30 @@ export function SettingsPane() {
           </Row>
         </Group>
 
+        <Group title={t('groups.edits')}>
+          <Row label={t('editCards.label')} hint={t('editCards.hint')}>
+            <Toggle
+              checked={settings.editCards}
+              onChange={(editCards) => update({ editCards })}
+              label={t('editCards.label')}
+            />
+          </Row>
+          <Row label={t('editActivity.label')} hint={t('editActivity.hint')}>
+            <Toggle
+              checked={settings.editActivity}
+              onChange={(editActivity) => update({ editActivity })}
+              label={t('editActivity.label')}
+            />
+          </Row>
+          <Row label={t('editPulse.label')} hint={t('editPulse.hint')}>
+            <Toggle
+              checked={settings.editPulse}
+              onChange={(editPulse) => update({ editPulse })}
+              label={t('editPulse.label')}
+            />
+          </Row>
+        </Group>
+
         <Group title={t('groups.sessionRecords')}>
           <Row label={t('journal.label')} hint={t('journal.hint')}>
             <Toggle

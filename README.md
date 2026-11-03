@@ -380,7 +380,8 @@ tab arrives as the path the distro can open — `/mnt/c/…`, not `C:\…`.
 ![Claude Code's tab beside the review drawer: the changed files on the right, and one file's diff, syntax-highlighted, between them](docs/review.jpg)
 
 `⌘G`, or `Ctrl+Shift+G`, opens the review drawer on the right. It is a
-navigator, in two views over the same directory, with commit, pull and push
+navigator, in three views over the same directory — two with **Activity**
+switched off — with commit, pull and push
 under the first:
 
 **Changes** lists every file that differs, with its status letter and line
@@ -399,7 +400,28 @@ Explorer or your file manager, copy its path, or copy it relative to the
 directory. The Menu key and `⇧F10` open the same menu from the keyboard, and
 the arrows walk it.
 
-Picking anything from either view opens it in a **column between the terminal
+**Activity** is a timeline of the edits in the tab's working tree, newest
+first: when, which
+file, and how many lines. Open an entry to see the lines that one edit wrote —
+not the file's whole diff, which is a click further.
+
+While an agent works, its edits show as they land. A card slides in over the
+terminal's top-right corner for each file it touches, with the file's name,
+`+N −M` and the first lines it wrote; hover to hold it, click it for the diff
+(or the file, for an edit that took it back to its last commit).
+In Changes and Files, the row of a file just edited flashes — in Files with
+the edit's `+N −M` beside it — and a closed folder flashes for the file inside
+it. A
+second edit to a file that was already changed shows only its own lines,
+where the earlier ones are known; otherwise it shows its counts. The tree is
+read while the tab is working, and what it shows is the working tree's, not
+the agent's — a file you save in your own editor shows too, by the time the
+tab next works, and a commit shows nothing. Each of the three can be turned off under **Live
+edits** in Settings. With the Warp plugin for Claude Code installed, a card
+appears the moment an editing tool (Edit, Write) finishes; any other edit,
+such as one made through a shell command, within one status refresh.
+
+Picking anything from any view opens it in a **column between the terminal
 and the drawer** — never over the terminal, because reading what an agent
 changed and typing the next instruction are the same activity. A changed file
 opens as a diff: two line-number gutters, added and removed lines tinted,
@@ -434,7 +456,7 @@ Two limits worth knowing before they surprise you: a file or diff longer than
 a line saying how many there were, because drawing a quarter of a million
 elements locks the window; and a symlink is not read
 through, so a linked file shows a refusal rather than its target. **Re-read**
-refreshes both views, the file tree included.
+refreshes Changes and Files, the file tree included.
 
 **Markdown you opened from the tree opens rendered**: headings, tables, lists
 and quotes, fenced code highlighted by Shiki, and ```mermaid diagrams drawn as
@@ -852,6 +874,8 @@ Clicks / Scrollback control is the way to change a tab that is already open.
   are watching, whether to play a sound.
 - **Git** — how often to re-read status, how many commits history loads, and
   whether the footer shows the branch's pull request.
+- **Live edits** — the cards over the terminal, the Activity view, and the
+  flash on an edited file's row, each on its own switch.
 - **Session records** — whether to record what sessions print, and how long to
   keep those records.
 - **Data** — clear remembered directories, or restore every default.

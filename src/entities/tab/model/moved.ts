@@ -27,7 +27,11 @@ export function parseMovedTab(input: unknown): Tab | null {
     historyOpen: raw.historyOpen === true,
     reviewOpen: raw.reviewOpen === true,
     journalOpen: raw.journalOpen === true,
-    reviewView: oneOf<ReviewView>(raw.reviewView, ['changes', 'files']),
+    reviewView: oneOf<ReviewView>(raw.reviewView, [
+      'changes',
+      'files',
+      'activity',
+    ]),
     findOpen: raw.findOpen === true,
     attention: raw.attention === true,
     status: oneOf<AgentStatus>(raw.status, ['unknown', 'working', 'waiting']),

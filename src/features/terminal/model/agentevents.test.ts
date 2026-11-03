@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { endsTurn, parseAgentEvent } from './agentevents'
+import { endsTurn, parseAgentEvent, wroteFile } from './agentevents'
 
 /** The payload Claude Code actually emitted, minus the `777;` identifier. */
 const stop =
@@ -27,7 +27,7 @@ test('a turn ending carries the reply, which is what a notification reads', () =
 test('an event with nothing to carry is still recognised', () => {
   expect(
     parseAgentEvent(
-      'notify;warp://cli-agent;{"event":"tool_complete","tool_name":"Bash"}',
+      'notify;warp://cli-agent;{"event":"tool_complete","session_id":"x"}',
     ),
   ).toEqual({ name: 'tool_complete' })
 })
@@ -101,4 +101,16 @@ test('only the end of a turn hands control back', () => {
     const event = parseAgentEvent(`notify;warp://cli-agent;{"event":"${name}"}`)
     expect(event && endsTurn(event)).toBe(false)
   }
+})
+
+test('a finished Edit says a file was written; a finished Bash does not', () => {
+  const after = (tool: string) =>
+    parseAgentEvent(
+      `notify;warp://cli-agent;${JSON.stringify({ event: 'tool_complete', tool_name: tool })}`,
+    )
+  const edit = after('Edit')
+  expect(edit?.tool).toBe('Edit')
+  expect(edit && wroteFile(edit)).toBe(true)
+  const bash = after('Bash')
+  expect(bash && wroteFile(bash)).toBe(false)
 })

@@ -346,13 +346,20 @@ const PATHSPEC_OVERRIDES: [&str; 4] = [
 ];
 
 /// `git -C <cwd>`, answering about `cwd` and nothing an environment names.
+///
+/// `core.fsmonitor` is switched off because it names a program git runs on
+/// every `status` and `diff`, and the footer polls `status` with no click: an
+/// agent able to write `.git/config` could otherwise run anything as the user.
 pub(crate) fn git_in(cwd: &Path) -> std::process::Command {
     let mut command = platform::command("git");
     without_repository_overrides(&mut command);
     for name in PATHSPEC_OVERRIDES {
         command.env_remove(name);
     }
-    command.arg("-C").arg(cwd);
+    command
+        .args(["-c", "core.fsmonitor=false"])
+        .arg("-C")
+        .arg(cwd);
     command
 }
 

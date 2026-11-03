@@ -17,7 +17,7 @@ import { MarkdownView } from './MarkdownView'
 import { TableView } from './TableView'
 import { Icon } from '../../../shared/ui/Icon'
 import { DragEdge } from '../../../shared/ui/DragEdge'
-import { fileIcon } from '../../../shared/ui/fileicon'
+import { FileTypeIcon } from '../../../shared/ui/FileTypeIcon'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
 import { isImagePath } from '../../../shared/lib/imagepaths'
 import { useKeyChange } from '../../../shared/lib/useKeyChange'
@@ -113,7 +113,6 @@ export function FileViewer({
   const commit = viewed.kind === 'diff' ? viewed.commit : undefined
   // A commit's line numbers are that commit's, not the file on disk's.
   const editor = commit ? null : opener
-  const icon = fileIcon(path)
   // An image has no diff worth reading: what the agent did to it is visible
   // only by looking at it.
   const asDiff = viewed.kind === 'diff' && !isImagePath(path)
@@ -154,7 +153,7 @@ export function FileViewer({
         of sight, leaving Escape the only way back.
       */}
       <header className="flex h-8 flex-none items-center gap-1.5 overflow-hidden border-b border-line bg-chrome px-2">
-        <Icon name={icon.name} className={`size-3.5 flex-none ${icon.tone}`} />
+        <FileTypeIcon path={path} />
         <span className="min-w-0 shrink truncate text-xs text-ink">
           {basename(path)}
         </span>

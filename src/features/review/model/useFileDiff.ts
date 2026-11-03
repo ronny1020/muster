@@ -20,7 +20,7 @@ export interface FileDiffRequest {
   revision: string
   /** One commit's own change, read instead of the comparison with `base`. */
   commit?: string
-  /** With `commit`: the name it renamed the file from. */
+  /** The name a rename came from, in `commit` or the working tree. */
   oldPath?: string
 }
 

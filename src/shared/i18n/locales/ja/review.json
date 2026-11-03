@@ -3,6 +3,7 @@
     "resize": "レビューパネルの幅を変更",
     "changes": "変更",
     "files": "ファイル",
+    "activity": "アクティビティ",
     "reread": "再読み込み",
     "close": "レビューを閉じる",
     "hiddenFiles": "隠しファイル",
@@ -92,5 +93,19 @@
     "reading": "履歴を読み込み中…",
     "empty": "このファイルを変更したコミットはありません。",
     "commitDiff": "{{short}} — {{subject}}"
+  },
+  "edits": {
+    "cards": "リアルタイムの編集",
+    "open": "{{path}} の差分を開く",
+    "dismiss": "閉じる",
+    "more_other": "ほか {{count}} 件の編集",
+    "moreLines_other": "ほか {{count}} 行",
+    "created": "新規",
+    "deleted": "削除",
+    "reverted": "元に戻した",
+    "none": "まだ編集はありません。このタブが作業している間に作業ツリーが変わると、ここに表示されます。",
+    "noLines": "この編集は行数しかわかりません。",
+    "openDiff": "差分全体を開く",
+    "summary_other": "最近の編集 {{count}} 件"
   }
 }

@@ -3,6 +3,7 @@
     "resize": "调整审阅面板宽度",
     "changes": "变更",
     "files": "文件",
+    "activity": "活动",
     "reread": "重新读取",
     "close": "关闭审阅",
     "hiddenFiles": "隐藏文件",
@@ -92,5 +93,19 @@
     "reading": "正在读取历史…",
     "empty": "没有任何提交更改过此文件。",
     "commitDiff": "{{short}} — {{subject}}"
+  },
+  "edits": {
+    "cards": "实时的编辑",
+    "open": "打开 {{path}} 的差异",
+    "dismiss": "关闭",
+    "more_other": "还有 {{count}} 次编辑",
+    "moreLines_other": "还有 {{count}} 行",
+    "created": "新增",
+    "deleted": "删除",
+    "reverted": "还原",
+    "none": "暂无编辑。此标签页工作时工作树一有变更，就会出现在这里。",
+    "noLines": "这次编辑只知道行数。",
+    "openDiff": "打开完整差异",
+    "summary_other": "最近 {{count}} 次编辑"
   }
 }

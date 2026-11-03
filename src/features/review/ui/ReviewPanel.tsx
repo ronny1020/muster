@@ -3,15 +3,19 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { changeTotals, sortChanges } from '../model/changes'
+import { type Edit, latestByPath } from '../model/edits'
 import { useChanges } from '../model/useChanges'
 import type { ReviewView } from '../../../entities/tab/model/deck'
 import type { Viewed } from '../model/viewed'
 import { ChangedFiles } from './ChangedFiles'
 import { FileTree } from './FileTree'
+import { EditActivity } from './EditActivity'
+import { NO_PULSES } from './Pulse'
 import { DragEdge } from '../../../shared/ui/DragEdge'
 import { Icon } from '../../../shared/ui/Icon'
 import type { IconName } from '../../../shared/ui/icons'
 import { usePanelWidth } from '../../../shared/lib/usePanelWidth'
+import { useKeyChange } from '../../../shared/lib/useKeyChange'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import {
@@ -40,6 +44,16 @@ export interface ReviewPanelProps {
   /** Types a path into the session, for handing a file to the agent. */
   onSend: (path: string) => void
   onClose: () => void
+  /** The tab's live edits, newest first. */
+  edits: Edit[]
+  /**
+   * Whether the Activity view is offered. `view` is never `'activity'` while
+   * it is not: `Pane` maps it first, so the status bar agrees with the panel.
+   */
+  activity: boolean
+  /** Whether a just-edited row pulses. */
+  pulse: boolean
+  onOpenEdit: (edit: Edit) => void
 }
 
 /** A list, not a reader: wide enough for paths and their counts. */
@@ -68,18 +82,35 @@ export function ReviewPanel({
   onOpenFile,
   onSend,
   onClose,
+  edits,
+  activity,
+  pulse,
+  onOpenEdit,
 }: ReviewPanelProps) {
   const { t } = useTranslation('review')
   const { t: chrome } = useTranslation('chrome')
   const [showHidden, setShowHidden] = useState(false)
   const size = usePanelWidth('muster.reviewWidth', DEFAULT_WIDTH)
+  const newest = edits[0]?.id ?? 0
+  /**
+   * The newest edit when the drawer opened, the view switched or the flash
+   * was switched on: only edits after it flash, or each of those would replay
+   * every flash so far. Held here rather than in each list, because the
+   * Changes list mounts only once it has a row — and by then the edit it
+   * should flash for would already count as old.
+   */
+  const [since, setSince] = useState(newest)
+  useKeyChange([pulse, view], () => setSince(newest))
 
   // Only the Changes view shows a line count, and only asking for one reads
   // the new files — so opening the drawer on the tree touches nothing.
+  // The newest edit is in the revision because the tree's own counts miss a
+  // second edit to a changed file, and the row that flashes for it should
+  // show its new `+N −M`.
   const { changes, loading, reload } = useChanges(
     cwd,
     base,
-    revision,
+    `${revision}:${newest}`,
     view === 'changes',
   )
   /**
@@ -92,6 +123,13 @@ export function ReviewPanel({
     [changes],
   )
   const root = changes?.root ?? cwd
+  const pulses = useMemo(
+    () =>
+      pulse
+        ? { latest: latestByPath(edits, (edit) => edit.path), since, newest }
+        : NO_PULSES,
+    [edits, pulse, since, newest],
+  )
   const totals = changeTotals(files)
   // A commit from the history is not any row of the working tree's.
   const reading = viewed?.kind === 'diff' && viewed.commit ? null : viewed
@@ -124,15 +162,26 @@ export function ReviewPanel({
           active={view === 'files'}
           onClick={() => onView('files')}
         />
+        {activity && (
+          <Tab
+            icon="edit_note"
+            label={t('panel.activity')}
+            active={view === 'activity'}
+            onClick={() => onView('activity')}
+          />
+        )}
         <span className="flex-1" />
-        <IconButton
-          icon="refresh"
-          label={t('panel.reread')}
-          onClick={() => {
-            reload()
-            setAsked((count) => count + 1)
-          }}
-        />
+        {/* Activity reads as edits land; there is nothing to re-read. */}
+        {view !== 'activity' && (
+          <IconButton
+            icon="refresh"
+            label={t('panel.reread')}
+            onClick={() => {
+              reload()
+              setAsked((count) => count + 1)
+            }}
+          />
+        )}
         <IconButton icon="close" label={t('panel.close')} onClick={onClose} />
       </header>
 
@@ -152,6 +201,13 @@ export function ReviewPanel({
               })}
             </span>
           </>
+        ) : view === 'activity' ? (
+          <span
+            role="status"
+            className="flex-1 truncate text-[10px] text-faint"
+          >
+            {t('edits.summary', { count: edits.length })}
+          </span>
         ) : (
           <>
             <button
@@ -198,6 +254,7 @@ export function ReviewPanel({
           ) : (
             <ChangedFiles
               files={files}
+              pulses={pulses}
               selected={selected}
               onSelect={(file: ChangedFile) => onOpenDiff(file, root)}
             />
@@ -213,9 +270,19 @@ export function ReviewPanel({
             root={cwd}
             revision={`${revision}:${asked}`}
             showHidden={showHidden}
+            pulses={pulses}
+            // Only once git has answered: before that `root` is the session's
+            // directory, which may be a folder inside the repository, and its
+            // relative paths would match the wrong rows.
+            repoRoot={changes?.root ?? ''}
             selected={selected}
             onSelect={(entry) => onOpenFile(entry.path)}
           />
+        </div>
+      )}
+      {view === 'activity' && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <EditActivity edits={edits} onOpen={onOpenEdit} />
         </div>
       )}
     </aside>

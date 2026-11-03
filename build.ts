@@ -1,6 +1,8 @@
 /** Production bundle for the Tauri webview: index.html -> dist/. */
 import tailwind from 'bun-plugin-tailwind'
 
+import fileIcons from './fileicons.plugin'
+
 const result = await Bun.build({
   entrypoints: ['./index.html'],
   outdir: './dist',
@@ -15,11 +17,18 @@ const result = await Bun.build({
   splitting: true,
   minify: true,
   sourcemap: 'linked',
-  plugins: [tailwind],
+  plugins: [tailwind, fileIcons],
 })
 
 if (!result.success) {
   for (const log of result.logs) console.error(log)
+  process.exit(1)
+}
+
+// Without `fileicons.plugin.ts` the build reads `materialicons.ts`'s empty
+// stand-in, ships no icons and still succeeds — and no test runs this build.
+if (!result.outputs.some((output) => output.path.endsWith('.svg'))) {
+  console.error('no file icons bundled: is fileicons.plugin.ts registered?')
   process.exit(1)
 }
 

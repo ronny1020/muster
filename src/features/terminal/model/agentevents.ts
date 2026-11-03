@@ -13,6 +13,8 @@ export interface AgentEvent {
    * The agent's last reply, on a turn's end. It becomes the notification body.
    */
   response?: string
+  /** The tool a `tool_complete` reports, such as `Edit` or `Bash`. */
+  tool?: string
 }
 
 const NAMES = [
@@ -76,13 +78,28 @@ export function parseAgentEvent(data: string): AgentEvent | null {
   ) as Record<string, unknown>
   if (!isEventName(fields.event)) return null
 
-  // Only `response` is carried: the other fields the payload holds have no
-  // consumer, and parsing what nothing reads is surface with a cost.
+  // Only `response` and `tool_name` are carried: the other fields the payload
+  // holds have no consumer, and parsing what nothing reads is surface with a
+  // cost.
   const event: AgentEvent = { name: fields.event }
   const response = capped(fields.response)
   if (response) event.response = response
+  const tool = capped(fields.tool_name)
+  if (tool) event.tool = tool
   return event
 }
+
+/** Claude Code's tools that write a file; `Bash` may too, but says nothing. */
+const WRITING_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
+/**
+ * Whether the event says a file was just written, which is the moment to
+ * look at the tree rather than wait for the next poll.
+ */
+export const wroteFile = (event: AgentEvent) =>
+  event.name === 'tool_complete' &&
+  event.tool !== undefined &&
+  WRITING_TOOLS.has(event.tool)
 
 /**
  * Whether the event hands control back to the user: a turn that finished, or

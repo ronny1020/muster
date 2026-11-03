@@ -57,6 +57,20 @@ to write its workspace and not the network can plant a hook, set
 `.git/hooks`, `git config core.hooksPath` and `git remote -v` before pressing
 them in a repository an agent has had unsupervised.
 
+What git runs on its own is narrower, but not nothing. The footer's status
+poll and the live-edit reader run git with no click at all, so every git the
+app runs itself has `core.fsmonitor` switched off and every diff ignores
+`diff.external` and textconv drivers — programs a repository's `.git/config`
+could otherwise name and git would run as you. Three such programs still run
+with no click: a clean filter the repository assigns to its files runs when
+`status` or `diff` reads a file that has just changed; a `post-index-change`
+hook runs when `status` refreshes the index; and with `log.showSignature` set,
+the history drawer's `log` runs the repository's `gpg.program` for every
+signed commit. Until those are closed, treat a tab open on a repository an
+agent has had unsupervised the way the buttons above ask you to: read
+`.git/config`'s `filter.*`, `log.*` and `gpg.*` entries and `.git/hooks`
+first.
+
 `GIT_DIR`, `GIT_INDEX_FILE` and the other variables that point git at a
 repository are removed from every git the app runs, so none of them can be
 aimed at a repository other than the tab's by an environment the app inherited.
@@ -143,6 +157,11 @@ development build and not something a user runs:
   half is pinned to an immutable commit and its npm half to an exact version,
   for the reason `Cargo.toml` gives about anything that injects script into
   this app's webview.
+- `material-icon-theme` is pinned to an exact version for the same reason: its
+  `generateManifest` runs inside every build, every test run and the dev
+  server (`fileicons.plugin.ts`), with the bundler's rights over what ships. Dependabot opens each bump as a pull
+  request of its own rather than in the weekly group, so it is read alone. Its
+  SVGs reach the window only as `<img>`, which runs nothing they carry.
 
 ## What a session may put on the clipboard
 
@@ -509,11 +528,13 @@ properties hold, and each has a test:
   itself and nothing else, so the diff you are shown is the diff of the file you
   clicked.
 - **Nothing is read through a symlink**, including the line count taken for a
-  new file, which happens whenever the review drawer is showing the changes.
+  new file, which happens whenever the review drawer is showing the changes,
+  and a new file's contents, which the live-edit surfaces read while a tab is
+  working.
   The final component is refused by the open itself (`O_NOFOLLOW`, so it cannot
   be raced), and for the reads that
-  happen without a click, every directory between the repository root and the
-  file is checked too — a committed `docs -> ~/.ssh` would otherwise make
+  happen without a click — and every new file's patch, clicked or not — every
+  directory between the repository root and the file is checked too — a committed `docs -> ~/.ssh` would otherwise make
   everything under it look repo-relative. The root may itself sit under a link;
   that is not refused, because it is the tree you opened.
 - **A document's images stay inside its own folder.** A markdown file cannot

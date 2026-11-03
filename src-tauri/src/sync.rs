@@ -84,7 +84,17 @@ fn commit(cwd: &str, message: &str, op: &str) -> Result<String, String> {
     let path = Path::new(&cwd);
     let running = Running::new(op, path);
     // `--quiet` exits 1 when something is staged, and 0 when nothing is.
-    let stages_everything = git(path, &["diff", "--cached", "--quiet"]).is_some();
+    let stages_everything = git(
+        path,
+        &[
+            "diff",
+            "--cached",
+            "--quiet",
+            crate::review::NO_DRIVERS[0],
+            crate::review::NO_DRIVERS[1],
+        ],
+    )
+    .is_some();
     let committed = (|| {
         if stages_everything {
             // A worktree nested in the tree would be staged as an embedded
