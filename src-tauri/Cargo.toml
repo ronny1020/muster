@@ -3,7 +3,7 @@ name = "muster"
 version = "0.7.0"
 description = "Tabbed desktop runner for AI agent CLIs"
 edition = "2021"
-rust-version = "1.90"
+rust-version = "1.95"
 license = "Apache-2.0"
 
 [lib]
@@ -20,7 +20,7 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9"
-parking_lot = "0.12"
+parking_lot = "0.13"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 base64 = "0.23.1"
