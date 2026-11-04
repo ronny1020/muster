@@ -11,7 +11,11 @@ const TONE = {
   del: 'bg-[#33211f] text-[#e8b0aa]',
 } as const
 
-/** The lines an edit wrote, each tinted and marked, `limit` at most. */
+/**
+ * The lines an edit wrote, each tinted and marked, `limit` at most.
+ *
+ * `relative`: see "A box that clips must be positioned" in the root AGENTS.md.
+ */
 export function EditLines({
   lines,
   limit,
@@ -27,7 +31,7 @@ export function EditLines({
       // The terminal's family at a glance size: a card's lines are a glimpse
       // of the same code the output beside it shows.
       style={{ fontFamily: settings.fontFamily }}
-      className="overflow-hidden text-[11px] leading-4"
+      className="relative overflow-hidden text-[11px] leading-4"
     >
       {shown.map((line, index) => {
         const kind = line.kind === 'del' ? 'del' : 'add'

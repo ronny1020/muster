@@ -29,7 +29,8 @@ updates:
         exclude-patterns: ['material-icon-theme']
         update-types: [minor, patch]
     # An xterm addon's 0.x minor is the build for xterm's next major, so it
-    # moves with the core by hand — see src/features/terminal/AGENTS.md.
+    # moves with the core by hand — see src/features/terminal/AGENTS.md, which
+    # also covers the webgl patch that a version change leaves behind.
     ignore:
       - dependency-name: '@xterm/addon-*'
         update-types: ['version-update:semver-minor']

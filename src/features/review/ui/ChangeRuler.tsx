@@ -119,10 +119,11 @@ export function ChangeRuler({
   if (bands.length === 0) return null
   return (
     // Inert to the pointer: it sits over the scrollbar's own lane, and a drag
-    // that started here would be a drag the bar never sees.
+    // that started here would be a drag the bar never sees. `z-10` keeps it
+    // above its scroller, which a positioned one would otherwise paint over.
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 right-0 w-2.5"
+      className="pointer-events-none absolute inset-y-0 right-0 z-10 w-2.5"
     >
       {bands.map(({ top, height, tone }, index) => (
         <div

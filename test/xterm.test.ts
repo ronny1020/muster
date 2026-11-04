@@ -72,3 +72,12 @@ test.each([
   expect(reaching).toContain(addon)
   expect(coreReads(bundle(addon))).toContain(field)
 })
+
+test('webgl clears the last cell of a ligature', () => {
+  // xterm.js#5209, from `patches/`: the loop bound reaches the last cell and
+  // the counter steps back after (see the webgl patch invariant in
+  // src/features/terminal/AGENTS.md). Matched in minified source, like the scan above.
+  expect(bundle('addon-webgl')).toMatch(
+    /for\([\w$]+=this\._workCell,([\w$]+)\+\+;\1<=[\w$]+;\1\+\+\)[^}]*;\1--\}/,
+  )
+})

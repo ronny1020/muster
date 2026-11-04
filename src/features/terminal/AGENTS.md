@@ -84,6 +84,18 @@ missing, so the test above stays green while the grid can fit a column short.
 `.github/dependabot.yml` therefore ignores the addons' minor updates; they move
 with `@xterm/xterm`'s major, by hand.
 
+**The webgl addon carries a patch keyed to its version.**
+`patches/@xterm%2Faddon-webgl@0.18.0.patch`, listed under
+`patchedDependencies` in `package.json`, is xterm.js#5209's fix to the loop
+that blanks a ligature's trailing cells. Unpatched, the loop stops one cell
+short and the last cell keeps its earlier glyph, so `=>` draws as `=ʒ`. Bun
+installs any other version unpatched without a word, so `test/xterm.test.ts`
+fails when the installed bundle lacks the fix. Bun also checks neither a
+patch's removed lines nor its context — the hunk's position alone decides what
+is replaced — so review an edited patch by diffing the installed files against
+the published package, not by reading the patch. On the move to xterm 6, whose
+`0.19.0` has the fix, delete the patch and its entry.
+
 **Ligatures are activated with the Local Font Access API hidden.** The addon
 reads a font's real ligature set through `queryLocalFonts` where the browser has
 it and falls back to a fixed programming set where it does not — and WebView2

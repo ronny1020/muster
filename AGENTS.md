@@ -345,6 +345,15 @@ does nothing. Put the overflow on the element that has the height — the
 `min-h-0 flex-1` box that the drawer's list and the reader both are — never on
 both it and a child.
 
+**A box that clips must be positioned when anything inside it is absolute.**
+An `sr-only` word is `position: absolute`, and overflow clips only what is
+positioned against the box or something inside it — so a diff row's "added
+line", anchored to the `relative` panel around the scroll instead, escaped it
+and made the document thousands of pixels tall. The viewport is
+`overflow: hidden`, so no wheel scrolls it, but `scrollIntoView` does: it slid
+the whole window up, tab strip and all, with no way to scroll back. `relative`
+on the diff's scroll box and on `EditLines` is what holds them.
+
 **An overlay that closes on Escape must claim the key, not share it.** Several
 surfaces listen for Escape on their own, and they stack: the file column, the
 image overlay, and a width drag in progress. Listeners on `window` all fire, so
@@ -364,6 +373,7 @@ closing another tab's panel.
 - `allowTransparency` is set once and never changed.
 - Dispose every addon before the terminal, and hold a handle to each so you can.
 - Three addons are pinned exactly — webgl, ligatures and serialize — and the rest keep ranges.
+- The webgl addon carries a patch keyed to its version.
 - Ligatures are activated with the Local Font Access API hidden.
 - Cell widths are Unicode 11's, because that is what the CLIs lay out with.
 - `OSC 52` writes the clipboard and never reads it.
@@ -695,7 +705,10 @@ crashes on launch passes every check this repository has.
 ## Scope
 
 Change this repository only. If a fix seems to require editing a dependency or
-another repo, stop and say so.
+another repo, stop and say so. The one way a dependency's code changes from
+here is a `bun patch` in `patches/` carrying a fix upstream already made, with
+a test that fails when it is gone — the webgl patch invariant in
+`src/features/terminal/AGENTS.md` is the example.
 
 These are the seams for common asks:
 

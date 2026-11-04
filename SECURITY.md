@@ -163,6 +163,15 @@ development build and not something a user runs:
   request of its own rather than in the weekly group, so it is read alone. Its
   SVGs reach the window only as `<img>`, which runs nothing they carry.
 
+## A dependency patched at install
+
+`@xterm/addon-webgl` ships in every release and runs in the webview, and it
+carries a `bun patch` from `patches/`: upstream's own fix for ligatures,
+applied to the version this app pins. The patch is code in the window that
+owns every session, so it is reviewed like source — how is in the webgl patch
+invariant in `src/features/terminal/AGENTS.md`, and why the pin is exact in the
+one before it.
+
 ## What a session may put on the clipboard
 
 `OSC 52` is how a program in a terminal copies — Claude Code's copy-on-select

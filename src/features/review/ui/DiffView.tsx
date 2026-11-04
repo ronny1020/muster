@@ -126,8 +126,9 @@ export function DiffView({
         style={codeStyle(settings, metrics)}
         /* Tailwind's preflight gives `code` the theme's mono stack, which beats
            the family inherited from here — so the font chosen for the terminal
-           would be ignored by exactly the elements that show code. */
-        className="min-h-0 flex-1 overflow-auto select-text [&_code]:font-[inherit]"
+           would be ignored by exactly the elements that show code. `relative`:
+           see "A box that clips must be positioned" in the root AGENTS.md. */
+        className="relative min-h-0 flex-1 overflow-auto select-text [&_code]:font-[inherit]"
       >
         {budget.hunks.map((hunk, index) => (
           <HunkRows
