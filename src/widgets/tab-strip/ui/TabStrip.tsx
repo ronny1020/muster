@@ -530,11 +530,11 @@ export function stripPlaceAt(x: number) {
   const headers = Array.from(
     document.querySelectorAll<HTMLElement>('header[data-column]'),
   )
+  // The backend counts a margin around the strips as theirs, so `x` can lie
+  // before the first header or past the last.
   const header =
-    headers.find((entry) => {
-      const box = entry.getBoundingClientRect()
-      return x >= box.left && x < box.right
-    }) ?? headers.at(-1)
+    headers.find((entry) => x < entry.getBoundingClientRect().right) ??
+    headers.at(-1)
   if (!header) return { column: 0, index: 0 }
   return { column: Number(header.dataset.column), index: indexIn(header, x) }
 }
