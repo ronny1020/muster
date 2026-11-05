@@ -125,9 +125,7 @@ type ShellSink = (event: ShellEvent, at: Position) => void
  * here — see `TerminalView` — and hands its events over through `sink`, so no
  * boundary can arrive before this is listening.
  *
- * Gated on `active` for the reason every timer and scan in a pane is: each
- * tab stays mounted, and reading the cursor on every write in a tab nobody is
- * looking at buys nothing.
+ * Gated on `active`: an offer is for the prompt being typed at.
  */
 export function useShellBlocks({
   term,

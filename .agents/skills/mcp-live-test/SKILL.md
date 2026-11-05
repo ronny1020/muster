@@ -156,8 +156,12 @@ Each of these produced a wrong measurement that read as a bug in the app.
 **Every pane stays mounted, so scope every query to the visible one.** A
 hidden tab's buttons are still in the DOM and still answer `querySelector`.
 Pressing one while measuring the visible viewport produces movement that
-belongs to neither. Filter by `getClientRects().length > 0` and resolve the
-pane from the visible `.xterm-viewport` upward.
+belongs to neither. With columns several panes are visible at once, so
+visibility is not enough: resolve the pane through its column —
+`section[data-column="N"]` whose `display` is not `none` is the tab column `N`
+shows, and `header[data-column="N"]` is that column's strip, its
+`aria-selected` tab the same one. The column with the keyboard is the one
+whose selected tab draws the accent bar.
 
 **`element.click()` is not reliable here; the React handler is.** Some
 controls answer it, some do not, and the tab strip is on `onMouseDown` so a

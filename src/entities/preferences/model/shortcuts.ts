@@ -6,6 +6,7 @@ export type ShortcutAction =
   | { type: 'toggleHistory' }
   | { type: 'toggleReview' }
   | { type: 'find' }
+  | { type: 'splitRight' }
   | { type: 'closeActive' }
   | { type: 'cycle'; step: number }
   | { type: 'moveActive'; step: number }
@@ -77,6 +78,8 @@ const LETTER_ACTIONS: Record<string, ShortcutAction> = {
   // `G` for the same reason VS Code uses it: this is the source-control view.
   g: { type: 'toggleReview' },
   f: { type: 'find' },
+  // `D` as in iTerm2, where it splits the window.
+  d: { type: 'splitRight' },
 }
 
 /** The same bindings written out, for tooltips and docs. */
@@ -90,6 +93,7 @@ export function shortcutLabels(isMac: boolean) {
     toggleHistory: letter('Y'),
     toggleReview: letter('G'),
     find: letter('F'),
+    splitRight: letter('D'),
     openSettings: isMac ? '⌘,' : 'Ctrl+,',
     previous: isMac ? '⌘⇧[' : 'Ctrl+PageUp',
     next: isMac ? '⌘⇧]' : 'Ctrl+PageDown',

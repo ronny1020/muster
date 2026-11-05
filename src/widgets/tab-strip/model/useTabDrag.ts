@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react'
 
+import type { Point } from '../../../shared/ipc'
 import {
   clampLeft,
   dropIndex,
@@ -28,6 +29,8 @@ interface Drag {
   settling: boolean
   /** Pulled far enough off the strip that releasing would take it out. */
   torn: boolean
+  /** The window's only tab, which stays drawn: its window is what moves. */
+  lone: boolean
 }
 
 /** Where a torn-off tab was held, for placing the window it lands in. */
@@ -51,6 +54,23 @@ export interface TabDragHandlers {
    * `grab` places what follows the pointer.
    */
   onTornChange: (id: string, torn: boolean, grab: Grab) => void
+  /**
+   * Where a torn-off tab is over, so the window can show where it would land
+   * among its own columns; `null` once it is back or released.
+   */
+  onHover: (id: string, point: Point | null) => void
+  /**
+   * Released off the strip but inside the window. `true` means the window
+   * placed it — in another column — and nothing is torn off.
+   */
+  onDrop: (id: string, point: Point) => boolean
+}
+
+export interface TabDragOptions extends TabDragHandlers {
+  /** The column's whole header: leaving it sideways takes the tab out. */
+  bounds: RefObject<HTMLElement | null>
+  /** The window's only tab, whose drag carries the window, as in Chrome. */
+  lone: boolean
 }
 
 /**
@@ -68,7 +88,15 @@ export interface TabDragHandlers {
  */
 export function useTabDrag(
   strip: RefObject<HTMLElement | null>,
-  { onMove, onTearOff, onTornChange }: TabDragHandlers,
+  {
+    bounds,
+    lone,
+    onMove,
+    onTearOff,
+    onTornChange,
+    onHover,
+    onDrop,
+  }: TabDragOptions,
 ) {
   const [drag, setDrag] = useState<Drag | null>(null)
   const abandon = useRef<(() => void) | null>(null)
@@ -102,17 +130,29 @@ export function useTabDrag(
     const place = (measured: Slot[]) => {
       const was = torn
       // A window's only tab has no strip to stay in: any drag carries the
-      // window, as in Chrome.
+      // window, as in Chrome. Leaving the header sideways heads for another
+      // column.
       torn =
-        measured.length === 1 ||
-        isTornOff(list.getBoundingClientRect(), viewport(), { x, y }, was)
+        lone ||
+        isTornOff(list.getBoundingClientRect(), viewport(), { x, y }, was) ||
+        isBeside(bounds.current?.getBoundingClientRect(), x)
       if (torn !== was) onTornChange(id, torn, grab(measured))
+      onHover(id, torn ? { x, y } : null)
       const travelled = x - startX + list.scrollLeft - startScroll
       const left = clampLeft(measured, from, measured[from].left + travelled)
       // A torn-off tab is leaving, so the strip closes up behind it: the
       // others take the places they would have with it at the end.
       to = torn ? measured.length - 1 : dropIndex(measured, from, left)
-      setDrag({ id, from, to, left, slots: measured, settling: false, torn })
+      setDrag({
+        id,
+        from,
+        to,
+        left,
+        slots: measured,
+        settling: false,
+        torn,
+        lone,
+      })
     }
     const grab = (measured: Slot[]) =>
       grabOf({
@@ -152,6 +192,7 @@ export function useTabDrag(
 
     const detach = () => {
       if (torn && slots) onTornChange(id, false, grab(slots))
+      onHover(id, null)
       cancelAnimationFrame(frame)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
@@ -169,7 +210,16 @@ export function useTabDrag(
       detach()
       if (!slots) return finish()
       const left = slots[from].left + offsets(slots, from, index)[from]
-      setDrag({ id, from, to: index, left, slots, settling: true, torn: false })
+      setDrag({
+        id,
+        from,
+        to: index,
+        left,
+        slots,
+        settling: true,
+        torn: false,
+        lone,
+      })
       timer = window.setTimeout(() => {
         if (index !== from) onMove(id, index)
         finish()
@@ -179,7 +229,9 @@ export function useTabDrag(
     function onPointerUp(up: globalThis.PointerEvent) {
       if (up.pointerId !== pointerId) return
       if (!torn || !slots) return settle(to)
+      const placed = onDrop(id, { x: up.clientX, y: up.clientY })
       detach()
+      if (placed) return finish()
       void onTearOff(id, grab(slots)).finally(finish)
     }
 
@@ -246,8 +298,8 @@ function dragStyle(drag: Drag, index: number): CSSProperties {
       position: 'relative',
       zIndex: 1,
       // Gone from the strip once torn off — the label beside the pointer is
-      // the tab now. A lone tab stays: its window is what moves.
-      opacity: drag.torn && drag.slots.length > 1 ? 0 : undefined,
+      // the tab now.
+      opacity: drag.torn && !drag.lone ? 0 : undefined,
     }
   }
   const shift = offsets(drag.slots, drag.from, drag.to)[index] ?? 0
@@ -268,6 +320,10 @@ function measure(list: HTMLElement): Slot[] {
     },
   )
 }
+
+/** Whether `x` is left or right of the column's header. */
+const isBeside = (box: DOMRect | undefined, x: number) =>
+  box !== undefined && (x < box.left || x > box.right)
 
 const viewport = () => ({
   width: window.innerWidth,

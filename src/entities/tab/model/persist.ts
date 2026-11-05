@@ -1,4 +1,11 @@
-import { type Deck, type LauncherStart, newTab, startOf } from './deck'
+import {
+  type Deck,
+  arrangeDeck,
+  initialDeck,
+  type LauncherStart,
+  newTab,
+  startOf,
+} from './deck'
 import type { Backend } from '../../../shared/lib/platform'
 import { appState, setAppState } from '../../../shared/lib/appstate'
 import { windowLabel } from '../../../shared/ipc'
@@ -32,15 +39,24 @@ interface StoredDeck {
   /** One entry per tab, `null` for a tab that had nothing chosen yet. */
   tabs: (LauncherStart | null)[]
   activeIndex: number
+  /** Each tab's column, by the same index as `tabs`. */
+  columns: number[]
+  /** The indexes in `tabs` of the tab each column showed. */
+  shown: number[]
 }
 
 export function saveDeck(deck: Deck) {
   // Settings is not a workspace; it reopens from its own shortcut.
   const tabs = deck.tabs.filter((tab) => tab.content.type !== 'settings')
+  const kept = tabs.slice(0, MAX_TABS)
   const activeIndex = tabs.findIndex((tab) => tab.id === deck.activeId)
   const stored: StoredDeck = {
-    tabs: tabs.slice(0, MAX_TABS).map(startOf),
+    tabs: kept.map(startOf),
     activeIndex: activeIndex < 0 ? 0 : Math.min(activeIndex, MAX_TABS - 1),
+    columns: kept.map((tab) => tab.column),
+    shown: kept.flatMap((tab, index) =>
+      deck.shown.includes(tab.id) ? [index] : [],
+    ),
   }
   const record = JSON.stringify(stored)
   // Compared against what is stored, not a remembered string: `patch` rebuilds
@@ -60,24 +76,27 @@ export function saveDeck(deck: Deck) {
  */
 export function loadDeck(nextId: () => string): Deck {
   const starts = readStarts()
-  if (starts.tabs.length === 0) {
-    const id = nextId()
-    return { tabs: [newTab(id)], activeId: id }
-  }
-  const tabs = starts.tabs.map((start) =>
+  if (starts.tabs.length === 0) return initialDeck(nextId())
+  const tabs = starts.tabs.map((start, index) =>
     newTab(
       nextId(),
       start ? { type: 'launcher', start } : { type: 'launcher' },
+      starts.columns[index],
     ),
   )
-  return { tabs, activeId: tabs[starts.activeIndex].id }
+  // Arranged rather than taken as stored: the settings tab is never saved,
+  // so the column it was alone in comes back empty.
+  const shown: string[] = []
+  for (const index of starts.shown)
+    shown[starts.columns[index]] = tabs[index].id
+  return arrangeDeck(tabs, { activeId: tabs[starts.activeIndex].id, shown })
 }
 
 function readStarts(): StoredDeck {
   try {
     return normalizeDeck(JSON.parse(appState(storageKey()) ?? '{}'))
   } catch {
-    return { tabs: [], activeIndex: 0 }
+    return { tabs: [], activeIndex: 0, columns: [], shown: [] }
   }
 }
 
@@ -91,7 +110,15 @@ export function normalizeDeck(input: unknown): StoredDeck {
   const index = Number(raw.activeIndex)
   const activeIndex =
     Number.isInteger(index) && index >= 0 && index < tabs.length ? index : 0
-  return { tabs, activeIndex }
+  const stored = Array.isArray(raw.columns) ? raw.columns : []
+  const columns = tabs.map((_, at) => {
+    const column = Number(stored[at])
+    return Number.isInteger(column) && column >= 0 ? column : 0
+  })
+  const shown = (Array.isArray(raw.shown) ? raw.shown : []).filter(
+    (at): at is number => Number.isInteger(at) && at >= 0 && at < tabs.length,
+  )
+  return { tabs, activeIndex, columns, shown }
 }
 
 export function normalizeStart(input: unknown): LauncherStart | null {

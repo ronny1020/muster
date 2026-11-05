@@ -125,13 +125,21 @@ which is the opposite of the product. Never key a pane on the active tab.
 Nor render them in tab order. Dragging a tab reorders `deck.tabs`, and React
 answers a reordered keyed list by moving DOM nodes — a moved node loses its
 focus and its scroll position, in terminals nobody touched. `App` renders the
-panes sorted by id, which no drag changes; they are stacked, so the order
-shows nowhere.
+panes sorted by id, which no drag changes, and each pane names its own grid
+cell, so the order shows nowhere.
+
+Columns follow from the same rule. Every column's strip and every pane are
+children of one grid in `App`, and a tab's column is a field on the tab, so
+moving a tab to another column changes which cell its pane names — never its
+parent. Giving each column its own container would remount the pane on every
+move, and a remount ends the session. A pane's `active` is the tab with the
+keyboard; `shown` is the one its column draws, and what is measured off the
+screen follows that instead.
 
 The consequence, which is easy to miss: a timer or subscription in a pane runs
 in _every_ tab, forever, visible or not. `useWorkspace` already git-polls on
 that basis, at a user-set interval. Anything ticking faster — a per-second
-clock, an animation — needs to check whether its pane is active first.
+clock, an animation — needs to check whether its pane is shown first.
 
 **No `StrictMode`.** Its double-invoked effects spawn two PTYs per tab in
 development. `src/app/main.tsx` says so — leave it.
@@ -286,6 +294,16 @@ way to reach settings but the shortcut. The bar's own last item needs
 `flex-none`, and something before it needs `min-w-0`, or a long branch name
 pushes settings past the edge at the window's 620px floor.
 
+With columns there is a strip per column, and only the rightmost one reaches
+that corner, so only it draws `WindowControls` — and only the leftmost clears
+the macOS traffic lights. The split button sits beside `+` for the same
+reason settings left the strip: every column's far right is some window's
+corner the moment it becomes the last column. That holds only because the
+grid never scrolls: scrolled sideways, the strips would carry the caption
+buttons and the traffic-light inset away from the corners the OS draws them
+in. So the grid is `minmax(0, 1fr)` with its overflow hidden, and a column is
+opened only where it would still be `MIN_COLUMN_PX` wide.
+
 **A language switch re-renders; it never remounts.** Remounting the tree is
 the easy way to apply a new language, and it would end every session in the
 window — the pane invariant above. So `setLanguage` calls i18next's
@@ -368,7 +386,7 @@ closing another tab's panel.
 
 **In [`src/features/terminal/AGENTS.md`](src/features/terminal/AGENTS.md)** — the terminal:
 
-- Terminals blur when their pane hides.
+- Terminals blur when they lose the keyboard.
 - An oversized paste is caught in two places, because macOS has no third.
 - `allowTransparency` is set once and never changed.
 - Dispose every addon before the terminal, and hold a handle to each so you can.

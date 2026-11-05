@@ -159,3 +159,18 @@ test('review is on G, the key every editor gives source control', () => {
 test('a bare Ctrl+G still reaches the terminal, where readline owns it', () => {
   expect(matchShortcut(press({ key: 'g', ctrlKey: true }), false)).toBeNull()
 })
+
+test('splitting right is ⌘D on macOS and Ctrl+Shift+D elsewhere', () => {
+  expect(matchShortcut(press({ key: 'd', metaKey: true }), true)).toEqual({
+    type: 'splitRight',
+  })
+  expect(
+    matchShortcut(press({ key: 'D', ctrlKey: true, shiftKey: true }), false),
+  ).toEqual({ type: 'splitRight' })
+  expect(shortcutLabels(true).splitRight).toBe('⌘D')
+})
+
+test('a bare Ctrl+D still reaches the terminal, where it ends input', () => {
+  expect(matchShortcut(press({ key: 'd', ctrlKey: true }), false)).toBeNull()
+  expect(matchShortcut(press({ key: 'd', ctrlKey: true }), true)).toBeNull()
+})

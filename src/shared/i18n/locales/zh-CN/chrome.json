@@ -8,6 +8,9 @@
     "newTab": "新标签页",
     "newTabHint": "新标签页（{{shortcut}}）",
     "close": "关闭标签页",
+    "moveToNewColumn": "移到新的分栏",
+    "splitRight": "向右拆分",
+    "splitRightHint": "向右拆分（{{shortcut}}）",
     "moveToNewWindow": "移到新窗口",
     "exited": "已退出",
     "exited_failed": "已退出 {{code}}"

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 
 import { i18n } from '../../../shared/i18n/i18n'
 import {
+  columnTabs,
   type Deck,
   deckReducer,
   initialDeck,
@@ -302,6 +303,20 @@ test('regaining window focus reads the active tab and no other', () => {
   deck = deckReducer(deck, { type: 'attention', id: 'tab-2' })
   deck = deckReducer(deck, { type: 'seen' })
   expect(deck.tabs.map((tab) => tab.attention)).toEqual([false, true])
+})
+
+test('regaining window focus reads the tab every column shows', () => {
+  let deck = deckReducer(deckOf(3), { type: 'split', id: 'unused' })
+  for (const id of ['tab-1', 'tab-2', 'tab-3']) {
+    deck = deckReducer(deck, { type: 'attention', id })
+  }
+  deck = deckReducer(deck, { type: 'seen' })
+  expect(deck.shown).toEqual(['tab-2', 'tab-1'])
+  expect(deck.tabs.map((tab) => [tab.id, tab.attention])).toEqual([
+    ['tab-2', false],
+    ['tab-3', true],
+    ['tab-1', false],
+  ])
 })
 
 test('a tab adopted from another window arrives read, since it comes forward', () => {
@@ -686,4 +701,131 @@ test('a tab dropped onto the strip joins where it was dropped', () => {
     'tab-2',
     'tab-3',
   ])
+})
+
+/** Each column's tab ids, left to right. */
+const layout = (deck: Deck) =>
+  deck.shown.map((_, column) => columnTabs(deck, column).map((tab) => tab.id))
+
+test('splitting moves the shown tab into a new column on the right', () => {
+  const deck = deckReducer(
+    deckReducer(deckOf(3), { type: 'activate', id: 'tab-2' }),
+    { type: 'split', id: 'unused' },
+  )
+  expect(layout(deck)).toEqual([['tab-1', 'tab-3'], ['tab-2']])
+  expect(deck.activeId).toBe('tab-2')
+  // The column it left shows the tab that slid into its place.
+  expect(deck.shown).toEqual(['tab-3', 'tab-2'])
+})
+
+test("splitting a column's only tab opens a start screen in its directory", () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  deck = deckReducer(deck, { type: 'split', id: 'fresh' })
+  expect(layout(deck)).toEqual([['tab-1'], ['fresh']])
+  expect(deck.activeId).toBe('fresh')
+  const content = deck.tabs.find((tab) => tab.id === 'fresh')?.content
+  expect(content?.type === 'launcher' && content.start?.cwd).toBe('/work/repo')
+})
+
+test('a tab dragged to another column lands at the slot it was dropped on', () => {
+  let deck = deckReducer(deckOf(4), { type: 'activate', id: 'tab-4' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, {
+    type: 'moveToColumn',
+    id: 'tab-1',
+    column: 1,
+    index: 0,
+  })
+  expect(layout(deck)).toEqual([
+    ['tab-2', 'tab-3'],
+    ['tab-1', 'tab-4'],
+  ])
+  expect(deck.activeId).toBe('tab-1')
+})
+
+test('a column emptied by a move or a close goes, and the rest renumber', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  expect(layout(deck)).toEqual([['tab-3'], ['tab-2'], ['tab-1']])
+
+  // Back into the first column: the middle one is gone.
+  deck = deckReducer(deck, { type: 'moveToColumn', id: 'tab-2', column: 0 })
+  expect(layout(deck)).toEqual([['tab-3', 'tab-2'], ['tab-1']])
+
+  // Closing the focused column's only tab focuses the column beside it.
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'close', id: 'tab-1', replacementId: 'x' })
+  expect(layout(deck)).toEqual([['tab-3', 'tab-2']])
+  expect(deck.activeId).toBe('tab-2')
+})
+
+test('a split at an edge opens the new column there, shifting the rest', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-3' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, {
+    type: 'moveToColumn',
+    id: 'tab-1',
+    column: 0,
+    split: true,
+  })
+  expect(layout(deck)).toEqual([['tab-1'], ['tab-2'], ['tab-3']])
+})
+
+test('closing a background tab keeps the column showing what it showed', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-3' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'close', id: 'tab-2', replacementId: 'x' })
+  expect(deck.shown).toEqual(['tab-1', 'tab-3'])
+})
+
+test('a new tab and the digits stay within the focused column', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-3' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'open', id: 'tab-4' })
+  expect(layout(deck)).toEqual([
+    ['tab-1', 'tab-2'],
+    ['tab-3', 'tab-4'],
+  ])
+  deck = deckReducer(deck, { type: 'activateIndex', index: 0 })
+  expect(deck.activeId).toBe('tab-3')
+  deck = deckReducer(deck, { type: 'open', id: 'tab-5', column: 0 })
+  expect(layout(deck)[0]).toEqual(['tab-1', 'tab-2', 'tab-5'])
+})
+
+test('cycling walks past a column into the next, so every tab is reachable', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  // Columns: [tab-2, tab-3] then [tab-1].
+  deck = deckReducer(deck, { type: 'cycle', step: 1 })
+  expect(deck.activeId).toBe('tab-2')
+  deck = deckReducer(deck, { type: 'cycle', step: -1 })
+  expect(deck.activeId).toBe('tab-1')
+})
+
+test('reordering a tab leaves the other columns alone', () => {
+  let deck = deckReducer(deckOf(4), { type: 'activate', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'move', id: 'tab-4', index: 0 })
+  expect(layout(deck)).toEqual([['tab-4', 'tab-1', 'tab-3'], ['tab-2']])
+})
+
+test('a tab from another window joins the column and slot it was dropped on', () => {
+  let deck = deckReducer(deckOf(2), { type: 'activate', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, {
+    type: 'adopt',
+    tab: initialDeck('moved').tabs[0],
+    column: 1,
+    index: 0,
+  })
+  expect(layout(deck)).toEqual([['tab-1'], ['moved', 'tab-2']])
+  expect(deck.activeId).toBe('moved')
 })

@@ -8,6 +8,9 @@
     "newTab": "新しいタブ",
     "newTabHint": "新しいタブ（{{shortcut}}）",
     "close": "タブを閉じる",
+    "moveToNewColumn": "新しい列に移動",
+    "splitRight": "右に分割",
+    "splitRightHint": "右に分割（{{shortcut}}）",
     "moveToNewWindow": "新しいウィンドウに移動",
     "exited": "終了",
     "exited_failed": "終了 {{code}}"

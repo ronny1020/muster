@@ -5,7 +5,7 @@ import { type BellContext, decideBellResponse } from './notify'
 const context = (overrides: Partial<BellContext> = {}): BellContext => ({
   enabled: true,
   onlyWhenUnfocused: true,
-  tabActive: false,
+  tabShown: false,
   windowFocused: false,
   lastNotifiedAt: null,
   now: 100_000,
@@ -21,14 +21,14 @@ test('a bell on a background tab notifies and marks the tab', () => {
 
 test('nothing fires while the user is watching that very tab', () => {
   const response = decideBellResponse(
-    context({ tabActive: true, windowFocused: true }),
+    context({ tabShown: true, windowFocused: true }),
   )
   expect(response).toEqual({ attention: false, notify: false })
 })
 
 test('an active tab in an unfocused window still notifies', () => {
   expect(
-    decideBellResponse(context({ tabActive: true, windowFocused: false })),
+    decideBellResponse(context({ tabShown: true, windowFocused: false })),
   ).toEqual({
     attention: true,
     notify: true,
@@ -37,7 +37,7 @@ test('an active tab in an unfocused window still notifies', () => {
 
 test('a focused window on another tab still notifies', () => {
   expect(
-    decideBellResponse(context({ tabActive: false, windowFocused: true })),
+    decideBellResponse(context({ tabShown: false, windowFocused: true })),
   ).toEqual({
     attention: true,
     notify: true,
@@ -53,7 +53,7 @@ test('turning notifications off keeps the tab mark', () => {
 
 test('dropping the unfocused-only rule notifies even while watching', () => {
   const response = decideBellResponse(
-    context({ onlyWhenUnfocused: false, tabActive: true, windowFocused: true }),
+    context({ onlyWhenUnfocused: false, tabShown: true, windowFocused: true }),
   )
   expect(response).toEqual({ attention: false, notify: true })
 })
