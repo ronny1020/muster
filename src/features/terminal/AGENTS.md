@@ -5,10 +5,11 @@ every invariant, are in the root [AGENTS.md](/AGENTS.md); read that first.
 
 Each of these was a real bug. None of them fail loudly.
 
-**Terminals blur when their pane hides.** A hidden pane keeps DOM focus in
-xterm's helper textarea, which then swallows typing meant for the tab now on
-screen. `TerminalView` calls `blur()` on deactivation; the launcher claims focus
-when it comes forward.
+**Terminals blur when they lose the keyboard.** A terminal whose tab is no
+longer the active one — hidden, or still on screen in another column — keeps
+DOM focus in xterm's helper textarea, which then swallows typing meant for the
+tab that has the keyboard. `TerminalView` calls `blur()` when its tab stops
+being active; the launcher claims focus when it comes forward.
 
 **An oversized paste is caught in two places, because macOS has no third.**
 `Cmd+V` is a native menu accelerator, so `attachCustomKeyEventHandler` never
@@ -129,9 +130,10 @@ query. xterm 5.5 answers none of it on its own. `clipboardWrite` answers
 because the reply would hand the clipboard to whatever asked — and any
 command's output can ask.
 
-A write is honoured only from the tab on screen in the focused window: every
-pane stays mounted and every window has an active tab, so a tab printing a
-file anywhere else would otherwise replace what the reader last copied. And
+A write is honoured only from the active tab — the one with the keyboard — in
+the focused window: every pane stays mounted, several are on screen once there
+are columns, and every window has an active tab, so a tab printing a file
+anywhere else would otherwise replace what the reader last copied. And
 text carrying a control character is refused, because a paste is wrapped in
 bracketed-paste markers xterm does not sanitise — a write holding `ESC[201~`
 would end the next paste early and type the rest, the hazard the
@@ -262,9 +264,10 @@ is the design, not a result — do not write it as one.
 It reads the **buffer**, never the DOM — the WebGL renderer paints the grid
 onto a canvas, so there are no nodes to query, which is the same reason
 `pathLinks` walks `term.buffer.active`. It recomputes on `onWriteParsed`
-coalesced into a frame, gated on `active`: every pane stays mounted, so a
-hidden tab would otherwise walk its own scrollback on every write for a rail
-nobody is looking at.
+coalesced into a frame, gated on `visible` — the pane being on screen, which
+a column without the keyboard is: every pane stays mounted, so a hidden tab
+would otherwise walk its own scrollback on every write for a rail nobody is
+looking at.
 
 **Two surfaces mark your messages, and they answer different questions.**
 `useRulerMarks` puts a decoration in xterm's overview ruler, which overlays the
@@ -829,8 +832,14 @@ has said nothing must not claim to be idle.
 **A file drop is a window event, not an element's.** Tauri intercepts the drop
 before the DOM sees it — `dragDropEnabled` is on by default — so there is no
 target to hang a handler on and `onDragDropEvent` is the only way to see one.
-Every mounted pane would otherwise answer the same drop, so only the active one
-subscribes; the effect is keyed on `active` for exactly that reason. The text it
+Every mounted pane would otherwise answer the same drop, so only a pane on
+screen subscribes — the effect is keyed on `visible` — and each takes only a
+drop whose position falls within its own column's width. Tauri types that
+position as physical pixels, but only WebView2 reports it so — WKWebView and
+WebKitGTK report points, which are CSS pixels already — so `cssX` divides by
+`devicePixelRatio` on Windows alone. With one column that is the whole
+window, as it always was; with several, a file goes to the column it was
+dropped on rather than to the one with the keyboard. The text it
 inserts is built in `platform::drop_text`, not in the webview: the quoting is
 the session's shell's, and a WSL session needs the path translated the way
 `--cd` translates it at launch.

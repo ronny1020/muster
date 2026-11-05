@@ -341,13 +341,19 @@ page itself stops hearing `pointermove` once the pointer leaves it under
 WebKitGTK (the release still arrives) — so the drop is decided at release, by
 `window_drop_target`, from `cursor_position()` against the strip each window
 reported (`window_strip`). Another window's strip merges the tab there, by
-`insertionIndex`'s half-width rule; anywhere else — its own window included,
-as in Chrome — gets a new window with the grabbed point under the cursor. A
-point inside the dragging window's own frame is over that window whatever
-strip lies behind it, since the dragging window is the one in front. A
-window's only tab carries its whole window from the first move (`Carry`, moved
-by the label's thread each frame), so for it only another strip changes
-anything. Escape, or bringing the tab back onto the strip, is how to keep it.
+`insertionIndex`'s half-width rule, in the column whose strip is under the
+cursor; anywhere else — its own window included, as in Chrome — gets a new
+window with the grabbed point under the cursor. The one exception is decided
+in the page, before this is asked: a release over another column of its own
+window, or over an edge of its own column it shares with other tabs, moves
+the tab there (`landingFor` in `App.tsx`); a release anywhere else over its
+own column — its middle, an edge of a column it is alone in, an edge where no
+column fits — or outside every column comes here. A point inside the dragging
+window's own frame is over that window whatever strip lies behind it, since the
+dragging window is the one in front. A window's only tab carries its whole
+window from the first move (`Carry`, moved by the label's thread each frame),
+so for it only another strip changes anything; `landingFor` never claims it,
+having no other column to put it in. Escape, or bringing the tab back onto the strip, is how to keep it.
 Pointer events, never HTML drag and drop: the native file drop this app relies
 on keeps WebView2 from ever seeing `dragover`.
 

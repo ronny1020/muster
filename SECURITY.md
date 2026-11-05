@@ -185,10 +185,11 @@ terminals make. What bounds it:
   plugin is granted `allow-write-text` and nothing else, so it cannot read the
   clipboard; the only read is the paste path's `navigator.clipboard.readText`,
   on a paste you made.
-- **Only from the tab on screen in the focused window.** Any other tab's
-  write is dropped, so a background agent cannot replace your clipboard while
-  you work elsewhere. The one in front of you can — which is how text you
-  never selected could end up being what you paste.
+- **Only from the active tab — the one with the keyboard — in the focused
+  window.** Any other tab's write is dropped, so a background agent cannot
+  replace your clipboard while you work elsewhere. The one in front of you
+  can — which is how text you never selected could end up being what you
+  paste.
 - **Text, decoded as UTF-8, and no control characters but tabs and line
   breaks.** A payload that is not base64 or not UTF-8 is dropped, and so is one carrying
   `ESC` or another control byte — otherwise a write could plant the

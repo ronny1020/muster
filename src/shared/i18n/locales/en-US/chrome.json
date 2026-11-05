@@ -8,6 +8,9 @@
     "newTab": "New tab",
     "newTabHint": "New tab ({{shortcut}})",
     "close": "Close tab",
+    "moveToNewColumn": "Move to new column",
+    "splitRight": "Split right",
+    "splitRightHint": "Split right ({{shortcut}})",
     "moveToNewWindow": "Move to new window",
     "exited": "exited",
     "exited_failed": "exited {{code}}"

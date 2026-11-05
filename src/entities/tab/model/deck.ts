@@ -75,6 +75,8 @@ export interface Tab {
    * tells the tab to stop offering the agent's controls.
    */
   handedBack: boolean
+  /** Which column of the window the tab sits in, counted from the left. */
+  column: number
   content: TabContent
 }
 
@@ -83,18 +85,26 @@ export const tabSession = (tab: Tab): Session | null =>
 
 export interface Deck {
   tabs: Tab[]
+  /** The tab with the keyboard, which is the one its column shows. */
   activeId: string
+  /**
+   * The tab each column shows, left to right — so its length is the number
+   * of columns. Every column holds at least one tab: one left empty closes.
+   */
+  shown: string[]
 }
 
 export type DeckAction =
-  | { type: 'open'; id: string; start?: LauncherStart }
+  /** Into `column`, or else the focused one. */
+  | { type: 'open'; id: string; start?: LauncherStart; column?: number }
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
   | { type: 'activate'; id: string }
   /** The window regained focus, so the user is looking at the active tab. */
   | { type: 'seen' }
   | { type: 'move'; id: string; index: number }
-  | { type: 'adopt'; tab: Tab; index?: number }
+  /** `index` counts within `column`, which defaults to the focused one. */
+  | { type: 'adopt'; tab: Tab; column?: number; index?: number }
   | { type: 'activateIndex'; index: number }
   | { type: 'cycle'; step: number }
   | { type: 'start'; id: string; session: Session; title: string }
@@ -118,6 +128,24 @@ export type DeckAction =
   | { type: 'relaunch'; id: string }
   | { type: 'exited'; id: string; code: number }
   | { type: 'handedBack'; id: string }
+  /**
+   * Puts a tab in another column, at `index` of it or at its end. With
+   * `split`, a new column is opened at `column` for it and those from there
+   * on move one to the right.
+   */
+  | {
+      type: 'moveToColumn'
+      id: string
+      column: number
+      index?: number
+      split?: boolean
+    }
+  /**
+   * Splits `column`, or else the focused one: the tab it shows moves to a new
+   * column on its right, or — when it is the column's only tab — a new start
+   * screen, `id`, opens there in the same directory.
+   */
+  | { type: 'split'; id: string; column?: number }
 
 /**
  * What the agent in a tab is doing, from the events it broadcasts.
@@ -147,6 +175,7 @@ export function tabSignal(tab: Tab): TabSignal {
 export const newTab = (
   id: string,
   content: TabContent = { type: 'launcher' },
+  column = 0,
 ): Tab => ({
   id,
   title: tabTitle(content),
@@ -161,6 +190,7 @@ export const newTab = (
   attention: false,
   status: 'unknown',
   handedBack: false,
+  column,
   content,
 })
 
@@ -230,18 +260,34 @@ const basename = (path: string) =>
 export const initialDeck = (id: string): Deck => ({
   tabs: [newTab(id)],
   activeId: id,
+  shown: [id],
 })
+
+/** The tabs of one column, in the order its strip shows them. */
+export const columnTabs = (deck: Deck, column: number) =>
+  deck.tabs.filter((tab) => tab.column === column)
+
+/** The column the keyboard is in. */
+export const focusedColumn = (deck: Deck) =>
+  deck.tabs.find((tab) => tab.id === deck.activeId)?.column ?? 0
 
 export function deckReducer(deck: Deck, action: DeckAction): Deck {
   switch (action.type) {
     case 'open':
-      return {
-        tabs: [
-          ...deck.tabs,
-          newTab(action.id, { type: 'launcher', start: action.start }),
-        ],
-        activeId: action.id,
-      }
+      return show(
+        {
+          ...deck,
+          tabs: [
+            ...deck.tabs,
+            newTab(
+              action.id,
+              { type: 'launcher', start: action.start },
+              action.column ?? focusedColumn(deck),
+            ),
+          ],
+        },
+        action.id,
+      )
 
     case 'openSettings':
       return openSettings(deck, action.id)
@@ -252,12 +298,12 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
     case 'activate':
       if (!deck.tabs.some((tab) => tab.id === action.id)) return deck
       // Looking at a tab is how its notice gets acknowledged.
-      return { ...clearAttention(deck, action.id), activeId: action.id }
+      return show(clearAttention(deck, action.id), action.id)
 
-    // Uses the deck's own active tab: the dispatcher's view can lag a tab
-    // that is arriving.
+    // Every column's shown tab is in view, so all of them are read. Reads the
+    // deck's own `shown`: the dispatcher's view can lag a tab that is arriving.
     case 'seen':
-      return clearAttention(deck, deck.activeId)
+      return deck.shown.reduce(clearAttention, deck)
 
     case 'move':
       return moveTab(deck, action.id, action.index)
@@ -265,20 +311,29 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
     // A tab moved here from another window, which comes forward as it would
     // in the window it left.
     case 'adopt':
-      return adoptTab(deck, action.tab, action.index)
+      return adoptTab(deck, action)
 
+    case 'moveToColumn':
+      return moveToColumn(deck, action)
+
+    case 'split':
+      return split(deck, action.id, action.column ?? focusedColumn(deck))
+
+    // The digits count within the focused column, as its strip numbers them.
     case 'activateIndex': {
-      const tab =
-        action.index === -1 ? deck.tabs.at(-1) : deck.tabs[action.index]
-      return tab ? { ...clearAttention(deck, tab.id), activeId: tab.id } : deck
+      const tabs = columnTabs(deck, focusedColumn(deck))
+      const tab = action.index === -1 ? tabs.at(-1) : tabs[action.index]
+      return tab ? show(clearAttention(deck, tab.id), tab.id) : deck
     }
 
+    // Walks the columns left to right, so stepping past a column's last tab
+    // reaches the next column: every tab stays a keystroke away.
     case 'cycle': {
-      const index = deck.tabs.findIndex((tab) => tab.id === deck.activeId)
+      const order = deck.shown.flatMap((_, column) => columnTabs(deck, column))
+      const index = order.findIndex((tab) => tab.id === deck.activeId)
       if (index < 0) return deck
-      const next =
-        deck.tabs[(index + action.step + deck.tabs.length) % deck.tabs.length]
-      return { ...clearAttention(deck, next.id), activeId: next.id }
+      const next = order[(index + action.step + order.length) % order.length]
+      return show(clearAttention(deck, next.id), next.id)
     }
 
     case 'start':
@@ -399,52 +454,196 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
 /** One settings tab is enough: a second request focuses the one already open. */
 function openSettings(deck: Deck, id: string): Deck {
   const existing = deck.tabs.find((tab) => tab.content.type === 'settings')
-  if (existing) return { ...deck, activeId: existing.id }
-  return {
-    tabs: [...deck.tabs, newTab(id, { type: 'settings' })],
-    activeId: id,
-  }
+  if (existing) return show(deck, existing.id)
+  const tab = newTab(id, { type: 'settings' }, focusedColumn(deck))
+  return show({ ...deck, tabs: [...deck.tabs, tab] }, id)
+}
+
+/** Makes `id` the tab its column shows, and gives it the keyboard. */
+function show(deck: Deck, id: string): Deck {
+  const tab = deck.tabs.find((entry) => entry.id === id)
+  if (!tab) return deck
+  const shown =
+    deck.shown[tab.column] === id
+      ? deck.shown
+      : replaced(deck.shown, tab.column, id)
+  return deck.activeId === id && shown === deck.shown
+    ? deck
+    : { ...deck, shown, activeId: id }
 }
 
 /**
- * Closing focuses the tab that slid into its place, like Chrome. A last tab
- * is replaced by a fresh one, since a deck is never empty.
+ * Closing shows the tab that slid into its place in the same column, like
+ * Chrome. A column left empty closes, and a last tab is replaced by a fresh
+ * one, since a deck is never empty.
  */
 function closeTab(deck: Deck, id: string, replacementId: string): Deck {
-  const index = deck.tabs.findIndex((tab) => tab.id === id)
-  if (index < 0) return deck
+  const tab = deck.tabs.find((entry) => entry.id === id)
+  if (!tab) return deck
+  if (deck.tabs.length === 1) return initialDeck(replacementId)
 
-  const tabs = deck.tabs.filter((tab) => tab.id !== id)
-  if (tabs.length === 0) return initialDeck(replacementId)
-  const activeId =
-    deck.activeId === id
-      ? tabs[Math.min(index, tabs.length - 1)].id
-      : deck.activeId
-  return { tabs, activeId }
+  const shown = replaced(deck.shown, tab.column, neighbourOf(deck, tab))
+  return settle(
+    {
+      tabs: deck.tabs.filter((entry) => entry !== tab),
+      activeId: deck.activeId,
+      shown,
+    },
+    tab.column,
+  )
 }
 
 /**
- * Takes in a tab from another window, at `index` or else at the end. It comes
- * forward, so it arrives read.
+ * What a column should show once `tab` leaves it: the tab it was already
+ * showing, or else the one that slides into the leaving tab's place.
  */
-function adoptTab(deck: Deck, tab: Tab, index = deck.tabs.length): Deck {
-  if (deck.tabs.some((held) => held.id === tab.id)) return deck
-  const tabs = [...deck.tabs]
-  tabs.splice(index, 0, { ...tab, attention: false })
-  return { tabs, activeId: tab.id }
+function neighbourOf(deck: Deck, tab: Tab): string {
+  const shown = deck.shown[tab.column]
+  if (shown !== tab.id) return shown
+  const siblings = columnTabs(deck, tab.column)
+  const rest = siblings.filter((entry) => entry !== tab)
+  const at = Math.min(siblings.indexOf(tab), rest.length - 1)
+  return rest[at]?.id ?? tab.id
 }
 
-/** Puts a tab at `index` of the strip, clamped to its ends. */
-function moveTab(deck: Deck, id: string, index: number): Deck {
-  const from = deck.tabs.findIndex((tab) => tab.id === id)
-  const to = Math.max(0, Math.min(index, deck.tabs.length - 1))
-  if (from < 0 || from === to) return deck
+/**
+ * Takes in a tab from another window, into `column` at `index` or else into
+ * the focused column's end. It comes forward, so it arrives read.
+ */
+function adoptTab(
+  deck: Deck,
+  { tab, column, index }: { tab: Tab; column?: number; index?: number },
+): Deck {
+  if (deck.tabs.some((held) => held.id === tab.id)) return deck
+  const target = Math.min(column ?? focusedColumn(deck), deck.shown.length - 1)
+  const arrived = { ...tab, attention: false, column: target }
+  return place({ ...deck, tabs: [...deck.tabs, arrived] }, tab.id, index)
+}
 
-  const tabs = [...deck.tabs]
-  const [tab] = tabs.splice(from, 1)
-  tabs.splice(to, 0, tab)
+/**
+ * Puts a tab at `index` of its column's strip, clamped to its ends. Only the
+ * column's own slots in `tabs` are rewritten, so every other column keeps its
+ * order.
+ */
+function moveTab(deck: Deck, id: string, index: number): Deck {
+  const tab = deck.tabs.find((entry) => entry.id === id)
+  if (!tab) return deck
+  const siblings = columnTabs(deck, tab.column)
+  const from = siblings.indexOf(tab)
+  const to = Math.max(0, Math.min(index, siblings.length - 1))
+  if (from === to) return deck
+
+  siblings.splice(from, 1)
+  siblings.splice(to, 0, tab)
+  let next = 0
+  const tabs = deck.tabs.map((entry) =>
+    entry.column === tab.column ? siblings[next++] : entry,
+  )
   return { ...deck, tabs }
 }
+
+/** Shows tab `id` at `index` of its column, or where it already is. */
+function place(deck: Deck, id: string, index?: number): Deck {
+  const shown = show(deck, id)
+  return index === undefined ? shown : moveTab(shown, id, index)
+}
+
+function moveToColumn(
+  deck: Deck,
+  {
+    id,
+    column,
+    index,
+    split = false,
+  }: { id: string; column: number; index?: number; split?: boolean },
+): Deck {
+  const tab = deck.tabs.find((entry) => entry.id === id)
+  if (!tab) return deck
+  const count = deck.shown.length
+  const target = Math.max(0, Math.min(column, split ? count : count - 1))
+  if (!split && target === tab.column) return place(deck, id, index)
+
+  // The column it leaves shows a neighbour, worked out before any renumbering.
+  const left = replaced(deck.shown, tab.column, neighbourOf(deck, tab))
+  const shown = split
+    ? [...left.slice(0, target), id, ...left.slice(target)]
+    : replaced(left, target, id)
+  const shifted = deck.tabs
+    .filter((entry) => entry !== tab)
+    .map((entry) =>
+      split && entry.column >= target
+        ? { ...entry, column: entry.column + 1 }
+        : entry,
+    )
+  const tabs = [...shifted, { ...tab, column: target }]
+  return place(settle({ tabs, activeId: id, shown }, target), id, index)
+}
+
+function split(deck: Deck, id: string, column: number): Deck {
+  const showing = deck.tabs.find((tab) => tab.id === deck.shown[column])
+  if (!showing) return deck
+  const target = showing.column + 1
+  if (columnTabs(deck, showing.column).length > 1) {
+    return moveToColumn(deck, { id: showing.id, column: target, split: true })
+  }
+  // A terminal cannot be in two places, so a lone tab is not duplicated: the
+  // new column starts where it is working.
+  const start = startOf(showing) ?? undefined
+  const fresh = newTab(id, { type: 'launcher', start }, showing.column)
+  return moveToColumn(
+    { ...deck, tabs: [...deck.tabs, fresh] },
+    { id, column: target, split: true },
+  )
+}
+
+/**
+ * A deck from tabs that already name their columns, as a restore reads them:
+ * gaps in the numbering close, and each column shows the tab `shown` names
+ * for it if it holds that tab, else its first — but the active one's column,
+ * which shows the active tab.
+ */
+export function arrangeDeck(
+  tabs: Tab[],
+  { activeId, shown = [] }: { activeId: string; shown?: string[] },
+): Deck {
+  const focus = tabs.find((tab) => tab.id === activeId)?.column ?? 0
+  return show(settle({ tabs, activeId, shown }, focus), activeId)
+}
+
+/**
+ * Repairs the columns after tabs left or joined them: empty columns close
+ * and the rest renumber from 0, each shows a tab it holds, and the keyboard
+ * stays where it was or falls to the column now at `focus`, the old number
+ * of the column it was in — the last column, if that one was.
+ */
+function settle(deck: Deck, focus: number): Deck {
+  const used = [...new Set(deck.tabs.map((tab) => tab.column))].sort(
+    (a, b) => a - b,
+  )
+  const renumbered = new Map(used.map((column, index) => [column, index]))
+  const tabs = deck.tabs.map((tab) => {
+    const column = renumbered.get(tab.column) ?? 0
+    return column === tab.column ? tab : { ...tab, column }
+  })
+  const shown = used.map((old, column) => {
+    const kept = deck.shown[old]
+    return tabs.some((tab) => tab.id === kept && tab.column === column)
+      ? kept
+      : tabs.find((tab) => tab.column === column)!.id
+  })
+  const nearest = Math.min(
+    used.filter((column) => column < focus).length,
+    shown.length - 1,
+  )
+  const activeId = shown.includes(deck.activeId)
+    ? deck.activeId
+    : shown[nearest]
+  return { tabs, activeId, shown }
+}
+
+/** `list` with `value` at `index`. */
+const replaced = <T>(list: T[], index: number, value: T) =>
+  list.map((entry, at) => (at === index ? value : entry))
 
 const clearAttention = (deck: Deck, id: string): Deck =>
   patch(deck, id, () => ({ attention: false }))

@@ -11,7 +11,8 @@ export interface BellContext {
   enabled: boolean
   /** Stay quiet while the user is already looking at this very tab. */
   onlyWhenUnfocused: boolean
-  tabActive: boolean
+  /** On screen: shown in its column, whichever column has the keyboard. */
+  tabShown: boolean
   windowFocused: boolean
   /** When this tab last raised a notification, or `null` if never. */
   lastNotifiedAt: number | null
@@ -30,7 +31,7 @@ export interface BellResponse {
  * has moved on to something else.
  */
 export function decideBellResponse(context: BellContext): BellResponse {
-  const watching = context.tabActive && context.windowFocused
+  const watching = context.tabShown && context.windowFocused
   const cooledDown =
     context.lastNotifiedAt === null ||
     context.now - context.lastNotifiedAt >= COOLDOWN_MS

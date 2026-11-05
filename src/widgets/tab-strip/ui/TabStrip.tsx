@@ -20,12 +20,14 @@ import { useTranslation } from 'react-i18next'
 import { runningAgent } from '../../../entities/agent/model/agents'
 import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
 import { WindowControls } from '../../../shared/ui/WindowControls'
+import { Icon } from '../../../shared/ui/Icon'
 import { SHORTCUTS } from '../../../entities/preferences/model/shortcuts'
 import { type Grab, useTabDrag } from '../model/useTabDrag'
 import {
   ghostBeat,
   hideGhost,
   onDropHover,
+  type Point,
   reportStrip,
   showGhost,
 } from '../../../shared/ipc'
@@ -33,8 +35,21 @@ import { insertionIndex } from '../model/drag'
 import { ContextMenu, type MenuItem } from '../../../shared/ui/ContextMenu'
 
 export interface TabStripProps {
+  /** The column this strip heads, counted from the left. */
+  column: number
+  /** The rightmost column's strip, which reaches the window's corner. */
+  last: boolean
+  /** Whether the keyboard is in this column. */
+  focused: boolean
+  /** The window's only tab is in it, so dragging it carries the window. */
+  lone: boolean
+  /** Whether the window has room for another column. */
+  canSplit: boolean
+  /** This column's tabs, and the one it shows. */
   tabs: Tab[]
   activeId: string
+  /** Where a tab dragged from another column would join this strip. */
+  joinAt: number | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
   /** A tab dragged, or moved by keyboard, to `index` of the strip. */
@@ -47,18 +62,36 @@ export interface TabStripProps {
    */
   onTearOff: (id: string, grab: Grab) => Promise<void>
   onOpen: () => void
+  /** Opens a new column to the right: see the `split` deck action. */
+  onSplit: () => void
+  /** Moves a tab of this column into a new column to its right. */
+  onMoveToNewColumn: (id: string) => void
+  /** A torn-off tab is over `point`, or `null` once it is not. */
+  onHover: (id: string, point: Point | null) => void
+  /** A torn-off tab released inside the window; `true` if it was placed. */
+  onDrop: (id: string, point: Point) => boolean
 }
 
 /** Chrome-style strip: tabs sit in the titlebar, active tab merges with the pane. */
 export function TabStrip({
+  column,
+  last,
+  focused,
+  lone,
+  canSplit,
   tabs,
   activeId,
+  joinAt,
   onSelect,
   onClose,
   onMove,
   onMoveToNewWindow,
   onTearOff,
   onOpen,
+  onSplit,
+  onMoveToNewColumn,
+  onHover,
+  onDrop,
 }: TabStripProps) {
   const { t } = useTranslation('chrome')
   const strip = useRef<HTMLDivElement>(null)
@@ -70,15 +103,18 @@ export function TabStrip({
   // A strip that goes away mid-drag stops its heartbeat; the label follows.
   useEffect(() => () => clearInterval(beating.current), [])
   const drag = useTabDrag(strip, {
+    bounds: header,
+    lone,
     onMove,
     onTearOff,
+    onHover,
+    onDrop,
     onTornChange: (id, torn, grab) => {
       clearInterval(beating.current)
       const tab = tabs.find((entry) => entry.id === id)
       if (!torn || !tab) {
         return void hideGhost(tearing.current).catch(() => {})
       }
-      const lone = tabs.length === 1
       // The time, not a count: the label is shared by every window, so the
       // numbers have to rise across all of them, and survive a reload.
       tearing.current = Math.max(tearing.current + 1, Date.now())
@@ -95,46 +131,67 @@ export function TabStrip({
       )
     },
   })
-  const landing = useDropHover()
-  useStripReport(header)
+  const fromWindow = useDropHover(column)
+  const landing =
+    joinAt === null
+      ? fromWindow
+      : { index: joinAt, accent: 'var(--color-primary)' }
   const dragStyles = drag.stylesFor(tabs.map((tab) => tab.id))
   const [menu, setMenu] = useState<{
     id: string
     at: { x: number; y: number }
   } | null>(null)
 
-  // A lone tab has nowhere to move to: its window would be left empty.
+  // A column's only tab would leave an empty column behind it, and the
+  // window's only tab an empty window.
   const menuItems = (id: string): MenuItem[] => [
-    ...(tabs.length > 1
+    ...(tabs.length > 1 && canSplit
       ? [
+          {
+            label: t('tab.moveToNewColumn'),
+            onSelect: () => onMoveToNewColumn(id),
+          },
+        ]
+      : []),
+    ...(lone
+      ? []
+      : [
           {
             label: t('tab.moveToNewWindow'),
             onSelect: () => onMoveToNewWindow(id),
           },
-        ]
-      : []),
+        ]),
     { label: t('tab.close'), onSelect: () => onClose(id) },
   ]
 
   // A tab reached by shortcut or by cycling can be scrolled out of sight, and
   // the strip scrolls rather than shrinking past 100px per tab.
   useEffect(() => {
-    strip.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    const list = strip.current
+    const tab = list?.querySelector('[aria-selected="true"]')
+    if (list && tab) revealIn(list, tab.getBoundingClientRect())
   }, [activeId, tabs.length])
 
   return (
     <header
       ref={header}
       data-tauri-drag-region
-      className="flex h-[38px] flex-none items-end gap-0.5 border-b border-line bg-chrome px-2"
+      data-column={column}
+      onPointerDown={(event) => {
+        if (!focused && event.button === 0 && isBare(event.target)) {
+          onSelect(activeId)
+        }
+      }}
+      style={{ gridColumn: column + 1, gridRow: 1, height: STRIP_PX }}
+      className={`flex min-w-0 items-end gap-0.5 border-b border-line bg-chrome px-2 ${
+        column > 0 ? 'border-l' : ''
+      }`}
     >
       {/* Clears the macOS traffic lights, which sit inside the titlebar.
           Windows has no frame at all — this strip is its titlebar, so the
           caption buttons are drawn at the other end. Linux keeps its own
           decorations above the strip. */}
-      {IS_MAC && (
+      {IS_MAC && column === 0 && (
         <div data-tauri-drag-region className="h-full w-[72px] flex-none" />
       )}
 
@@ -151,6 +208,7 @@ export function TabStrip({
             <TabButton
               tab={tab}
               active={tab.id === activeId}
+              focused={focused}
               dragging={drag.draggingId === tab.id}
               dragStyle={dragStyles[index]}
               onSelect={() => onSelect(tab.id)}
@@ -177,6 +235,16 @@ export function TabStrip({
       >
         +
       </button>
+      <button
+        type="button"
+        title={t('tab.splitRightHint', { shortcut: SHORTCUTS.splitRight })}
+        aria-label={t('tab.splitRight')}
+        disabled={!canSplit}
+        onClick={onSplit}
+        className="mb-1 flex size-[26px] flex-none items-center justify-center rounded-[7px] text-muted hover:bg-surface-hover hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+      >
+        <Icon name="splitscreen_right" className="size-4" />
+      </button>
 
       <div data-tauri-drag-region className="h-full min-w-3 flex-1" />
 
@@ -192,7 +260,7 @@ export function TabStrip({
         />
       )}
 
-      {IS_WINDOWS && (
+      {IS_WINDOWS && last && (
         <div className="-mr-2 h-full self-stretch">
           <WindowControls />
         </div>
@@ -204,6 +272,8 @@ export function TabStrip({
 interface TabButtonProps {
   tab: Tab
   active: boolean
+  /** Whether its column has the keyboard; only there is the accent drawn. */
+  focused: boolean
   dragging: boolean
   dragStyle: CSSProperties | undefined
   onSelect: () => void
@@ -211,6 +281,25 @@ interface TabButtonProps {
   onDragStart: (event: PointerEvent<HTMLElement>) => void
   onMenu: (event: MouseEvent<HTMLElement>) => void
 }
+
+/**
+ * Scrolls `list` sideways just far enough to show all of `box`, and nothing
+ * else: every column's strip shares one grid, which must never scroll.
+ */
+function revealIn(list: HTMLElement, box: DOMRect) {
+  const view = list.getBoundingClientRect()
+  if (box.left < view.left) list.scrollLeft -= view.left - box.left
+  else if (box.right > view.right) list.scrollLeft += box.right - view.right
+}
+
+/**
+ * Whether a press landed on the strip's bare chrome rather than a control in
+ * it: there, selecting what the column already shows gives it the keyboard,
+ * as a click on its pane does. Tabs and buttons do their own selecting.
+ */
+const isBare = (target: EventTarget) =>
+  target instanceof Element &&
+  target.matches('header, [data-tauri-drag-region], [role="tablist"]')
 
 /** Well inside `ghost.rs`'s `SILENCE`, so a slow frame never drops the label. */
 const BEAT_MS = 250
@@ -237,7 +326,7 @@ function LandingMark({ accent }: { accent: string }) {
  * every frame while a drag hovers, so a pause means the dragging window has
  * gone without saying so.
  */
-function useDropHover() {
+function useDropHover(column: number) {
   const [landing, setLanding] = useState<{
     index: number
     accent: string
@@ -246,14 +335,17 @@ function useDropHover() {
     let stale: ReturnType<typeof setTimeout> | undefined
     const unlisten = onDropHover(({ x, accent }) => {
       clearTimeout(stale)
-      setLanding(x === null ? null : { index: stripIndexAt(x), accent })
+      const place = x === null ? null : stripPlaceAt(x)
+      setLanding(
+        place?.column === column ? { index: place.index, accent } : null,
+      )
       if (x !== null) stale = setTimeout(() => setLanding(null), 500)
     })
     return () => {
       clearTimeout(stale)
       void unlisten.then((stop) => stop())
     }
-  }, [])
+  }, [column])
   return landing
 }
 
@@ -267,6 +359,7 @@ const accentOf = (tab: Tab) => {
 function TabButton({
   tab,
   active,
+  focused,
   dragging,
   dragStyle,
   onSelect,
@@ -303,7 +396,7 @@ function TabButton({
       }`}
       style={{
         ...dragStyle,
-        boxShadow: active ? `inset 0 2px 0 ${accent}` : undefined,
+        boxShadow: active && focused ? `inset 0 2px 0 ${accent}` : undefined,
       }}
     >
       <StatusDot tab={tab} accent={accent} />
@@ -389,15 +482,19 @@ function menuPoint(event: MouseEvent<HTMLElement>) {
   return { x: box.left, y: box.bottom }
 }
 
+/** The height of every column's strip, which is the row they share. */
+const STRIP_PX = 38
+
 /**
- * Tells the backend where this window's strip is, so a tab dragged out of
- * another window can be dropped onto it — only this window's layout knows.
- * The strip's box changes with the window's width and with zoom, and the
- * backend works out where it sits on screen at the drop itself.
+ * Tells the backend where this window's strips are, so a tab dragged out of
+ * another window can be dropped onto one — only this window's layout knows.
+ * The box changes with the window's width and with zoom, and the backend
+ * works out where it sits on screen at the drop itself. It is the row the
+ * column headers share, along the top of `container`.
  */
-function useStripReport(header: RefObject<HTMLElement | null>) {
+export function useStripReport(container: RefObject<HTMLElement | null>) {
   useEffect(() => {
-    const element = header.current
+    const element = container.current
     if (!element) return
     const report = () => {
       const box = element.getBoundingClientRect()
@@ -405,27 +502,65 @@ function useStripReport(header: RefObject<HTMLElement | null>) {
         left: box.left,
         top: box.top,
         width: box.width,
-        height: box.height,
+        height: STRIP_PX,
       }).catch(() => {})
     }
     const observer = new ResizeObserver(report)
     observer.observe(element)
     report()
     return () => observer.disconnect()
-  }, [header])
+  }, [container])
+}
+
+/** Where a tab would join the strip of the column `header` heads, at `x`. */
+const indexIn = (header: Element, x: number) =>
+  insertionIndex(
+    Array.from(header.querySelectorAll('[role="tab"]'), (tab) => {
+      const box = tab.getBoundingClientRect()
+      return { left: box.left, width: box.width }
+    }),
+    x,
+  )
+
+/**
+ * Which column's strip a tab dropped `x` CSS pixels along the window's top
+ * joins, and where in it, read from the strips themselves.
+ */
+export function stripPlaceAt(x: number) {
+  const headers = Array.from(
+    document.querySelectorAll<HTMLElement>('header[data-column]'),
+  )
+  // The backend counts a margin around the strips as theirs, so `x` can lie
+  // before the first header or past the last.
+  const header =
+    headers.find((entry) => x < entry.getBoundingClientRect().right) ??
+    headers.at(-1)
+  if (!header) return { column: 0, index: 0 }
+  return { column: Number(header.dataset.column), index: indexIn(header, x) }
 }
 
 /**
- * Where a tab dropped `x` CSS pixels along this window's strip joins it, read
- * from the strip's own tabs.
+ * Where a tab dragged within this window would land: a column's strip names
+ * a slot in it, and a column's body one of three zones — its left or right
+ * edge opens a new column on that side, its middle joins it. `null` off any
+ * column.
  */
-export function stripIndexAt(x: number) {
-  const tabs = document.querySelectorAll<HTMLElement>(
-    '[role="tablist"] [role="tab"]',
-  )
-  const slots = Array.from(tabs, (tab) => {
-    const box = tab.getBoundingClientRect()
-    return { left: box.left, width: box.width }
-  })
-  return insertionIndex(slots, x)
+export type ColumnPlace =
+  | { column: number; index: number }
+  | { column: number; zone: 'left' | 'middle' | 'right' }
+
+export function columnPlaceAt({ x, y }: Point): ColumnPlace | null {
+  const host = document
+    .elementFromPoint(x, y)
+    ?.closest<HTMLElement>('[data-column]')
+  if (!host) return null
+  const column = Number(host.dataset.column)
+  if (host.tagName === 'HEADER') return { column, index: indexIn(host, x) }
+  const box = host.getBoundingClientRect()
+  const along = (x - box.left) / box.width
+  const zone = along < EDGE ? 'left' : along > 1 - EDGE ? 'right' : 'middle'
+  return { column, zone }
 }
+
+/** How much of a column's width, at either side, splits rather than joins. */
+const EDGE = 0.25

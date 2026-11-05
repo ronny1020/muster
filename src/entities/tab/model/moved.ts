@@ -36,6 +36,8 @@ export function parseMovedTab(input: unknown): Tab | null {
     attention: raw.attention === true,
     status: oneOf<AgentStatus>(raw.status, ['unknown', 'working', 'waiting']),
     handedBack: raw.handedBack === true,
+    // The receiving window places it among its own columns.
+    column: 0,
     content,
   }
 }

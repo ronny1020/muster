@@ -254,6 +254,22 @@ Quoted values stay in one piece.
 scrollback is lost, so leaving an agent to work and coming back later is the
 normal way to use this.
 
+**Columns put tabs side by side.** `⌘D`, or `Ctrl+Shift+D`, or the split
+button beside `+` splits the window: the tab you are in moves to a new column
+on the right, or — when it is the only tab in its column — a new start screen
+opens there in the same directory. Each column has its own strip, so it
+switches its own tabs, and clicking anywhere in a column puts the keyboard
+there. Drag a tab onto another column's strip to put it there, onto the
+middle of a column to join it, or onto a column's left or right edge to open
+a new column on that side; a highlight shows where it will land. A tab's
+right-click menu also has **Move to new column**. A column closes when its
+last tab leaves it, and the sessions keep running through every move. The
+tab shortcuts work in the column with the keyboard: `⌘1`–`⌘8` pick its tabs
+and `⌘9` its last, and previous / next tab carry on into the neighbouring
+column at either end.
+A new column needs room for about 40 terminal columns, so the split button
+greys out in a window too narrow for another.
+
 **The tabs are the title bar.** On macOS they sit inside the system one, behind
 the traffic lights; on Windows there is no system title bar at all, and the
 minimize, maximize and close buttons are drawn at the right of the strip — so
@@ -739,20 +755,20 @@ Muster remembers each window's size, position and whether it was maximised,
 and the tabs in it, so a restart reopens the windows you were using rather
 than one default one.
 
-Drag a tab off the strip and let go anywhere but another window's tabs to give
-it a window of its own — over its own window too, as in Chrome — or over
-another window's tabs to move it there; right-click a tab and
-choose **Move to new window** for the same without the drag. A label follows
-the pointer saying where the tab will go, and the window it will join marks
-the spot in its tab strip. Dragging a window's only tab moves the whole
-window. On Wayland, which does not tell an app where the cursor or its windows
-are, a dragged tab can still get a window of its own, but there is no label,
-a lone tab does not carry its window, and a tab cannot be dropped onto another
-window's tabs. A running agent or shell moves with everything on its screen
-and keeps running — nothing restarts. Closing a tab that is a window's last closes the
-window, as in Chrome; closing the last window quits. Either asks first if a
-session in that window is still running. A window closed while others stay open takes its
-tabs with it.
+Drag a tab off the strip and let go outside the window or over its own column to
+give it a window of its own, as in Chrome — except on its column's edge, which
+opens a new column when the tab shares its column and one fits — or over another
+window's tabs to move it there; right-click a tab and choose **Move to new
+window** for the same without the drag. A label follows the pointer saying where
+the tab will go, and the window it will join marks the spot in its tab strip.
+Dragging a window's only tab moves the whole window. On Wayland, which does not
+tell an app where the cursor or its windows are, a dragged tab can still get a
+window of its own, but there is no label, a lone tab does not carry its window,
+and a tab cannot be dropped onto another window's tabs. A running agent or shell
+moves with everything on its screen and keeps running — nothing restarts.
+Closing a tab that is a window's last closes the window, as in Chrome; closing
+the last window quits. Either asks first if a session in that window is still
+running. A window closed while others stay open takes its tabs with it.
 
 Launching it twice focuses the window you already have instead of opening a
 second copy — which matters because two copies would restore the same tabs,
@@ -889,6 +905,7 @@ distro.
 | --------------------- | ------------------------- | ------------------------------------------- |
 | New tab               | `⌘T`                      | `Ctrl+Shift+T`                              |
 | Close tab             | `⌘W`                      | `Ctrl+Shift+W`                              |
+| Split right           | `⌘D`                      | `Ctrl+Shift+D`                              |
 | Toggle git history    | `⌘Y`                      | `Ctrl+Shift+Y`                              |
 | Toggle review panel   | `⌘G`                      | `Ctrl+Shift+G`                              |
 | Find in scrollback    | `⌘F`                      | `Ctrl+Shift+F`                              |
@@ -912,9 +929,9 @@ number in a diff or a file is a link into your editor at that line, and `⇧F10`
 on a row in the Files tab opens its menu.
 
 Drag a tab to reorder the strip, as in Chrome — Escape mid-drag puts it back.
-Drag a tab off the strip to move it to another window or a new one; right-click
-it, or press the Menu key with it focused, for its menu. Middle-click a tab to
-close it. Every other key goes to the agent untouched —
+Drag a tab off the strip to move it to another column, another window or a
+new one; right-click it, or press the Menu key with it focused, for its menu.
+Middle-click a tab to close it. Every other key goes to the agent untouched —
 which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
 SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 

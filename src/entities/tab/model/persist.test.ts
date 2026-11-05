@@ -106,8 +106,18 @@ test('the active tab is restored as the active one', () => {
 })
 
 test('a corrupt record repairs rather than throwing', () => {
-  expect(normalizeDeck('nonsense')).toEqual({ tabs: [], activeIndex: 0 })
-  expect(normalizeDeck({ tabs: 'no' })).toEqual({ tabs: [], activeIndex: 0 })
+  expect(normalizeDeck('nonsense')).toEqual({
+    tabs: [],
+    activeIndex: 0,
+    columns: [],
+    shown: [],
+  })
+  expect(normalizeDeck({ tabs: 'no' })).toEqual({
+    tabs: [],
+    activeIndex: 0,
+    columns: [],
+    shown: [],
+  })
   expect(normalizeDeck({ tabs: [null, 7, 'x'] }).tabs).toEqual([
     null,
     null,
@@ -183,4 +193,47 @@ test('a directory ending in a space is kept, not trimmed to another path', () =>
   expect(normalizeDeck({ tabs: [{ cwd: '/work/odd ' }] }).tabs[0]?.cwd).toBe(
     '/work/odd ',
   )
+})
+
+test('columns survive a restart, with each tab in the column it was in', () => {
+  let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  saveDeck(deck)
+  const restored = loadDeck(nextId)
+  expect(restored.tabs.map((tab) => tab.column)).toEqual([0, 1])
+  expect(restored.shown).toHaveLength(2)
+  expect(restored.activeId).toBe(restored.tabs[1].id)
+})
+
+test('each column comes back showing the tab it showed', () => {
+  const opened = ['tab-2', 'tab-3', 'tab-4'].reduce(
+    (deck, id) => deckReducer(deck, { type: 'open', id }),
+    initialDeck('tab-1'),
+  )
+  const deck = deckReducer(opened, { type: 'split', id: 'unused' })
+  // The left column shows the tab that slid into the moved one's place.
+  expect(deck.shown).toEqual(['tab-3', 'tab-4'])
+  saveDeck(deck)
+  const restored = loadDeck(nextId)
+  expect(restored.shown).toEqual([restored.tabs[2].id, restored.tabs[3].id])
+  expect(restored.activeId).toBe(restored.tabs[3].id)
+})
+
+test('a column held only by the settings tab is not restored empty', () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'openSettings',
+    id: 'settings',
+  })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  saveDeck(deck)
+  const restored = loadDeck(nextId)
+  expect(restored.shown).toHaveLength(1)
+  expect(restored.tabs.map((tab) => tab.column)).toEqual([0])
+})
+
+test('a record from before columns, or a mangled one, puts every tab in one column', () => {
+  expect(normalizeDeck({ tabs: [null, null] }).columns).toEqual([0, 0])
+  expect(
+    normalizeDeck({ tabs: [null, null], columns: [-1, 'x'] }).columns,
+  ).toEqual([0, 0])
 })

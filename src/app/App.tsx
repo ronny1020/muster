@@ -1,9 +1,11 @@
 import {
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
   useReducer,
   useRef,
+  useState,
 } from 'react'
 
 import { Pane } from '../widgets/pane/ui/Pane'
@@ -12,11 +14,20 @@ import {
   type FleetTab,
 } from '../features/fleet/model/useCollisions'
 import type { LaunchRequest } from '../features/launch/ui/Launcher'
-import { TabStrip } from '../widgets/tab-strip/ui/TabStrip'
 import {
+  type ColumnPlace,
+  columnPlaceAt,
+  stripPlaceAt,
+  TabStrip,
+  useStripReport,
+} from '../widgets/tab-strip/ui/TabStrip'
+import {
+  arrangeDeck,
+  columnTabs,
   type Deck,
   type DeckAction,
   deckReducer,
+  focusedColumn,
   type Tab,
   tabSession,
 } from '../entities/tab/model/deck'
@@ -36,7 +47,6 @@ import {
   sendToWindow,
 } from '../shared/ipc'
 import type { Grab } from '../widgets/tab-strip/model/useTabDrag'
-import { stripIndexAt } from '../widgets/tab-strip/ui/TabStrip'
 import {
   detachTerminal,
   resumeTerminal,
@@ -73,7 +83,7 @@ function announceExit(
   const { attention, notify: shouldNotify } = decideBellResponse({
     enabled: settings.notifyOnDone,
     onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
-    tabActive: deck.activeId === id,
+    tabShown: deck.shown.includes(id),
     windowFocused: document.hasFocus(),
     lastNotifiedAt: null,
     now: Date.now(),
@@ -148,7 +158,7 @@ export function App({ adopted }: AppProps) {
       // Stored empty first, so a closed tab does not come back on the next
       // launch. A prompt the user cancels hands focus back to the window,
       // which stores the tab again — see the focus listener below.
-      saveDeck({ tabs: [], activeId: '' })
+      saveDeck({ ...deck, tabs: [], activeId: '' })
       void closeWindow()
     } else dispatch({ type: 'close', id, replacementId: nextTabId() })
   }, [])
@@ -203,8 +213,9 @@ export function App({ adopted }: AppProps) {
    */
   const tearOff = useCallback(
     async (id: string, grab: Grab) => {
-      // Off the strip is out of it, as in Chrome — over its own window too.
-      // Escape, or bringing the tab back to the strip, is how to keep it.
+      // Off the strip is out of it, as in Chrome — over its own window too,
+      // unless `drop` placed it in a column first. Escape, or bringing the tab
+      // back to the strip, is how to keep it.
       const lone = current.current.deck.tabs.length === 1
       const target = await dropTarget(lone).catch(() => null)
       if (target?.kind === 'strip') {
@@ -225,10 +236,11 @@ export function App({ adopted }: AppProps) {
   )
   const moveActive = useCallback(
     (step: number) => {
-      const index = deck.tabs.findIndex((tab) => tab.id === deck.activeId)
+      const siblings = columnTabs(deck, focusedColumn(deck))
+      const index = siblings.findIndex((tab) => tab.id === deck.activeId)
       dispatch({ type: 'move', id: deck.activeId, index: index + step })
     },
-    [deck.tabs, deck.activeId],
+    [deck],
   )
   const openSettings = useCallback(
     () => dispatch({ type: 'openSettings', id: nextTabId() }),
@@ -250,6 +262,13 @@ export function App({ adopted }: AppProps) {
     (index: number) => dispatch({ type: 'activateIndex', index }),
     [],
   )
+  const panes = useRef<HTMLElement>(null)
+  const gridWidth = useWidth(panes)
+  /** Whether one more column would still be `MIN_COLUMN_PX` wide. */
+  const room = gridWidth / (deck.shown.length + 1) >= MIN_COLUMN_PX
+  const splitRight = useCallback(() => {
+    if (room) dispatch({ type: 'split', id: nextTabId() })
+  }, [room])
 
   useTabShortcuts({
     open,
@@ -260,6 +279,7 @@ export function App({ adopted }: AppProps) {
     toggleHistory,
     toggleReview,
     find,
+    splitRight,
     openSettings,
   })
 
@@ -354,6 +374,54 @@ export function App({ adopted }: AppProps) {
       },
     })
 
+  const columns = deck.shown.length
+  const focus = focusedColumn(deck)
+  useStripReport(panes)
+
+  /** Where a tab dragged across the window would land, while one is. */
+  const [landing, setLanding] = useState<ColumnPlace | null>(null)
+  const placeFor = useCallback(
+    (id: string, point: Point) =>
+      landingFor({
+        deck: current.current.deck,
+        id,
+        place: columnPlaceAt(point),
+        room,
+      }),
+    [room],
+  )
+  const hover = useCallback(
+    (id: string, point: Point | null) => {
+      const next = point && placeFor(id, point)
+      setLanding((shown) => (samePlace(shown, next) ? shown : next))
+    },
+    [placeFor],
+  )
+  const drop = useCallback(
+    (id: string, point: Point) => {
+      setLanding(null)
+      const place = placeFor(id, point)
+      if (!place) return false
+      dispatch(
+        'index' in place
+          ? {
+              type: 'moveToColumn',
+              id,
+              column: place.column,
+              index: place.index,
+            }
+          : {
+              type: 'moveToColumn',
+              id,
+              column: place.column + (place.zone === 'right' ? 1 : 0),
+              split: place.zone !== 'middle',
+            },
+      )
+      return true
+    },
+    [placeFor],
+  )
+
   // Every tab with a session, for the one comparison no tab can make about
   // itself. Built here because this is the only place that holds the deck.
   const watched: FleetTab[] = deck.tabs.flatMap((tab) => {
@@ -367,44 +435,155 @@ export function App({ adopted }: AppProps) {
   })
 
   return (
-    <div className="flex h-full flex-col">
-      <TabStrip
-        tabs={deck.tabs}
-        activeId={deck.activeId}
-        onSelect={(id) => dispatch({ type: 'activate', id })}
-        onMove={(id, index) => dispatch({ type: 'move', id, index })}
-        onMoveToNewWindow={(id) => void moveToNewWindow(id)}
-        onTearOff={tearOff}
-        onClose={close}
-        onOpen={open}
-      />
-      <main className="relative min-h-0 flex-1">
-        <CollisionProvider tabs={watched} pollSeconds={settings.gitPollSeconds}>
-          {byId(deck.tabs).map((tab) => (
-            <Pane
-              key={tab.id}
-              tab={tab}
-              active={tab.id === deck.activeId}
-              onLaunch={launch(tab.id)}
-              onOpenSettings={openSettings}
-              dispatch={dispatch}
-            />
-          ))}
-        </CollisionProvider>
-      </main>
-    </div>
+    <main
+      ref={panes}
+      // One grid for every strip and pane, never wider than the window: see
+      // the pane and far-right invariants in AGENTS.md.
+      className="relative grid h-full overflow-hidden"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        gridTemplateRows: 'auto minmax(0, 1fr)',
+      }}
+    >
+      {deck.shown.map((shownId, column) => (
+        <TabStrip
+          key={column}
+          column={column}
+          last={column === columns - 1}
+          focused={column === focus}
+          lone={deck.tabs.length === 1}
+          canSplit={room}
+          tabs={columnTabs(deck, column)}
+          activeId={shownId}
+          joinAt={
+            landing?.column === column && 'index' in landing
+              ? landing.index
+              : null
+          }
+          onSelect={(id) => dispatch({ type: 'activate', id })}
+          onMove={(id, index) => dispatch({ type: 'move', id, index })}
+          onMoveToNewWindow={(id) => void moveToNewWindow(id)}
+          onTearOff={tearOff}
+          onClose={close}
+          onOpen={() => dispatch({ type: 'open', id: nextTabId(), column })}
+          onSplit={() => dispatch({ type: 'split', id: nextTabId(), column })}
+          onMoveToNewColumn={(id) =>
+            dispatch({
+              type: 'moveToColumn',
+              id,
+              column: column + 1,
+              split: true,
+            })
+          }
+          onHover={hover}
+          onDrop={drop}
+        />
+      ))}
+      <CollisionProvider tabs={watched} pollSeconds={settings.gitPollSeconds}>
+        {byId(deck.tabs).map((tab) => (
+          <Pane
+            key={tab.id}
+            tab={tab}
+            active={tab.id === deck.activeId}
+            shown={deck.shown[tab.column] === tab.id}
+            onActivate={() => dispatch({ type: 'activate', id: tab.id })}
+            onLaunch={launch(tab.id)}
+            onOpenSettings={openSettings}
+            dispatch={dispatch}
+          />
+        ))}
+      </CollisionProvider>
+      {landing && 'zone' in landing && <DropZone place={landing} />}
+    </main>
   )
 }
 
 /**
  * The panes in an order no drag can change. Reordering keyed children makes
  * React move their DOM nodes, and a moved node loses its scroll position and
- * focus — every pane is mounted, so a drag in the strip would disturb
- * terminals nobody touched. Panes are stacked and hidden, so their order shows
- * nowhere.
+ * focus — every pane is mounted, so a drag in a strip would disturb
+ * terminals nobody touched. Each pane names its own grid cell, so their order
+ * shows nowhere.
  */
 const byId = (tabs: Tab[]) =>
   [...tabs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+/**
+ * The element's width, kept current. Synchronises with the layout, which
+ * nothing in React owns.
+ */
+function useWidth(element: RefObject<HTMLElement | null>) {
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const node = element.current
+    if (!node) return
+    const observer = new ResizeObserver(() => setWidth(node.clientWidth))
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [element])
+  return width
+}
+
+/** The narrowest a column is opened at: a terminal of about 40 columns. */
+const MIN_COLUMN_PX = 320
+
+/**
+ * Where a dragged tab released over `place` would land in this window, or
+ * `null` where releasing it tears it off instead: outside every column, in
+ * its own column's middle, and always for the window's only tab, which
+ * carries its window. An edge opens a column where the columns still fit — a column's
+ * only tab moving never adds one — and where that changes something: a
+ * column's only tab beside its own place would land where it already is.
+ * Where an edge cannot, it is that column's middle.
+ */
+function landingFor({
+  deck,
+  id,
+  place,
+  room,
+}: {
+  deck: Deck
+  id: string
+  place: ColumnPlace | null
+  room: boolean
+}): ColumnPlace | null {
+  const tab = deck.tabs.find((entry) => entry.id === id)
+  if (!place || !tab || deck.tabs.length === 1) return null
+  const own = place.column === tab.column
+  if ('index' in place) return own ? null : place
+  const alone = columnTabs(deck, tab.column).length === 1
+  const target = place.column + (place.zone === 'right' ? 1 : 0)
+  const stays = alone && (target === tab.column || target === tab.column + 1)
+  const splits = place.zone !== 'middle' && (room || alone) && !stays
+  if (splits) return place
+  return own ? null : { column: place.column, zone: 'middle' }
+}
+
+const samePlace = (a: ColumnPlace | null, b: ColumnPlace | null) =>
+  a?.column === b?.column &&
+  (a && 'index' in a ? a.index : a?.zone) ===
+    (b && 'index' in b ? b.index : b?.zone)
+
+/** The half of a column a tab released here would take, or all of it. */
+function DropZone({
+  place,
+}: {
+  place: Extract<ColumnPlace, { zone: unknown }>
+}) {
+  const half =
+    place.zone === 'left'
+      ? 'mr-[50%]'
+      : place.zone === 'right'
+        ? 'ml-[50%]'
+        : ''
+  return (
+    <div
+      aria-hidden="true"
+      style={{ gridColumn: place.column + 1, gridRow: 2 }}
+      className={`pointer-events-none z-10 border-2 border-primary bg-primary/10 ${half}`}
+    />
+  )
+}
 
 /** Where a tab is handed: a new window, or a point on another one's strip. */
 type Destination =
@@ -413,19 +592,20 @@ type Destination =
 /** Adopts the tabs other windows have queued for this one. */
 async function adoptSent(dispatch: (action: DeckAction) => void) {
   for (const { tab, dropX } of await adoptHandoffs()) {
-    const index = dropX === null ? undefined : stripIndexAt(dropX)
-    dispatch({ type: 'adopt', tab, index })
+    const place = dropX === null ? undefined : stripPlaceAt(dropX)
+    dispatch({ type: 'adopt', tab, ...place })
   }
 }
 
 /** The tabs a window opens with: any sent to it, else what it last showed. */
 const initialTabs = (adopted: Tab[]): Deck =>
   adopted.length > 0
-    ? adopted.reduce<Deck>(
-        (deck, tab) => deckReducer(deck, { type: 'adopt', tab }),
-        {
-          tabs: [],
-          activeId: '',
-        },
+    ? arrangeDeck(
+        // One tab per id: an id keys a pane and its session, so a tab handed
+        // over twice opens once.
+        [...new Map(adopted.map((tab) => [tab.id, tab])).values()].map(
+          (tab) => ({ ...tab, attention: false }),
+        ),
+        { activeId: adopted[adopted.length - 1].id },
       )
     : loadDeck(nextTabId)

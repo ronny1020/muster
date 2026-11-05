@@ -44,7 +44,7 @@ import {
   spawnPty,
   writePty,
 } from '../../../shared/ipc'
-import { IS_MAC } from '../../../shared/lib/platform'
+import { IS_MAC, IS_WINDOWS } from '../../../shared/lib/platform'
 import { webHref } from '../../../shared/lib/weburl'
 import { covers, flattenLogicalLine, linkAt, rangeOf } from '../model/termcells'
 import { paletteFor } from '../../../shared/lib/themes'
@@ -92,7 +92,14 @@ import { FILE_MARK, messageMark, useRulerMarks } from './useRulerMarks'
 export interface TerminalViewProps {
   sessionId: string
   session: Session
+  /** Whether this tab has the keyboard. */
   active: boolean
+  /**
+   * Whether the terminal is on screen, which a tab in another column can be
+   * without the keyboard. Rails and marks are measured, and drops on its
+   * column taken, only while it holds.
+   */
+  visible: boolean
   /** Fired when the session rings the terminal bell, i.e. it wants attention. */
   onBell: () => void
   /**
@@ -168,6 +175,23 @@ const bestEffort = (call: Promise<unknown>) => void call.catch(() => {})
 const agentColour = (accent: string): CSSProperties =>
   Object.fromEntries([['--color-agent', accent]])
 
+/**
+ * Whether `x`, in CSS pixels, falls within `element`'s width: given the tab's
+ * pane, that is its column — drawers, strip and status bar included, so a drop
+ * anywhere in it reaches the terminal.
+ */
+const inColumn = (element: HTMLElement | null, x: number) => {
+  const box = element?.getBoundingClientRect()
+  return box !== undefined && x >= box.left && x < box.right
+}
+
+/**
+ * A drop's x in CSS pixels. Tauri types every drop position as physical, but
+ * only WebView2 measures in device pixels: WKWebView and WebKitGTK report the
+ * window's own points, which are CSS pixels already.
+ */
+const cssX = (x: number) => (IS_WINDOWS ? x / devicePixelRatio : x)
+
 /** The code in `pty_reattach`'s `exited:<code>`, or 1 for a session that is
  *  simply gone. */
 const exitCodeOf = (error: unknown) => {
@@ -183,6 +207,7 @@ export function TerminalView({
   sessionId,
   session,
   active,
+  visible,
   onBell,
   onAgentEvent,
   onHandback,
@@ -209,7 +234,7 @@ export function TerminalView({
   const lastCols = useRef(0)
   /** The same terminal as state, so what renders beside it can mount with it. */
   const [mounted, setMounted] = useState<Terminal | null>(null)
-  const messages = useMessages(mounted, active)
+  const messages = useMessages(mounted, visible)
   /**
    * Whether the agent is holding the alternate buffer, from xterm's own
    * event rather than read while rendering.
@@ -461,9 +486,9 @@ export function TerminalView({
 
   const messageStyle = useMemo(() => messageMark(accent), [accent])
   useRulerMarks(mounted, messages, messageStyle)
-  const fileMarks = useFileMarks(mounted, active)
+  const fileMarks = useFileMarks(mounted, visible)
   useRulerMarks(mounted, fileMarks, FILE_MARK)
-  const viewportRow = useViewportRow(mounted, active)
+  const viewportRow = useViewportRow(mounted, visible)
   /** The last row on screen: what "which message am I in" is measured against. */
   const viewportBottom = viewportRow + (mounted?.rows ?? 0) - 1
   /**
@@ -512,7 +537,8 @@ export function TerminalView({
    * Option-drag block selection off over its own dead scrollback.
    */
   const releaseSelection = useRef<(() => void) | null>(null)
-  const showing = useRef(active)
+  const focused = useRef(active)
+  const shown = useRef(visible)
   // Read through refs: these change with every poll, and the terminal is built
   // once. A dependency on them would tear the session down.
   const link = useRef({ cwd, home, onPath, onUrl })
@@ -566,7 +592,8 @@ export function TerminalView({
     handback.current = onHandback
     adoptedExit.current = onAdoptedExit
     working.current = onWorking
-    showing.current = active
+    focused.current = active
+    shown.current = visible
     link.current = { cwd, home, onPath, onUrl }
     latest.current = settings
     live.current = !ended
@@ -579,6 +606,7 @@ export function TerminalView({
     onAdoptedExit,
     onWorking,
     active,
+    visible,
     cwd,
     home,
     onPath,
@@ -954,7 +982,7 @@ export function TerminalView({
     // skipping it while hidden also keeps a layout flush out of every write
     // in every tab.
     const resyncScrollbar = () => {
-      if (!showing.current) return
+      if (!shown.current) return
       const viewport = term.buffer.active
       const area = element.querySelector<HTMLElement>('.xterm-scroll-area')
       if (!area || viewport.length <= term.rows) return
@@ -1054,11 +1082,11 @@ export function TerminalView({
       return true
     })
     // How a TUI copies — Claude Code's copy-on-select in a clicks tab sends
-    // one. Writes only, and only from the tab on screen in the focused window:
+    // one. Writes only, and only from the active tab in the focused window:
     // a tab printing a file anywhere else must not replace what the reader
     // last copied. Asked again when the write leaves the queue, which may be
     // after the tab has hidden or closed.
-    const mayCopy = () => !disposed && showing.current && document.hasFocus()
+    const mayCopy = () => !disposed && focused.current && document.hasFocus()
     term.parser.registerOscHandler(52, (data) => {
       if (!mayCopy()) return true
       const text = clipboardWrite(data)
@@ -1383,12 +1411,13 @@ export function TerminalView({
    * every terminal has done with a dropped file for decades, and the shortest
    * path from "that file" to a prompt.
    *
-   * Only the active pane listens. The event is the window's, not an element's:
-   * Tauri intercepts the drop before the DOM sees it, so there is no target to
-   * hang a handler on, and every mounted pane would otherwise answer one drop.
+   * Each pane on screen listens, and takes only a drop within its own
+   * column's width. The event is the window's, not an element's: Tauri
+   * intercepts the drop before the DOM sees it, so there is no target to hang
+   * a handler on, and every mounted pane would otherwise answer one drop.
    */
   useEffect(() => {
-    if (!active) return
+    if (!visible) return
     let unlisten: (() => void) | null = null
     let live = true
 
@@ -1398,12 +1427,14 @@ export function TerminalView({
     try {
       void getCurrentWebview()
         .onDragDropEvent(({ payload }) => {
-          if (payload.type === 'leave') {
-            setDropping(false)
-            return
-          }
-          if (payload.type !== 'drop') {
-            setDropping(true)
+          const here =
+            payload.type !== 'leave' &&
+            inColumn(
+              pane.current?.closest<HTMLElement>('[data-column]') ?? null,
+              cssX(payload.position.x),
+            )
+          if (payload.type !== 'drop' || !here) {
+            setDropping(here)
             return
           }
           setDropping(false)
@@ -1435,20 +1466,19 @@ export function TerminalView({
       unlisten?.()
       setDropping(false)
     }
+  }, [visible])
+
+  // Hands focus back when the tab loses the keyboard: see the blur invariant
+  // in this feature's AGENTS.md.
+  useEffect(() => {
+    if (active) terminal.current?.focus()
+    else terminal.current?.blur()
   }, [active])
 
-  // A hidden pane keeps its DOM focus in xterm's helper textarea, which then
-  // swallows typing meant for whatever the new tab put on screen, so the
-  // terminal hands focus back on the way out.
+  // Whatever arrived while this pane was hidden could not be measured then.
   useEffect(() => {
-    if (!active) {
-      terminal.current?.blur()
-      return
-    }
-    terminal.current?.focus()
-    // Whatever arrived while this pane was hidden could not be measured then.
-    resync.current?.()
-  }, [active])
+    if (visible) resync.current?.()
+  }, [visible])
 
   // The child is gone, so nothing will clear the mouse mode it left armed and
   // no further write will notice. Synchronising with the terminal outside

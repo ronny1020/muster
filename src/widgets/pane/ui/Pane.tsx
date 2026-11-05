@@ -94,7 +94,17 @@ interface ImagePreviewState {
 
 export interface PaneProps {
   tab: Tab
+  /** The tab with the keyboard: the one keystrokes and Escape reach. */
   active: boolean
+  /**
+   * Whether its column shows it, which the active tab's always does. Several
+   * panes are shown once there are columns, and only one has the keyboard:
+   * what is measured off the screen follows this, what answers a key
+   * follows `active`.
+   */
+  shown: boolean
+  /** Makes this tab the active one: a click in its column asks for focus. */
+  onActivate: () => void
   onLaunch: (request: LaunchRequest) => void
   /** Passed rather than dispatched here: a new tab's id is minted in `App`. */
   onOpenSettings: () => void
@@ -108,6 +118,8 @@ export interface PaneProps {
 export function Pane({
   tab,
   active,
+  shown,
+  onActivate,
   onLaunch,
   onOpenSettings,
   dispatch,
@@ -145,7 +157,7 @@ export function Pane({
   const pullRequest = usePullRequest(
     cwd,
     git?.repo && !git.detached ? git.branch : '',
-    settings.pullRequests && active && Boolean(session),
+    settings.pullRequests && shown && Boolean(session),
   )
   const historyOpen = tab.historyOpen && Boolean(git?.repo)
   const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
@@ -527,7 +539,7 @@ export function Pane({
       const { attention, notify: shouldNotify } = decideBellResponse({
         enabled: settings.notifyOnDone,
         onlyWhenUnfocused: settings.notifyOnlyWhenUnfocused,
-        tabActive: active,
+        tabShown: shown,
         windowFocused: document.hasFocus(),
         // A fresh signal ignores the cooldown, which exists to merge one
         // moment announced two ways — never to swallow a second moment.
@@ -545,12 +557,12 @@ export function Pane({
       )
     },
     [
-      active,
       dispatch,
       runningName,
       settings.notifyOnDone,
       settings.notifyOnlyWhenUnfocused,
       settings.notifySound,
+      shown,
       tab.id,
       tab.title,
     ],
@@ -601,7 +613,15 @@ export function Pane({
 
   return (
     <section
-      className={`absolute inset-0 flex-col ${active ? 'flex' : 'hidden'}`}
+      data-column={tab.column}
+      style={{ gridColumn: tab.column + 1, gridRow: 2 }}
+      // Capture, so the click that lands on a terminal or a control in
+      // another column both focuses its tab and does what it was aimed at.
+      onPointerDownCapture={active ? undefined : onActivate}
+      onFocusCapture={active ? undefined : onActivate}
+      className={`relative min-h-0 min-w-0 flex-col overflow-hidden ${shown ? 'flex' : 'hidden'} ${
+        tab.column > 0 ? 'border-l border-line' : ''
+      }`}
     >
       {tab.content.type === 'settings' && <SettingsPane />}
       {tab.content.type === 'launcher' && (
@@ -638,6 +658,7 @@ export function Pane({
                 session={session}
                 accent={runningAccent}
                 active={active}
+                visible={shown}
                 onBell={onBell}
                 onAgentEvent={onAgentEvent}
                 onHandback={onHandback}
