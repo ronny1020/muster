@@ -5,6 +5,8 @@ import {
   useState,
 } from 'react'
 
+import { followDrag } from './followDrag'
+
 /**
  * A side panel's width, dragged by its edge and remembered.
  *
@@ -96,58 +98,23 @@ export function usePanelWidth(key: string, fallback: number): PanelWidth {
     (event: ReactPointerEvent) => {
       // Or the pointer starts a text selection in whatever is underneath.
       event.preventDefault()
-      const startX = event.clientX
       const startWidth = width
-      // The panels are on the right, so dragging left widens them.
       let next = startWidth
 
-      const move = (moved: globalThis.PointerEvent) => {
-        next = clampWidth(
-          startWidth + (startX - moved.clientX),
-          window.innerWidth,
-        )
-        setWidth(next)
-      }
-      /**
-       * Ends the drag, keeping the new width or putting the old one back.
-       *
-       * The width is written once, here: a write per frame would be sixty a
-       * second. Anything that is not a completed drag reverts — a drag has no
-       * other undo, and a panel dragged somewhere by accident is otherwise
-       * remembered there.
-       */
-      const finish = (keep: boolean) => {
-        window.removeEventListener('pointermove', move)
-        window.removeEventListener('pointerup', commit)
-        window.removeEventListener('pointercancel', revert)
-        document.removeEventListener('keydown', onKeyDown, true)
-        setDragging(false)
-        if (keep) remember(next)
-        else setWidth(startWidth)
-      }
-      const commit = () => finish(true)
-      const revert = () => finish(false)
-      /**
-       * Escape cancels the drag, and nothing else.
-       *
-       * Captured on the document and stopped there, because the file column
-       * also closes on Escape: without this, cancelling a drag of its edge
-       * also shut the panel being resized.
-       */
-      const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key !== 'Escape') return
-        event.stopPropagation()
-        event.preventDefault()
-        revert()
-      }
-
-      window.addEventListener('pointermove', move)
-      window.addEventListener('pointerup', commit)
-      // A drag the OS takes over — a window switch mid-drag — never sends
-      // `pointerup`, and without this the listeners would outlive it.
-      window.addEventListener('pointercancel', revert)
-      document.addEventListener('keydown', onKeyDown, true)
-      setDragging(true)
+      followDrag(event.clientX, {
+        // The panels are on the right, so dragging left widens them.
+        move: (dx) => {
+          setDragging(true)
+          next = clampWidth(startWidth - dx, window.innerWidth)
+          setWidth(next)
+        },
+        // Written once, here: a write per frame would be sixty a second.
+        end: (keep) => {
+          setDragging(false)
+          if (keep) remember(next)
+          else setWidth(startWidth)
+        },
+      })
     },
     [remember, width],
   )

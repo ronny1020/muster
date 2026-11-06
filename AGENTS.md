@@ -301,8 +301,12 @@ reason settings left the strip: every column's far right is some window's
 corner the moment it becomes the last column. That holds only because the
 grid never scrolls: scrolled sideways, the strips would carry the caption
 buttons and the traffic-light inset away from the corners the OS draws them
-in. So the grid is `minmax(0, 1fr)` with its overflow hidden, and a column is
-opened only where it would still be `MIN_COLUMN_PX` wide.
+in. So the grid's overflow is hidden, a column's floor is `MIN_COLUMN_PX` or an
+equal share of the window, whichever is less — so the floors never add up
+past its width — and a column is opened only where it would still be
+`MIN_COLUMN_PX` wide. Dragging the edge between two columns moves width
+between those two alone, never taking either under that floor; what it
+stores is every column's width as drawn at that moment.
 
 **A language switch re-renders; it never remounts.** Remounting the tree is
 the easy way to apply a new language, and it would end every session in the
@@ -374,7 +378,8 @@ on the diff's scroll box and on `EditLines` is what holds them.
 
 **An overlay that closes on Escape must claim the key, not share it.** Several
 surfaces listen for Escape on their own, and they stack: the file column, the
-image overlay, and a width drag in progress. Listeners on `window` all fire, so
+image overlay, and a drag of a panel's or a column's edge in progress —
+`shared/lib/followDrag` claims it for both. Listeners on `window` all fire, so
 dismissing the image overlay also closed the column behind it, and cancelling a
 drag closed the panel being dragged. The rule: a transient surface listens in
 the **capture** phase on `document` and calls `stopPropagation`, so the topmost

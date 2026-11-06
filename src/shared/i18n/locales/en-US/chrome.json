@@ -34,6 +34,7 @@
     "ended_failed": "Session ended with code {{code}}."
   },
   "dragEdge": "Drag to resize · double-click to reset",
+  "columnEdge": "Resize columns {{left}} and {{right}}",
   "noMatch": "No match.",
   "dialog": {
     "chooseDirectory": "Choose a working directory",

@@ -92,6 +92,13 @@ export interface Deck {
    * of columns. Every column holds at least one tab: one left empty closes.
    */
   shown: string[]
+  /**
+   * Each column's share of the window, by the same index as `shown`, summing
+   * to 1. Absent while the columns are equal: set once one is resized, and
+   * cleared by a reset. Read it through `columnWidths`, which answers equal
+   * shares when it is absent.
+   */
+  widths?: number[]
 }
 
 export type DeckAction =
@@ -131,7 +138,9 @@ export type DeckAction =
   /**
    * Puts a tab in another column, at `index` of it or at its end. With
    * `split`, a new column is opened at `column` for it and those from there
-   * on move one to the right.
+   * on move one to the right. Once the columns have been resized, it takes
+   * half the width of column `of` — numbered as before the split, and the
+   * column on its left when not given — so the others keep theirs.
    */
   | {
       type: 'moveToColumn'
@@ -139,7 +148,10 @@ export type DeckAction =
       column: number
       index?: number
       split?: boolean
+      of?: number
     }
+  /** New widths for the columns, in any unit, or `undefined` for equal ones. */
+  | { type: 'resize'; widths?: number[] }
   /**
    * Splits `column`, or else the focused one: the tab it shows moves to a new
    * column on its right, or — when it is the column's only tab — a new start
@@ -316,6 +328,18 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
     case 'moveToColumn':
       return moveToColumn(deck, action)
 
+    // Widths for another number of columns describe a layout that is gone,
+    // so they change nothing rather than resetting the ones there are.
+    case 'resize': {
+      if (!action.widths)
+        return deck.widths ? { ...deck, widths: undefined } : deck
+      const widths =
+        action.widths.length === deck.shown.length
+          ? normalized(action.widths)
+          : undefined
+      return widths ? { ...deck, widths } : deck
+    }
+
     case 'split':
       return split(deck, action.id, action.column ?? focusedColumn(deck))
 
@@ -488,6 +512,7 @@ function closeTab(deck: Deck, id: string, replacementId: string): Deck {
       tabs: deck.tabs.filter((entry) => entry !== tab),
       activeId: deck.activeId,
       shown,
+      widths: deck.widths,
     },
     tab.column,
   )
@@ -555,7 +580,14 @@ function moveToColumn(
     column,
     index,
     split = false,
-  }: { id: string; column: number; index?: number; split?: boolean },
+    of = column - 1,
+  }: {
+    id: string
+    column: number
+    index?: number
+    split?: boolean
+    of?: number
+  },
 ): Deck {
   const tab = deck.tabs.find((entry) => entry.id === id)
   if (!tab) return deck
@@ -576,7 +608,23 @@ function moveToColumn(
         : entry,
     )
   const tabs = [...shifted, { ...tab, column: target }]
-  return place(settle({ tabs, activeId: id, shown }, target), id, index)
+  // Columns nobody has resized stay equal, as they were before the split.
+  const widths =
+    split && deck.widths
+      ? splitWidths(columnWidths(deck), target, of)
+      : deck.widths
+  return place(settle({ tabs, activeId: id, shown, widths }, target), id, index)
+}
+
+/**
+ * The shares once a column opens at `at`, taking half of column `of`, which
+ * is clamped to the columns there are.
+ */
+function splitWidths(widths: number[], at: number, of: number): number[] {
+  const halved = Math.max(0, Math.min(of, widths.length - 1))
+  const half = widths[halved] / 2
+  const rest = replaced(widths, halved, half)
+  return [...rest.slice(0, at), half, ...rest.slice(at)]
 }
 
 function split(deck: Deck, id: string, column: number): Deck {
@@ -604,11 +652,21 @@ function split(deck: Deck, id: string, column: number): Deck {
  */
 export function arrangeDeck(
   tabs: Tab[],
-  { activeId, shown = [] }: { activeId: string; shown?: string[] },
+  {
+    activeId,
+    shown = [],
+    widths,
+  }: { activeId: string; shown?: string[]; widths?: number[] },
 ): Deck {
   const focus = tabs.find((tab) => tab.id === activeId)?.column ?? 0
-  return show(settle({ tabs, activeId, shown }, focus), activeId)
+  return show(settle({ tabs, activeId, shown, widths }, focus), activeId)
 }
+
+/** Each column's share of the window, equal until one is resized. */
+export const columnWidths = (deck: Deck): number[] =>
+  deck.widths?.length === deck.shown.length
+    ? deck.widths
+    : deck.shown.map(() => 1 / deck.shown.length)
 
 /**
  * Repairs the columns after tabs left or joined them: empty columns close
@@ -638,7 +696,39 @@ function settle(deck: Deck, focus: number): Deck {
   const activeId = shown.includes(deck.activeId)
     ? deck.activeId
     : shown[nearest]
-  return { tabs, activeId, shown }
+  const widths = keptWidths(deck.widths, used)
+  return widths ? { tabs, activeId, shown, widths } : { tabs, activeId, shown }
+}
+
+/**
+ * The shares once only the columns numbered `used` remain. A closed column's
+ * share goes to the column on its left — or its right, when it was the
+ * first — so the columns nobody touched keep their size, as in VS Code.
+ */
+function keptWidths(
+  widths: number[] | undefined,
+  used: number[],
+): number[] | undefined {
+  if (!widths || !used.every((old) => widths[old] > 0)) return undefined
+  const kept = used.map((old) => widths[old])
+  widths.forEach((share, old) => {
+    if (used.includes(old)) return
+    const left = used.filter((column) => column < old).length - 1
+    kept[Math.max(left, 0)] += share
+  })
+  return normalized(kept)
+}
+
+/** `shares` scaled to sum to 1, or `undefined` when they cannot be. */
+function normalized(shares: number[]): number[] | undefined {
+  if (!shares.every((share) => Number.isFinite(share) && share > 0))
+    return undefined
+  const total = shares.reduce((sum, share) => sum + share, 0)
+  const scaled = shares.map((share) => share / total)
+  // The grid divides by the narrowest, so a ratio that overflows, or a share
+  // that underflowed to 0, would draw an `Infinityfr` column.
+  const spread = Math.max(...scaled) / Math.min(...scaled)
+  return Number.isFinite(spread) ? scaled : undefined
 }
 
 /** `list` with `value` at `index`. */

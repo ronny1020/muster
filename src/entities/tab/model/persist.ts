@@ -43,6 +43,8 @@ interface StoredDeck {
   columns: number[]
   /** The indexes in `tabs` of the tab each column showed. */
   shown: number[]
+  /** Each column's share of the window; empty for equal shares. */
+  widths: number[]
 }
 
 export function saveDeck(deck: Deck) {
@@ -57,6 +59,7 @@ export function saveDeck(deck: Deck) {
     shown: kept.flatMap((tab, index) =>
       deck.shown.includes(tab.id) ? [index] : [],
     ),
+    widths: deck.widths ?? [],
   }
   const record = JSON.stringify(stored)
   // Compared against what is stored, not a remembered string: `patch` rebuilds
@@ -89,14 +92,18 @@ export function loadDeck(nextId: () => string): Deck {
   const shown: string[] = []
   for (const index of starts.shown)
     shown[starts.columns[index]] = tabs[index].id
-  return arrangeDeck(tabs, { activeId: tabs[starts.activeIndex].id, shown })
+  return arrangeDeck(tabs, {
+    activeId: tabs[starts.activeIndex].id,
+    shown,
+    widths: starts.widths.length > 0 ? starts.widths : undefined,
+  })
 }
 
 function readStarts(): StoredDeck {
   try {
     return normalizeDeck(JSON.parse(appState(storageKey()) ?? '{}'))
   } catch {
-    return { tabs: [], activeIndex: 0, columns: [], shown: [] }
+    return { tabs: [], activeIndex: 0, columns: [], shown: [], widths: [] }
   }
 }
 
@@ -118,7 +125,15 @@ export function normalizeDeck(input: unknown): StoredDeck {
   const shown = (Array.isArray(raw.shown) ? raw.shown : []).filter(
     (at): at is number => Number.isInteger(at) && at >= 0 && at < tabs.length,
   )
-  return { tabs, activeIndex, columns, shown }
+  const shares: unknown[] = Array.isArray(raw.widths) ? raw.widths : []
+  // All or nothing: one bad share leaves the rest without a whole to divide.
+  const widths = shares.every(
+    (share): share is number =>
+      typeof share === 'number' && Number.isFinite(share) && share > 0,
+  )
+    ? shares
+    : []
+  return { tabs, activeIndex, columns, shown, widths }
 }
 
 export function normalizeStart(input: unknown): LauncherStart | null {

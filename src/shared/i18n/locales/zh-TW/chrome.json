@@ -34,6 +34,7 @@
     "ended_failed": "工作階段已結束，結束代碼 {{code}}。"
   },
   "dragEdge": "拖曳以調整大小 · 按兩下以重設",
+  "columnEdge": "調整第 {{left}} 與第 {{right}} 個分欄的寬度",
   "noMatch": "沒有符合的項目。",
   "dialog": {
     "chooseDirectory": "選擇工作目錄",

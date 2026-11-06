@@ -34,6 +34,7 @@
     "ended_failed": "セッションがコード {{code}} で終了しました。"
   },
   "dragEdge": "ドラッグでサイズ変更・ダブルクリックでリセット",
+  "columnEdge": "列 {{left}} と列 {{right}} の幅を変更",
   "noMatch": "一致する項目はありません。",
   "dialog": {
     "chooseDirectory": "作業ディレクトリを選択",
