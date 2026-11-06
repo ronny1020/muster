@@ -255,25 +255,24 @@ Quoted values stay in one piece.
 scrollback is lost, so leaving an agent to work and coming back later is the
 normal way to use this.
 
-**Columns put tabs side by side.** `⌘D`, or `Ctrl+Shift+D`, or the split
-button beside `+` splits the window: the tab you are in moves to a new column
-on the right, or — when it is the only tab in its column — a new start screen
-opens there in the same directory. Each column has its own strip, so it
-switches its own tabs, and clicking anywhere in a column puts the keyboard
-there. Drag a tab onto another column's strip to put it there, onto the
-middle of a column to join it, or onto a column's left or right edge to open
-a new column on that side; a highlight shows where it will land. A tab's
-right-click menu also has **Move to new column**. A column closes when its
-last tab leaves it, and the sessions keep running through every move. The
-tab shortcuts work in the column with the keyboard: `⌘1`–`⌘8` pick its tabs
-and `⌘9` its last, and previous / next tab carry on into the neighbouring
-column at either end. Drag the line between two columns to resize them, use
-the arrow keys on it once it is focused, or double-click it to make every
-column the same width again; the widths are remembered with the tabs.
-Columns stay equal as you split until one is resized; after that, a split
-halves the column it splits.
-A new column needs room for about 40 terminal columns, so the split button
-greys out in a window too narrow for another.
+**Columns put tabs side by side.** `⌘D`, or `Ctrl+Shift+D`, or the split button
+beside `+` splits the window: a new start screen opens in a new column on the
+right, in the same directory as the tab you are in, which stays where it is.
+Each column has its own strip, so it switches its own tabs, and clicking
+anywhere in a column puts the keyboard there. Drag a tab onto another column's
+strip to put it there, onto the middle of a column to join it, or onto a
+column's left or right edge to open a new column on that side; a highlight
+shows where it will land. A tab's right-click menu also has **Move to new
+column**. A column closes when its last tab leaves it, and the sessions keep
+running through every move. The tab shortcuts work in the column with the
+keyboard: `⌘1`–`⌘8` pick its tabs and `⌘9` its last, and previous / next tab
+carry on into the neighbouring column at either end. Drag the line between two
+columns to resize them, use the arrow keys on it once it is focused, or
+double-click it to make every column the same width again; the widths are
+remembered with the tabs. Columns stay equal as you split until one is resized;
+after that, a split halves the column it splits. A new column needs room for
+about 40 terminal columns, so the split button greys out in a window too narrow
+for another.
 
 **The tabs are the title bar.** On macOS they sit inside the system one, behind
 the traffic lights; on Windows there is no system title bar at all, and the

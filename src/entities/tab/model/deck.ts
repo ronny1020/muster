@@ -153,9 +153,8 @@ export type DeckAction =
   /** New widths for the columns, in any unit, or `undefined` for equal ones. */
   | { type: 'resize'; widths?: number[] }
   /**
-   * Splits `column`, or else the focused one: the tab it shows moves to a new
-   * column on its right, or — when it is the column's only tab — a new start
-   * screen, `id`, opens there in the same directory.
+   * Splits `column`, or else the focused one: a new start screen, `id`,
+   * opens in a new column on its right, in the directory of the tab it shows.
    */
   | { type: 'split'; id: string; column?: number }
 
@@ -630,17 +629,11 @@ function splitWidths(widths: number[], at: number, of: number): number[] {
 function split(deck: Deck, id: string, column: number): Deck {
   const showing = deck.tabs.find((tab) => tab.id === deck.shown[column])
   if (!showing) return deck
-  const target = showing.column + 1
-  if (columnTabs(deck, showing.column).length > 1) {
-    return moveToColumn(deck, { id: showing.id, column: target, split: true })
-  }
-  // A terminal cannot be in two places, so a lone tab is not duplicated: the
-  // new column starts where it is working.
   const start = startOf(showing) ?? undefined
   const fresh = newTab(id, { type: 'launcher', start }, showing.column)
   return moveToColumn(
     { ...deck, tabs: [...deck.tabs, fresh] },
-    { id, column: target, split: true },
+    { id, column: showing.column + 1, split: true },
   )
 }
 
