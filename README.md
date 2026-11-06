@@ -110,7 +110,8 @@ brew uninstall --cask ronny1020/tap/muster
 ```
 
 Dragging the app to the Trash leaves Homebrew's record of it behind, which then
-reports the app as installed when it is not.
+reports the app as installed when it is not. Add `--zap` to delete your tabs,
+settings and session recordings as well.
 
 ### 🪟 Windows
 
@@ -973,6 +974,28 @@ deleted by hand, so Homebrew's record and the disk disagree, and `brew install`
 will go on reporting success without installing anything. Repair it with `brew
 reinstall --cask ronny1020/tap/muster`, then clear the quarantine attribute as
 above.
+
+**Still the old version after updating.** A running copy keeps the version it
+started with, so quit Muster and open it again. To see which version is on disk,
+run `defaults read /Applications/Muster.app/Contents/Info.plist
+CFBundleShortVersionString` and compare it with the
+[Releases page](https://github.com/ronny1020/muster/releases). If they match and
+the app still looks old, you opened a different copy: Spotlight also finds
+builds elsewhere on the disk, such as one inside a checkout of this repository.
+Open the one in Applications.
+
+**Starting over on macOS.** Quit Muster first, since this ends every session in
+it:
+
+```bash
+brew uninstall --zap --cask ronny1020/tap/muster
+brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
+```
+
+`--zap` also deletes what Muster keeps under `~/Library`: open tabs, settings
+and the session recordings. Copy
+`~/Library/Application Support/io.github.ronny1020.muster` somewhere first if
+you want to keep the recordings.
 
 **"command not found" when a session starts.** That agent's CLI is not
 installed, or is not on the `PATH` your login shell sets up. Check that the

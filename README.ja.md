@@ -61,7 +61,7 @@ tap を更新するのは `brew update` です。これがないと Homebrew は
 brew uninstall --cask ronny1020/tap/muster
 ```
 
-アプリをゴミ箱にドラッグすると Homebrew の記録が残り、実際にはインストールされていないのにインストール済みと報告されるようになります。
+アプリをゴミ箱にドラッグすると Homebrew の記録が残り、実際にはインストールされていないのにインストール済みと報告されるようになります。`--zap` を付けると、タブ、設定、セッションの記録も削除されます。
 
 ### 🪟 Windows
 
@@ -406,6 +406,17 @@ Chrome と同じく、タブをドラッグするとタブ列の順番を変え�
 **`brew install` が `Warning: Not upgrading muster, the latest version is already installed` と表示し、アプリはある。** これは Homebrew がすでにインストール済みだと伝えているだけで、エラーではありません。何もする必要はありません。それでも新しいコピーを強制的に入れたい場合は、`brew reinstall --cask ronny1020/tap/muster` を使ってください。
 
 **`brew install` が「already installed」と表示するのに、アプリがない。** アプリが手動で削除されたため、Homebrew の記録とディスクの内容が食い違っており、`brew install` は何もインストールせずに成功を報告し続けます。`brew reinstall --cask ronny1020/tap/muster` で修復し、その後、上記と同じように quarantine 属性を消去してください。
+
+**更新したのに古いバージョンのまま。** 起動中のアプリは起動したときのバージョンのままなので、Muster を終了してから開き直してください。ディスク上のバージョンは `defaults read /Applications/Muster.app/Contents/Info.plist CFBundleShortVersionString` で確認し、[Releases ページ](https://github.com/ronny1020/muster/releases)と比べます。一致しているのにアプリが古く見える場合は、別のコピーを開いています。Spotlight はディスク上の別の場所にあるビルド、たとえばこのリポジトリのチェックアウト内のものも見つけます。「アプリケーション」にあるものを開いてください。
+
+**macOS で最初からやり直す。** 中のセッションがすべて終了するので、先に Muster を終了してください：
+
+```bash
+brew uninstall --zap --cask ronny1020/tap/muster
+brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
+```
+
+`--zap` は Muster が `~/Library` に保存しているもの、つまり開いているタブ、設定、セッションの記録も削除します。記録を残したい場合は、先に `~/Library/Application Support/io.github.ronny1020.muster` を別の場所にコピーしてください。
 
 **セッション開始時に「command not found」と表示される。** そのエージェントの CLI がインストールされていないか、ログインシェルが設定する `PATH` 上にありません。上の表のコマンドがご自身のターミナルで動くかを確認してください。
 

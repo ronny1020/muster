@@ -61,7 +61,7 @@ brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app
 brew uninstall --cask ronny1020/tap/muster
 ```
 
-把应用拖进废纸篓会留下 Homebrew 对它的记录，之后 Homebrew 会报告该应用已安装，而实际上并没有。
+把应用拖进废纸篓会留下 Homebrew 对它的记录，之后 Homebrew 会报告该应用已安装，而实际上并没有。加上 `--zap` 会连标签页、设置和会话记录一并删除。
 
 ### 🪟 Windows
 
@@ -406,6 +406,17 @@ Muster 会记住每个窗口的大小、位置、是否最大化以及其中的�
 **`brew install` 提示 `Warning: Not upgrading muster, the latest version is already installed`，而应用确实在。** 这是 Homebrew 在告诉你它已经安装了，并不是错误——无需做任何事。如果仍想强制装一份全新的副本，请使用 `brew reinstall --cask ronny1020/tap/muster`。
 
 **`brew install` 提示“already installed”，但应用并不存在。** 应用是被手动删除的，所以 Homebrew 的记录与磁盘不一致，`brew install` 会一直报告成功却什么也不装。用 `brew reinstall --cask ronny1020/tap/muster` 修复，然后照上文清除隔离属性。
+
+**更新后仍是旧版本。** 正在运行的应用会保持它启动时的版本，所以请退出 Muster 再重新打开。要查看磁盘上的版本，运行 `defaults read /Applications/Muster.app/Contents/Info.plist CFBundleShortVersionString`，并与 [Releases 页面](https://github.com/ronny1020/muster/releases)对照。如果两者一致而应用看起来仍是旧的，说明你打开的是另一份副本：Spotlight 也会找到磁盘上其他位置的构建，例如本仓库 checkout 里的那份。请打开“应用程序”里的那一份。
+
+**在 macOS 上从头开始。** 先退出 Muster，因为这会结束其中所有会话：
+
+```bash
+brew uninstall --zap --cask ronny1020/tap/muster
+brew install --cask ronny1020/tap/muster && xattr -cr /Applications/Muster.app
+```
+
+`--zap` 还会删除 Muster 存放在 `~/Library` 下的内容：打开的标签页、设置和会话记录。如果想保留记录，请先把 `~/Library/Application Support/io.github.ronny1020.muster` 复制到别处。
 
 **会话启动时出现“command not found”。** 该智能体的 CLI 没有安装，或者不在你的登录 shell 设置的 `PATH` 中。请确认上表中的命令能在你自己的终端里运行。
 
