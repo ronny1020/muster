@@ -277,6 +277,7 @@ building.
 | The app's own Material Symbols interface icons                         | `src/shared/ui/`                                                   |
 | Text a dropped file types                                              | `src-tauri/src/platform.rs`                                        |
 | Drawer widths, dragged and remembered                                  | `src/shared/lib/usePanelWidth.ts`                                  |
+| Following a drag of a panel or column edge                             | `src/shared/lib/followDrag.ts`                                     |
 | State that resets when an input changes                                | `src/shared/lib/useKeyChange.ts`                                   |
 | An async result that belongs to one input                              | `src/shared/lib/useKeyedState.ts`                                  |
 | "3 minutes ago" labels that keep counting                              | `src/shared/lib/useNow.ts`                                         |
