@@ -34,6 +34,7 @@
     "ended_failed": "会话已结束，退出码 {{code}}。"
   },
   "dragEdge": "拖动以调整大小 · 双击以重置",
+  "columnEdge": "调整第 {{left}} 与第 {{right}} 个分栏的宽度",
   "noMatch": "没有匹配项。",
   "dialog": {
     "chooseDirectory": "选择工作目录",

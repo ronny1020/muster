@@ -550,9 +550,12 @@ export type ColumnPlace =
   | { column: number; zone: 'left' | 'middle' | 'right' }
 
 export function columnPlaceAt({ x, y }: Point): ColumnPlace | null {
+  // The column under the point, looking through anything drawn over the
+  // columns, such as the edges between them.
   const host = document
-    .elementFromPoint(x, y)
-    ?.closest<HTMLElement>('[data-column]')
+    .elementsFromPoint(x, y)
+    .map((element) => element.closest<HTMLElement>('[data-column]'))
+    .find(Boolean)
   if (!host) return null
   const column = Number(host.dataset.column)
   if (host.tagName === 'HEADER') return { column, index: indexIn(host, x) }

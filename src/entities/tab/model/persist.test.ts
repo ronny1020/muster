@@ -111,12 +111,14 @@ test('a corrupt record repairs rather than throwing', () => {
     activeIndex: 0,
     columns: [],
     shown: [],
+    widths: [],
   })
   expect(normalizeDeck({ tabs: 'no' })).toEqual({
     tabs: [],
     activeIndex: 0,
     columns: [],
     shown: [],
+    widths: [],
   })
   expect(normalizeDeck({ tabs: [null, 7, 'x'] }).tabs).toEqual([
     null,
@@ -236,4 +238,30 @@ test('a record from before columns, or a mangled one, puts every tab in one colu
   expect(
     normalizeDeck({ tabs: [null, null], columns: [-1, 'x'] }).columns,
   ).toEqual([0, 0])
+})
+
+test('column widths survive a restart', () => {
+  let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'resize', widths: [0.7, 0.3] })
+  saveDeck(deck)
+  expect(loadDeck(nextId).widths).toEqual([0.7, 0.3])
+})
+
+test('a stored width that is not a share is dropped with the rest', () => {
+  expect(normalizeDeck({ widths: [0.5, 'x'] }).widths).toEqual([])
+  expect(normalizeDeck({ widths: [0.5, -1] }).widths).toEqual([])
+  // `Number` would throw on this, and lose every tab with it.
+  const hostile: unknown = JSON.parse('{"valueOf":null,"toString":null}')
+  expect(normalizeDeck({ tabs: [null], widths: [0.5, hostile] })).toMatchObject(
+    { tabs: [null], widths: [] },
+  )
+  expect(normalizeDeck({ widths: [0.6, 0.4] }).widths).toEqual([0.6, 0.4])
+})
+
+test('stored widths too lopsided to draw come back equal', () => {
+  let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  saveDeck({ ...deck, widths: [1e-310, 1] })
+  expect(loadDeck(nextId).widths).toBeUndefined()
 })

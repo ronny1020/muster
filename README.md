@@ -266,7 +266,11 @@ right-click menu also has **Move to new column**. A column closes when its
 last tab leaves it, and the sessions keep running through every move. The
 tab shortcuts work in the column with the keyboard: `⌘1`–`⌘8` pick its tabs
 and `⌘9` its last, and previous / next tab carry on into the neighbouring
-column at either end.
+column at either end. Drag the line between two columns to resize them, use
+the arrow keys on it once it is focused, or double-click it to make every
+column the same width again; the widths are remembered with the tabs.
+Columns stay equal as you split until one is resized; after that, a split
+halves the column it splits.
 A new column needs room for about 40 terminal columns, so the split button
 greys out in a window too narrow for another.
 
@@ -587,7 +591,7 @@ is no scrollback to carry on into, so they stop at the oldest and newest message
 instead.
 
 The `⟳` beside them redraws the conversation. Resizing the window — or opening a
-panel — changes how many columns the terminal has, and an agent's own frames
+panel, or dragging the line between two columns — changes how many columns the terminal has, and an agent's own frames
 cannot be re-wrapped to fit: rather than show you the offset blocks that makes,
 Muster drops the history and this button asks the agent to print it again at the
 new width. Anything written after the resize is kept and marked as usual; only

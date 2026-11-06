@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import { i18n } from '../../../shared/i18n/i18n'
 import {
   columnTabs,
+  columnWidths,
   type Deck,
   deckReducer,
   initialDeck,
@@ -828,4 +829,80 @@ test('a tab from another window joins the column and slot it was dropped on', ()
   })
   expect(layout(deck)).toEqual([['tab-1'], ['moved', 'tab-2']])
   expect(deck.activeId).toBe('moved')
+})
+
+/** Three columns of one tab each, with tab-1 on the right. */
+function threeColumns(): Deck {
+  let deck = deckReducer(deckOf(3), { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
+  return deckReducer(deck, { type: 'split', id: 'unused' })
+}
+
+test('columns share the window equally until one is resized', () => {
+  expect(columnWidths(deckOf(2))).toEqual([1])
+  const deck = deckReducer(deckOf(2), { type: 'split', id: 'unused' })
+  expect(columnWidths(deck)).toEqual([0.5, 0.5])
+  expect(columnWidths(threeColumns())).toEqual([1 / 3, 1 / 3, 1 / 3])
+})
+
+test('a split takes half of the column it splits, and the rest keep theirs', () => {
+  let deck = deckReducer(deckOf(3), { type: 'split', id: 'unused' })
+  deck = deckReducer(deck, { type: 'resize', widths: [0.8, 0.2] })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  expect(columnWidths(deck)).toEqual([0.4, 0.4, 0.2])
+})
+
+test("a drop on a column's left edge halves that column, not its neighbour", () => {
+  let deck = deckReducer(threeColumns(), {
+    type: 'resize',
+    widths: [0.2, 0.2, 0.6],
+  })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'open', id: 'tab-4' })
+  deck = deckReducer(deck, {
+    type: 'moveToColumn',
+    id: 'tab-4',
+    column: 2,
+    split: true,
+    of: 2,
+  })
+  expect(columnWidths(deck)).toEqual([0.2, 0.2, 0.3, 0.3])
+})
+
+test('a closed column gives its share to the column on its left', () => {
+  let deck = deckReducer(threeColumns(), {
+    type: 'resize',
+    widths: [0.5, 0.3, 0.2],
+  })
+  deck = deckReducer(deck, { type: 'close', id: 'tab-2', replacementId: 'x' })
+  expect(columnWidths(deck)).toEqual([0.8, 0.2])
+  deck = deckReducer(deck, { type: 'close', id: 'tab-3', replacementId: 'x' })
+  expect(columnWidths(deck)).toEqual([1])
+})
+
+test('a resize is read as proportions, and no widths at all is equal', () => {
+  let deck = deckReducer(threeColumns(), {
+    type: 'resize',
+    widths: [600, 300, 300],
+  })
+  expect(columnWidths(deck)).toEqual([0.5, 0.25, 0.25])
+  deck = deckReducer(deck, { type: 'resize' })
+  expect(deck.widths).toBeUndefined()
+})
+
+test('widths for another number of columns, or unusable ones, change nothing', () => {
+  const deck = deckReducer(threeColumns(), {
+    type: 'resize',
+    widths: [2, 1, 1],
+  })
+  for (const widths of [
+    [1, 1],
+    [1, 0, 1],
+    [1e308, 1e308, 1e308],
+    [5e-324, 2, 2],
+    [1e-310, 1, 1],
+  ]) {
+    expect(deckReducer(deck, { type: 'resize', widths })).toBe(deck)
+  }
 })

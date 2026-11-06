@@ -24,6 +24,7 @@ import {
 import {
   arrangeDeck,
   columnTabs,
+  columnWidths,
   type Deck,
   type DeckAction,
   deckReducer,
@@ -33,6 +34,7 @@ import {
 } from '../entities/tab/model/deck'
 import { useSettings } from '../entities/preferences/model/useSettings'
 import { useTabShortcuts } from './useTabShortcuts'
+import { ColumnEdges } from './ColumnEdges'
 import {
   attachSweep,
   closeWindow,
@@ -377,6 +379,13 @@ export function App({ adopted }: AppProps) {
   const columns = deck.shown.length
   const focus = focusedColumn(deck)
   useStripReport(panes)
+  /**
+   * The widths a column edge being dragged would leave, while one is. A
+   * column opened or closed mid-drag makes it describe another layout, and
+   * the deck's own widths are drawn instead.
+   */
+  const [preview, setPreview] = useState<number[] | null>(null)
+  const widths = preview?.length === columns ? preview : columnWidths(deck)
 
   /** Where a tab dragged across the window would land, while one is. */
   const [landing, setLanding] = useState<ColumnPlace | null>(null)
@@ -415,6 +424,7 @@ export function App({ adopted }: AppProps) {
               id,
               column: place.column + (place.zone === 'right' ? 1 : 0),
               split: place.zone !== 'middle',
+              of: place.column,
             },
       )
       return true
@@ -441,7 +451,17 @@ export function App({ adopted }: AppProps) {
       // the pane and far-right invariants in AGENTS.md.
       className="relative grid h-full overflow-hidden"
       style={{
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        // A column never draws narrower than `MIN_COLUMN_PX` while the window
+        // has room for every column at that width. The factors are scaled so
+        // the narrowest is 1: once a column sits at its floor, grid hands the
+        // rest out only in the share the others' factors add up to, and
+        // factors summing under 1 would leave the row's end empty.
+        gridTemplateColumns: widths
+          .map(
+            (width) =>
+              `minmax(min(${MIN_COLUMN_PX}px, ${100 / columns}%), ${width / Math.min(...widths)}fr)`,
+          )
+          .join(' '),
         gridTemplateRows: 'auto minmax(0, 1fr)',
       }}
     >
@@ -493,6 +513,13 @@ export function App({ adopted }: AppProps) {
           />
         ))}
       </CollisionProvider>
+      <ColumnEdges
+        grid={panes}
+        widths={widths}
+        min={MIN_COLUMN_PX}
+        onPreview={setPreview}
+        onResize={(next) => dispatch({ type: 'resize', widths: next })}
+      />
       {landing && 'zone' in landing && <DropZone place={landing} />}
     </main>
   )
