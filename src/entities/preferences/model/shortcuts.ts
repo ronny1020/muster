@@ -11,6 +11,8 @@ export type ShortcutAction =
   | { type: 'cycle'; step: number }
   | { type: 'moveActive'; step: number }
   | { type: 'activateIndex'; index: number }
+  | { type: 'focusColumn'; step: number }
+  | { type: 'nextWanting' }
 
 /** Just the fields a shortcut is decided from, so this stays testable. */
 export type ShortcutEvent = Pick<
@@ -30,7 +32,7 @@ export function matchShortcut(
   event: ShortcutEvent,
   isMac: boolean,
 ): ShortcutAction | null {
-  if (event.altKey) return null
+  if (event.altKey) return matchColumnShortcut(event, isMac)
   const modifier = isMac
     ? event.metaKey && !event.ctrlKey
     : event.ctrlKey && !event.metaKey
@@ -61,6 +63,25 @@ export function matchShortcut(
   return LETTER_ACTIONS[event.key.toLowerCase()] ?? null
 }
 
+/**
+ * Alt is otherwise left to the terminal, where a TUI may want it, so moving
+ * between columns takes it only alongside the full platform chord: `⌘⌥` on
+ * macOS, and `Ctrl+Shift+Alt` elsewhere because some Windows graphics drivers
+ * claim `Ctrl+Alt+arrow` to rotate the screen.
+ */
+function matchColumnShortcut(
+  event: ShortcutEvent,
+  isMac: boolean,
+): ShortcutAction | null {
+  const chord = isMac
+    ? event.metaKey && !event.ctrlKey && !event.shiftKey
+    : event.ctrlKey && event.shiftKey && !event.metaKey
+  const step = ARROW_STEP[event.key]
+  return chord && step ? { type: 'focusColumn', step } : null
+}
+
+const ARROW_STEP: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 }
+
 const PAGE_STEP: Record<string, number> = { PageUp: -1, PageDown: 1 }
 
 /** Shift turns `[` into `{` on some layouts, so both spellings count. */
@@ -80,6 +101,8 @@ const LETTER_ACTIONS: Record<string, ShortcutAction> = {
   f: { type: 'find' },
   // `D` as in iTerm2, where it splits the window.
   d: { type: 'splitRight' },
+  // `J` for jump: to the next tab that wants you.
+  j: { type: 'nextWanting' },
 }
 
 /** The same bindings written out, for tooltips and docs. */
@@ -94,6 +117,7 @@ export function shortcutLabels(isMac: boolean) {
     toggleReview: letter('G'),
     find: letter('F'),
     splitRight: letter('D'),
+    nextWanting: letter('J'),
     openSettings: isMac ? '⌘,' : 'Ctrl+,',
     previous: isMac ? '⌘⇧[' : 'Ctrl+PageUp',
     next: isMac ? '⌘⇧]' : 'Ctrl+PageDown',

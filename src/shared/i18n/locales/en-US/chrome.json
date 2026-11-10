@@ -5,6 +5,7 @@
     "working": "working",
     "waiting": "waiting for you",
     "unread": "ready · unread",
+    "asking": "asking you",
     "newTab": "New tab",
     "newTabHint": "New tab ({{shortcut}})",
     "close": "Close tab",
@@ -29,6 +30,7 @@
   "session": {
     "fallbackName": "Session",
     "waiting": "Waiting for you.",
+    "asking": "Needs your answer to go on.",
     "noEditor": "No editor found on your PATH.",
     "ended": "Session ended.",
     "ended_failed": "Session ended with code {{code}}."

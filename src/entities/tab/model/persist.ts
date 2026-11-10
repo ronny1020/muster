@@ -150,5 +150,6 @@ export function normalizeStart(input: unknown): LauncherStart | null {
     backend,
     distro: typeof raw.distro === 'string' ? raw.distro : '',
     flags: typeof raw.flags === 'string' ? raw.flags : '',
+    ...(typeof raw.from === 'string' && raw.from ? { from: raw.from } : {}),
   }
 }

@@ -30,13 +30,15 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { Turn } from '../../../shared/ipc'
 import { routePaste } from '../model/paste'
 import { clipboardIntent, clipboardWrite } from '../model/clipboard'
-import type { Session } from '../../../entities/tab/model/deck'
+import type { Session, SessionStatus } from '../../../entities/tab/model/deck'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
+import { matchShortcut } from '../../../entities/preferences/model/shortcuts'
 import {
   attachText,
   dropPaths,
   killPty,
+  logWrite,
   reattachPty,
   report,
   resizePty,
@@ -63,6 +65,7 @@ import {
   type Place,
 } from '../../../entities/transcript/model/turns'
 import { QUIET_MS } from '../model/working'
+import { isAsking } from '../model/asking'
 import {
   CARRIED_MODES,
   modeSequences,
@@ -136,8 +139,11 @@ export interface TerminalViewProps {
    * launcher tab, or a session whose agent has no `continue`.
    */
   onReplay?: () => void
-  /** Whether the session is still printing, i.e. still working. */
-  onWorking: (working: boolean) => void
+  /**
+   * Whether the session is still printing, and once it stops, whether its
+   * screen is asking a question — see `isAsking`.
+   */
+  onStatus: (status: SessionStatus) => void
   /**
    * Whether the session's process has gone. Only the mouse gate reads it —
    * see `agentReadsMouse`.
@@ -218,7 +224,7 @@ export function TerminalView({
   onPath,
   onUrl,
   onReplay,
-  onWorking,
+  onStatus,
   ended,
   turns,
   findOpen,
@@ -525,7 +531,7 @@ export function TerminalView({
   const earlyHandbacks = useRef<string[] | null>([])
   /** Whether it has, so the terminal is a shell's from here on. */
   const handedBack = useRef(false)
-  const working = useRef(onWorking)
+  const status = useRef(onStatus)
   /** Re-runs the scroll-area sync; see `resyncScrollbar` for why a hidden
       pane cannot do it for itself. */
   const resync = useRef<(() => void) | null>(null)
@@ -591,7 +597,7 @@ export function TerminalView({
     agentEvent.current = onAgentEvent
     handback.current = onHandback
     adoptedExit.current = onAdoptedExit
-    working.current = onWorking
+    status.current = onStatus
     focused.current = active
     shown.current = visible
     link.current = { cwd, home, onPath, onUrl }
@@ -604,7 +610,7 @@ export function TerminalView({
     onAgentEvent,
     onHandback,
     onAdoptedExit,
-    onWorking,
+    onStatus,
     active,
     visible,
     cwd,
@@ -801,6 +807,9 @@ export function TerminalView({
     element.addEventListener('paste', onDomPaste, true)
 
     term.attachCustomKeyEventHandler((event) => {
+      // An app shortcut is answered on `window`; xterm would encode it —
+      // `Ctrl+PageUp` as `ESC[5;5~` — send it to the session and stop it.
+      if (matchShortcut(event, IS_MAC)) return false
       // The suggestion list answers a few keys, and only while it has
       // something to say — so every one of them still reaches the shell when
       // it does not.
@@ -1037,15 +1046,45 @@ export function TerminalView({
     // Reported on the edges only, so a busy session is not a render per chunk.
     let quiet: ReturnType<typeof setTimeout> | undefined
     let printing = false
-    const markWorking = () => {
-      if (!printing) {
-        printing = true
-        working.current(true)
+    /**
+     * Whether the last report was a question that is still on screen. Moving
+     * through a prompt's choices redraws it, and that is not work: the tab
+     * stays asking until the screen stops showing one, so an answered
+     * question and the next one are told apart even when no quiet edge falls
+     * between them.
+     */
+    let asking = false
+    const askingNow = () =>
+      isAsking(
+        handedBack.current ? SHELL_AGENT.id : launch.current.agentId,
+        screenRows(term),
+      )
+    const reportWorking = () => {
+      if (printing || asking) return
+      // A question already on screen is being redrawn, not answered — the
+      // case for a tab that arrives from another window mid-question.
+      if (askingNow()) {
+        asking = true
+        return
       }
+      printing = true
+      status.current('working')
+    }
+    // Read once the write has been parsed, since a chunk is reported before
+    // xterm draws it and the screen before it still shows the question.
+    term.onWriteParsed(() => {
+      if (asking && !askingNow()) {
+        asking = false
+        reportWorking()
+      }
+    })
+    const markWorking = () => {
+      reportWorking()
       clearTimeout(quiet)
       quiet = setTimeout(() => {
         printing = false
-        working.current(false)
+        asking = askingNow()
+        status.current(asking ? 'asking' : 'waiting')
       }, QUIET_MS)
     }
 
@@ -1063,6 +1102,13 @@ export function TerminalView({
       if (code === null || handedBack.current) return false
       handedBack.current = true
       integrated.current = integratedAfterHandback.current
+      // The backend sees only the shell that follows, so this is the one
+      // place the agent's own exit status exists.
+      if (code !== 0)
+        void logWrite(
+          'warn',
+          `${launch.current.agentId} exited with code ${code}`,
+        )
       handback.current(code)
       return true
     }
@@ -1250,6 +1296,9 @@ export function TerminalView({
       // A tab closed while its snapshot was parsing has no terminal left to
       // fit, and its kill on the way out already ended the session.
       if (disposed) return
+      // Read before the fit, which can clear the screen: a tab moved
+      // mid-question is still asking that question, not newly asking one.
+      asking = askingNow()
       // Then fitted like any resize, so a width change that would ruin an
       // agent's scrollback clears it, as `settleCols` does everywhere else.
       lastCols.current = handoff.cols
@@ -1784,6 +1833,19 @@ function withoutLocalFonts(activate: () => void) {
   } finally {
     Reflect.set(window, 'queryLocalFonts', query)
   }
+}
+
+/**
+ * The live screen's rows, top to bottom, as text: the bottom of the buffer,
+ * wherever the user has scrolled to, because that is where a CLI draws.
+ */
+const screenRows = (term: Terminal) => {
+  const buffer = term.buffer.active
+  return Array.from(
+    { length: term.rows },
+    (_, row) =>
+      buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? '',
+  )
 }
 
 /**

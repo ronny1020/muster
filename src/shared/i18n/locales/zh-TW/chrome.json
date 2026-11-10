@@ -5,6 +5,7 @@
     "working": "執行中",
     "waiting": "等待你的回應",
     "unread": "已完成 · 未讀",
+    "asking": "正在詢問你",
     "newTab": "新分頁",
     "newTabHint": "新分頁（{{shortcut}}）",
     "close": "關閉分頁",
@@ -29,6 +30,7 @@
   "session": {
     "fallbackName": "工作階段",
     "waiting": "等待你的回應。",
+    "asking": "需要你的回應才能繼續。",
     "noEditor": "PATH 中找不到編輯器。",
     "ended": "工作階段已結束。",
     "ended_failed": "工作階段已結束，結束代碼 {{code}}。"

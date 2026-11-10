@@ -99,6 +99,36 @@ fn turns_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<Turn> {
         .unwrap_or_default()
 }
 
+/// The conversation a tab's recordings last held whose transcript is still on
+/// disk, or `None` — what "pick up where this tab left off" reopens.
+///
+/// Each id is checked for a file before it is offered, because `--resume` with
+/// an id that names no transcript ends the session at once, and a published id
+/// is not a promise of one — see `session_ids_for`. Claude Code's store is the
+/// only one read, so another agent gets `None`.
+#[tauri::command]
+pub async fn tab_conversation(
+    app: AppHandle,
+    cwd: String,
+    id: String,
+    agent_id: String,
+) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || conversation_for(&app, &cwd, &id, &agent_id))
+        .await
+        .ok()
+        .flatten()
+}
+
+fn conversation_for(app: &AppHandle, cwd: &str, tab_id: &str, agent_id: &str) -> Option<String> {
+    if agent_id != "claude" {
+        return None;
+    }
+    let dir = crate::sessions::claude_project_dir(cwd)?;
+    crate::journal::agent_session_ids_for(app, cwd, tab_id, agent_id)
+        .into_iter()
+        .find(|session_id| open_plain(&dir.join(format!("{session_id}.jsonl"))).is_some())
+}
+
 /// The last `limit` bytes of a file, from a line boundary, or `None`.
 ///
 /// Opened through `open_plain`, which holds the refusals, and handed back as a
@@ -140,16 +170,15 @@ pub fn open_tail(path: &std::path::Path, limit: u64) -> Option<impl Read> {
 /// Opened without following, so the `symlink_metadata` refusal cannot be
 /// raced: an agent can replace its own transcript with a link between the
 /// check and the open, and these reads happen with no click behind them. Same
-/// call, and the same reason, as `read_capped`.
+/// call, and the same reason, as `read_capped` — which also checks the open
+/// handle, since a FIFO swapped in after the first check still opens.
 fn open_plain(path: &std::path::Path) -> Option<(std::fs::File, u64)> {
-    let info = std::fs::symlink_metadata(path).ok()?;
-    if !info.is_file() {
+    if !std::fs::symlink_metadata(path).ok()?.is_file() {
         return None;
     }
-    Some((
-        crate::review::open_without_following(path).ok()?,
-        info.len(),
-    ))
+    let file = crate::review::open_without_following(path).ok()?;
+    let info = file.metadata().ok()?;
+    info.is_file().then_some((file, info.len()))
 }
 
 /// How much of a transcript's **head** a summary is read from.

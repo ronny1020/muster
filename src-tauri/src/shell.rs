@@ -191,22 +191,20 @@ const MAX_HISTORY: usize = 500;
 /// Read without following a link and bounded at both ends, for the reason
 /// AGENTS.md's "automatic reads are bounded" invariant gives: this happens on
 /// a keystroke, with no click behind it.
+///
+/// `None` when the file could not be read, so the page tries again rather
+/// than taking it for an empty history.
 #[tauri::command(async)]
-pub fn shell_history(path: String) -> Vec<String> {
+pub fn shell_history(path: String) -> Option<Vec<String>> {
     let path = crate::workspace::expand_home(&path);
-    let Some(reader) = crate::transcript::open_tail(Path::new(&path), MAX_HISTORY_BYTES) else {
-        return Vec::new();
-    };
+    let mut reader = crate::transcript::open_tail(Path::new(&path), MAX_HISTORY_BYTES)?;
     let mut bytes = Vec::new();
-    let mut reader = reader;
-    if reader.read_to_end(&mut bytes).is_err() {
-        return Vec::new();
-    }
+    reader.read_to_end(&mut bytes).ok()?;
     // Lossy rather than strict: one byte that is not UTF-8 — zsh's own
     // metafication, a latin-1 filename in a command — would otherwise cost
     // the whole list, which is indistinguishable from a history with nothing
     // in it.
-    commands_in(&String::from_utf8_lossy(&bytes))
+    Some(commands_in(&String::from_utf8_lossy(&bytes)))
 }
 
 /// The commands in a history file's text, newest first.

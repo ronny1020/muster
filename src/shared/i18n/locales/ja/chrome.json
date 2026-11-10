@@ -5,6 +5,7 @@
     "working": "実行中",
     "waiting": "入力待ち",
     "unread": "完了 · 未読",
+    "asking": "確認待ち",
     "newTab": "新しいタブ",
     "newTabHint": "新しいタブ（{{shortcut}}）",
     "close": "タブを閉じる",
@@ -29,6 +30,7 @@
   "session": {
     "fallbackName": "セッション",
     "waiting": "入力を待っています。",
+    "asking": "続けるには回答が必要です。",
     "noEditor": "PATH にエディターが見つかりません。",
     "ended": "セッションが終了しました。",
     "ended_failed": "セッションがコード {{code}} で終了しました。"

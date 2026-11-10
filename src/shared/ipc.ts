@@ -112,6 +112,13 @@ export interface Turn {
  */
 export const agentTurns = (cwd: string, id: string) =>
   invoke<Turn[]>('agent_turns', { cwd, id })
+/**
+ * The conversation tab `id`'s recordings of `agentId` last held, where it can
+ * still be reopened — `null` for none, or for an agent whose transcripts are
+ * not read.
+ */
+export const tabConversation = (cwd: string, id: string, agentId: string) =>
+  invoke<string | null>('tab_conversation', { cwd, id, agentId })
 
 /** What the backend answers about a session it has just started. */
 export interface Spawned {
@@ -180,10 +187,11 @@ export const killPty = (id: string, epoch: number) =>
  * The commands a shell's history file holds, newest first.
  *
  * `path` is the shell's own answer, reported over `OSC 133;P;HistFile` rather
- * than guessed at.
+ * than guessed at. `null` when the file could not be read, which is not the
+ * same as a history with nothing in it.
  */
 export const shellHistory = (path: string) =>
-  invoke<string[]>('shell_history', { path })
+  invoke<string[] | null>('shell_history', { path })
 
 export const journalSessions = (cwd: string) =>
   invoke<JournalEntry[]>('journal_sessions', { cwd })
@@ -590,7 +598,43 @@ export async function pickImage() {
  */
 export const report = (error: unknown) => {
   console.error(error)
+  void logWrite('warn', describeError(error))
 }
+
+/**
+ * An error as one log entry: its name and message, then its stack. The
+ * message is written out because WebKit's `stack` holds only the frames.
+ */
+export const describeError = (error: unknown) =>
+  error instanceof Error
+    ? [`${error.name}: ${error.message}`, error.stack]
+        .filter(Boolean)
+        .join('\n')
+    : String(error)
+
+/**
+ * Writes a line to the app's log file. Never throws: a log that cannot be
+ * written must not become a second error.
+ */
+export const logWrite = async (level: 'error' | 'warn', message: string) => {
+  try {
+    await invoke('log_write', { level, message })
+  } catch {
+    /* no backend to write to */
+  }
+}
+
+/** Tells the backend this window's page is still running — see `diagnostics.rs`. */
+export const logHeartbeat = async () => {
+  try {
+    await invoke('log_heartbeat')
+  } catch {
+    /* no backend to beat to */
+  }
+}
+
+/** The log file's path, for revealing it. */
+export const logPath = () => invoke<string>('log_path')
 
 /** How a file differs from the base the review panel is comparing against. */
 export type ChangeStatus =

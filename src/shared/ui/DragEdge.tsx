@@ -37,7 +37,9 @@ export function DragEdge({ size, label }: DragEdgeProps) {
           // A handle you can focus but not move is worse than one you cannot
           // focus at all.
           const step = KEY_STEPS[event.key]
-          if (!step) return
+          // A modified arrow belongs to an app shortcut.
+          const modified = event.metaKey || event.ctrlKey || event.altKey
+          if (!step || modified) return
           event.preventDefault()
           size.nudge(step * (event.shiftKey ? 4 : 1))
         }}

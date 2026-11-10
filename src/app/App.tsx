@@ -264,6 +264,11 @@ export function App({ adopted }: AppProps) {
     (index: number) => dispatch({ type: 'activateIndex', index }),
     [],
   )
+  const focusColumn = useCallback(
+    (step: number) => dispatch({ type: 'focusColumn', step }),
+    [],
+  )
+  const nextWanting = useCallback(() => dispatch({ type: 'nextWanting' }), [])
   const panes = useRef<HTMLElement>(null)
   const gridWidth = useWidth(panes)
   /** Whether one more column would still be `MIN_COLUMN_PX` wide. */
@@ -278,6 +283,8 @@ export function App({ adopted }: AppProps) {
     cycle,
     moveActive,
     activateIndex,
+    focusColumn,
+    nextWanting,
     toggleHistory,
     toggleReview,
     find,

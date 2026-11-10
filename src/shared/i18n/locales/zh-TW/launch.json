@@ -26,6 +26,10 @@
   "doesNotExist": "尚不存在。",
   "createAndStart": "建立並開始",
   "cancel": "取消",
+  "pickUp": {
+    "label": "從這個分頁離開的地方繼續",
+    "hint": "重新開啟這個分頁先前的對話"
+  },
   "modes": {
     "new": {
       "label": "新工作階段",

@@ -17,6 +17,7 @@ import {
   STORAGE_KEY as SETTINGS_KEY,
 } from '../entities/preferences/model/settings'
 import { DragGhost } from '../widgets/tab-strip/ui/DragGhost'
+import { recordErrors, rootErrorOptions } from '../shared/lib/errorlog'
 
 declare global {
   interface Window {
@@ -65,10 +66,11 @@ if (import.meta.env.DEV) void listenForMcp()
  */
 const start = async () => {
   if (windowLabel() === GHOST_LABEL) return drawGhost()
+  recordErrors()
   await Promise.all([loadAppState(), loadSystemLocales(systemLocales)])
   syncCloseWords()
   const adopted = (await adoptHandoffs()).map(({ tab }) => tab)
-  createRoot(document.querySelector('#root')!).render(
+  createRoot(document.querySelector('#root')!, rootErrorOptions).render(
     <SettingsProvider>
       <App adopted={adopted} />
     </SettingsProvider>,

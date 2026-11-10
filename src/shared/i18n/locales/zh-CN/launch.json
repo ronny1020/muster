@@ -26,6 +26,10 @@
   "doesNotExist": "尚不存在。",
   "createAndStart": "创建并开始",
   "cancel": "取消",
+  "pickUp": {
+    "label": "从这个标签页离开的地方继续",
+    "hint": "重新打开这个标签页之前的对话"
+  },
   "modes": {
     "new": {
       "label": "新会话",

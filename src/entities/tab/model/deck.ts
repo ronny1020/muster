@@ -37,6 +37,12 @@ export interface LauncherStart {
   backend: Backend
   distro: string
   flags: string
+  /**
+   * The id of the tab this start screen belongs to, as it was when its session
+   * ran. A restored tab gets a new id, so this is its only link back to its
+   * own recording — and through it to the conversation it was having.
+   */
+  from?: string
 }
 
 /** What a tab is showing. A tab starts as a launcher and becomes a session. */
@@ -114,6 +120,10 @@ export type DeckAction =
   | { type: 'adopt'; tab: Tab; column?: number; index?: number }
   | { type: 'activateIndex'; index: number }
   | { type: 'cycle'; step: number }
+  /** Moves the keyboard to the next tab that wants you — see `nextWanting`. */
+  | { type: 'nextWanting' }
+  /** Moves the keyboard `step` columns over, to the tab that column shows. */
+  | { type: 'focusColumn'; step: number }
   | { type: 'start'; id: string; session: Session; title: string }
   | {
       type: 'workspace'
@@ -153,31 +163,36 @@ export type DeckAction =
   /** New widths for the columns, in any unit, or `undefined` for equal ones. */
   | { type: 'resize'; widths?: number[] }
   /**
-   * Splits `column`, or else the focused one: the tab it shows moves to a new
-   * column on its right, or — when it is the column's only tab — a new start
-   * screen, `id`, opens there in the same directory.
+   * Splits `column`, or else the focused one: a new start screen, `id`,
+   * opens in a new column on its right, in the directory of the tab it shows.
    */
   | { type: 'split'; id: string; column?: number }
 
 /**
- * What the agent in a tab is doing, from the events it broadcasts.
+ * What the session in a tab is doing, measured from its output.
  *
- * `unknown` is the honest default and the common one: only an agent that
- * announces itself moves off it, so a plain shell and any CLI that says
- * nothing stay there rather than claiming to be idle.
+ * `unknown` is the state before a tab has printed anything, so a tab that has
+ * said nothing does not claim to be idle. `asking` is a quiet session whose
+ * screen shows a question or a permission prompt — `isAsking` in the terminal
+ * feature — rather than one that finished and wants a new task.
  */
-export type AgentStatus = 'unknown' | 'working' | 'waiting'
+export type AgentStatus = 'unknown' | 'working' | 'waiting' | 'asking'
+
+/** What a running session reports; `unknown` is only ever where it starts. */
+export type SessionStatus = Exclude<AgentStatus, 'unknown'>
 
 /**
  * What a tab's dot says, most urgent first.
  *
- * `unread` is a session signal — a finished turn, a handback, an exit — that
- * arrived while the user was looking elsewhere and nobody has seen yet. A new
- * turn outranks it, since the dot then has something live to report.
+ * `asking` leads because the agent cannot go on without an answer. `unread`
+ * is a session signal — a finished turn, a handback, an exit — that arrived
+ * while the user was looking elsewhere and nobody has seen yet. A new turn
+ * outranks it, since the dot then has something live to report.
  */
-export type TabSignal = 'working' | 'unread' | 'waiting' | null
+export type TabSignal = 'asking' | 'working' | 'unread' | 'waiting' | null
 
 export function tabSignal(tab: Tab): TabSignal {
+  if (tab.status === 'asking') return 'asking'
   if (tab.status === 'working') return 'working'
   if (tab.attention) return 'unread'
   if (tab.status === 'waiting') return 'waiting'
@@ -224,6 +239,7 @@ export function startOf(tab: Tab): LauncherStart | null {
       // The args a session was launched with include its mode (`--continue`),
       // which is a choice to make again rather than one to replay.
       flags: '',
+      from: tab.id,
     }
   }
   if (tab.content.type === 'launcher' && tab.content.start) {
@@ -312,6 +328,11 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       // Looking at a tab is how its notice gets acknowledged.
       return show(clearAttention(deck, action.id), action.id)
 
+    case 'nextWanting': {
+      const id = nextWanting(deck)
+      return id ? show(clearAttention(deck, id), id) : deck
+    }
+
     // Every column's shown tab is in view, so all of them are read. Reads the
     // deck's own `shown`: the dispatcher's view can lag a tab that is arriving.
     case 'seen':
@@ -360,6 +381,13 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return show(clearAttention(deck, next.id), next.id)
     }
 
+    // Stops at the outer columns, so a held key lands on the column the user
+    // was heading for.
+    case 'focusColumn': {
+      const id = deck.shown[focusedColumn(deck) + action.step]
+      return id ? show(clearAttention(deck, id), id) : deck
+    }
+
     case 'start':
       return patch(deck, action.id, () => ({
         content: { type: 'session', session: action.session },
@@ -406,7 +434,13 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return patch(deck, action.id, () => ({ attention: true }))
 
     case 'status':
-      return patch(deck, action.id, () => ({ status: action.status }))
+      // A dialog drawn just before the process exited asks nothing, and its
+      // quiet edge can land after the exit.
+      return patch(deck, action.id, (tab) =>
+        tab.exitCode !== null && action.status === 'asking'
+          ? {}
+          : { status: action.status },
+      )
 
     case 'toggleHistory':
       return patch(deck, action.id, (tab) => ({
@@ -461,8 +495,10 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
       return patch(deck, action.id, () => ({ findOpen: action.open }))
 
     case 'exited':
-      return patch(deck, action.id, () => ({
+      // A question on the screen of a process that has gone asks nothing.
+      return patch(deck, action.id, (tab) => ({
         exitCode: action.code,
+        status: tab.status === 'asking' ? 'waiting' : tab.status,
       }))
 
     case 'handedBack':
@@ -481,6 +517,20 @@ function openSettings(deck: Deck, id: string): Deck {
   if (existing) return show(deck, existing.id)
   const tab = newTab(id, { type: 'settings' }, focusedColumn(deck))
   return show({ ...deck, tabs: [...deck.tabs, tab] }, id)
+}
+
+/**
+ * The next tab after the active one that wants you, reading the columns left
+ * to right and wrapping: a tab asking a question first, since it cannot go on
+ * without you, then one whose turn ended unseen.
+ */
+function nextWanting(deck: Deck) {
+  const ordered = [...deck.tabs].sort((a, b) => a.column - b.column)
+  const from = ordered.findIndex((tab) => tab.id === deck.activeId)
+  const after = [...ordered.slice(from + 1), ...ordered.slice(0, from)]
+  const first = (signal: TabSignal) =>
+    after.find((tab) => tabSignal(tab) === signal)
+  return (first('asking') ?? first('unread'))?.id
 }
 
 /** Makes `id` the tab its column shows, and gives it the keyboard. */
@@ -630,17 +680,20 @@ function splitWidths(widths: number[], at: number, of: number): number[] {
 function split(deck: Deck, id: string, column: number): Deck {
   const showing = deck.tabs.find((tab) => tab.id === deck.shown[column])
   if (!showing) return deck
-  const target = showing.column + 1
-  if (columnTabs(deck, showing.column).length > 1) {
-    return moveToColumn(deck, { id: showing.id, column: target, split: true })
-  }
-  // A terminal cannot be in two places, so a lone tab is not duplicated: the
-  // new column starts where it is working.
-  const start = startOf(showing) ?? undefined
-  const fresh = newTab(id, { type: 'launcher', start }, showing.column)
+  const start = startOf(showing)
+  // Without `from`: two tabs reopening one conversation would be two agents
+  // writing the same transcript.
+  const fresh = newTab(
+    id,
+    {
+      type: 'launcher',
+      start: start ? { ...start, from: undefined } : undefined,
+    },
+    showing.column,
+  )
   return moveToColumn(
     { ...deck, tabs: [...deck.tabs, fresh] },
-    { id, column: target, split: true },
+    { id, column: showing.column + 1, split: true },
   )
 }
 

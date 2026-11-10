@@ -135,6 +135,10 @@
     "hint": "{{count}} remembered",
     "clear": "Clear"
   },
+  "errorLog": {
+    "label": "Error log",
+    "hint": "Errors, crashes and freezes, for when something goes wrong. Never what a session prints"
+  },
   "reset": {
     "label": "Everything else",
     "hint": "Restores every setting on this page",

@@ -343,13 +343,24 @@ fn apply_mode(cmd: &mut CommandBuilder, scrollback: bool) {
     }
 }
 
-/// How long to watch for the agent to publish its session id. Generous, since
-/// a cold start behind a login shell can take seconds, and cheap: a stat per
-/// tick, and under a hand-back's `sh` a `ps` and a `pgrep` until the agent is
-/// found and one `pgrep` after — and only for an agent that publishes one at
-/// all.
-const SESSION_ID_ATTEMPTS: u32 = 40;
-const SESSION_ID_INTERVAL: Duration = Duration::from_millis(500);
+/// How many ticks the session-id watcher takes at its brisk pace.
+const BRISK_TICKS: u32 = 40;
+
+/// How often to look for the agent's published session id: briskly at first,
+/// since a cold start behind a login shell takes seconds, then slowly for as
+/// long as the session runs. Claude Code publishes only once its
+/// trust-this-folder dialog is answered, which in a new folder can be minutes
+/// after it started — and an id missed there leaves the session with nothing
+/// to reopen it by. Each tick is a stat, and until the agent is found a `ps`
+/// and a `pgrep`, with one `pgrep` after — and only for an agent that
+/// publishes one at all.
+fn session_id_delay(attempt: u32) -> Duration {
+    if attempt < BRISK_TICKS {
+        Duration::from_millis(500)
+    } else {
+        Duration::from_secs(5)
+    }
+}
 
 /// What the caller learns about the session it just started.
 #[derive(serde::Serialize)]
@@ -501,7 +512,20 @@ pub fn pty_spawn(
         pass_token(&mut cmd, token, backend);
     }
 
+    // Names the agent, never its arguments or directory: the log is about the
+    // app, not about what a session was asked to do.
+    let who = if agent_id.is_empty() {
+        "shell".to_string()
+    } else {
+        agent_id.clone()
+    };
     let mut child = pair.slave.spawn_command(cmd).map_err(|error| {
+        // The kind only: the error's text names the program, `PATH` and the
+        // directory.
+        let kind = error
+            .downcast_ref::<std::io::Error>()
+            .map(std::io::Error::kind);
+        log::error!("{who} could not start ({kind:?})");
         // A failed start is still an ended session as far as the tab is
         // concerned, so report it the same way — otherwise the tab keeps a null
         // exit code and the "Back to start" button never appears.
@@ -602,9 +626,9 @@ pub fn pty_spawn(
     }
 
     // The agent's own id for this conversation, which is the only thing that
-    // can reopen it later. It is published shortly *after* the CLI starts, so
-    // this watches for it rather than asking once, and gives up rather than
-    // waiting on an agent that never publishes one.
+    // can reopen it later. It is published *after* the CLI starts — in a new
+    // folder, only once its trust dialog is answered — so this watches for it
+    // for as long as the session runs; see `session_id_delay`.
     let publishes = crate::sessions::publishes_session_id(&agent_id);
     if let (Some(record), Some(pid), true) = (record.clone(), group, publishes) {
         let app = app.clone();
@@ -616,8 +640,14 @@ pub fn pty_spawn(
         let ended = killed.clone();
         std::thread::spawn(move || {
             let mut agent: Option<u32> = None;
-            for _ in 0..SESSION_ID_ATTEMPTS {
-                std::thread::sleep(SESSION_ID_INTERVAL);
+            // Set by the first `false` after the brisk phase, so a session with
+            // no `sh` stops paying a `ps` per tick. Earlier `false`s are
+            // retried, since a failed `ps` also answers `false`; a `true` is
+            // never kept, because the `sh` becomes the user's shell when the
+            // agent exits.
+            let mut no_wrapper = false;
+            for attempt in 0.. {
+                std::thread::sleep(session_id_delay(attempt));
                 if ended.load(Ordering::SeqCst) {
                     return;
                 }
@@ -632,7 +662,8 @@ pub fn pty_spawn(
                     // Adopted only while the `sh` still holds the terminal for
                     // it: an agent that exits before the first tick leaves a
                     // shell whose next child is something the user started.
-                    if agent.is_none() && !platform::is_wrapper(pid) {
+                    if agent.is_none() && (no_wrapper || !platform::is_wrapper(pid)) {
+                        no_wrapper = attempt >= BRISK_TICKS;
                         continue;
                     }
                     let children = platform::children_of(pid);
@@ -705,6 +736,12 @@ pub fn pty_spawn(
         // records. Without it the session-id watcher keeps statting a pid the
         // OS may already have given to another process.
         killed.store(true, Ordering::SeqCst);
+        // A shell exits with its last command's status, which says nothing
+        // about the app. A hand-back's child is that shell by the time it
+        // exits, so its agent's status is logged by the page instead.
+        if !deliberate && code != 0 && !hands_back && !agent_id.is_empty() {
+            log::warn!("{who} exited with code {code}");
+        }
         if !deliberate {
             let _ = app.emit("pty://exit", ExitPayload { id, code });
         }

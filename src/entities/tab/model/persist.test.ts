@@ -1,6 +1,12 @@
 import { beforeEach, expect, test } from 'bun:test'
 
-import { deckReducer, initialDeck, type Session } from './deck'
+import {
+  type Deck,
+  deckReducer,
+  focusedColumn,
+  initialDeck,
+  type Session,
+} from './deck'
 import { loadDeck, normalizeDeck, saveDeck } from './persist'
 import { startOf } from './deck'
 import { seedAppState } from '../../../shared/lib/appstate'
@@ -197,9 +203,18 @@ test('a directory ending in a space is kept, not trimmed to another path', () =>
   )
 })
 
+/** Moves the active tab into a new column on its right, as the tab menu does. */
+const moveActiveRight = (deck: Deck) =>
+  deckReducer(deck, {
+    type: 'moveToColumn',
+    id: deck.activeId,
+    column: focusedColumn(deck) + 1,
+    split: true,
+  })
+
 test('columns survive a restart, with each tab in the column it was in', () => {
   let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
-  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = moveActiveRight(deck)
   saveDeck(deck)
   const restored = loadDeck(nextId)
   expect(restored.tabs.map((tab) => tab.column)).toEqual([0, 1])
@@ -212,7 +227,7 @@ test('each column comes back showing the tab it showed', () => {
     (deck, id) => deckReducer(deck, { type: 'open', id }),
     initialDeck('tab-1'),
   )
-  const deck = deckReducer(opened, { type: 'split', id: 'unused' })
+  const deck = moveActiveRight(opened)
   // The left column shows the tab that slid into the moved one's place.
   expect(deck.shown).toEqual(['tab-3', 'tab-4'])
   saveDeck(deck)
@@ -226,7 +241,7 @@ test('a column held only by the settings tab is not restored empty', () => {
     type: 'openSettings',
     id: 'settings',
   })
-  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = moveActiveRight(deck)
   saveDeck(deck)
   const restored = loadDeck(nextId)
   expect(restored.shown).toHaveLength(1)
@@ -242,7 +257,7 @@ test('a record from before columns, or a mangled one, puts every tab in one colu
 
 test('column widths survive a restart', () => {
   let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
-  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = moveActiveRight(deck)
   deck = deckReducer(deck, { type: 'resize', widths: [0.7, 0.3] })
   saveDeck(deck)
   expect(loadDeck(nextId).widths).toEqual([0.7, 0.3])
@@ -261,7 +276,35 @@ test('a stored width that is not a share is dropped with the rest', () => {
 
 test('stored widths too lopsided to draw come back equal', () => {
   let deck = deckReducer(initialDeck('tab-1'), { type: 'open', id: 'tab-2' })
-  deck = deckReducer(deck, { type: 'split', id: 'unused' })
+  deck = moveActiveRight(deck)
   saveDeck({ ...deck, widths: [1e-310, 1] })
   expect(loadDeck(nextId).widths).toBeUndefined()
+})
+
+test('a restored tab remembers which tab it was, so its conversation can be found', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, {
+    type: 'start',
+    id: 'tab-1',
+    session: session(),
+    title: 'api',
+  })
+  saveDeck(deck)
+  const once = loadDeck(nextId)
+  const content = once.tabs[0].content
+  if (content.type !== 'launcher') throw new Error('expected a launcher')
+  expect(content.start?.from).toBe('tab-1')
+
+  // Restarted again without launching, it still points at the same record.
+  saveDeck(once)
+  const twice = loadDeck(nextId).tabs[0].content
+  if (twice.type !== 'launcher') throw new Error('expected a launcher')
+  expect(twice.start?.from).toBe('tab-1')
+})
+
+test('a stored origin that is not a tab id is dropped', () => {
+  const stored = normalizeDeck({
+    tabs: [{ cwd: '/work', agentId: 'claude', from: 42 }],
+  })
+  expect(stored.tabs[0]).not.toHaveProperty('from')
 })

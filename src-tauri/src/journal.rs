@@ -183,6 +183,29 @@ pub struct JournalEntry {
 /// tracked in memory because a tab that was restored, or moved between
 /// windows, never told this process anything.
 pub fn session_ids_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<String> {
+    published_by(app, cwd, tab_id)
+        .into_iter()
+        .map(|entry| entry.session_id)
+        .collect()
+}
+
+/// `session_ids_for`, narrowed to the records `agent_id` wrote — so an id is
+/// never handed to another agent's CLI after a tab switched agents.
+pub fn agent_session_ids_for(
+    app: &AppHandle,
+    cwd: &str,
+    tab_id: &str,
+    agent_id: &str,
+) -> Vec<String> {
+    published_by(app, cwd, tab_id)
+        .into_iter()
+        .filter(|entry| entry.agent_id == agent_id)
+        .map(|entry| entry.session_id)
+        .collect()
+}
+
+/// This tab's records that published a usable conversation id, newest first.
+fn published_by(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<JournalEntry> {
     let Some(stem) = file_stem(tab_id) else {
         return Vec::new();
     };
@@ -193,7 +216,6 @@ pub fn session_ids_for(app: &AppHandle, cwd: &str, tab_id: &str) -> Vec<String> 
         // another program's, it arrives from a file anyone can edit, and the
         // caller joins it into a path.
         .filter(|entry| crate::sessions::is_session_id(&entry.session_id))
-        .map(|entry| entry.session_id)
         .collect()
 }
 
@@ -385,12 +407,34 @@ pub fn remember(app: &AppHandle, cwd: &str, record: &str, about: JournalMeta) {
     }
 }
 
+/// The most of a sidecar that is read. One holds two short fields, so anything
+/// longer is not a sidecar this app wrote.
+const MAX_META_BYTES: u64 = 4 * 1024;
+
 /// What is known about one record, or nothing — an older record has no sibling,
 /// and a record whose sibling is unreadable is still a record.
+///
+/// Read like every automatic read here: a restored start screen asks at launch,
+/// with no click, and an agent can plant the file — a link to `/dev/zero`, a
+/// FIFO, or one into a folder macOS guards — so only a plain file is opened,
+/// without following a link, and only its first few kilobytes are read.
 fn read_meta(dir: &Path, stem: &str) -> JournalMeta {
-    fs::read_to_string(dir.join(format!("{stem}.meta")))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+    let path = dir.join(format!("{stem}.meta"));
+    let plain = fs::symlink_metadata(&path).is_ok_and(|info| info.is_file());
+    let mut text = String::new();
+    let read = plain
+        && crate::review::open_without_following(&path)
+            .and_then(|file| {
+                // The path can be swapped between the check and the open, so
+                // the handle is what is checked last.
+                if !file.metadata()?.is_file() {
+                    return Err(std::io::ErrorKind::InvalidInput.into());
+                }
+                file.take(MAX_META_BYTES).read_to_string(&mut text)
+            })
+            .is_ok();
+    read.then(|| serde_json::from_str(&text).ok())
+        .flatten()
         .unwrap_or_default()
 }
 

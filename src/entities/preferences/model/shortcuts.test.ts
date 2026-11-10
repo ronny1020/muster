@@ -110,7 +110,7 @@ test('the comma opens settings without a shift anywhere', () => {
   })
 })
 
-test('alt is left alone, since a TUI may want it', () => {
+test('alt with a letter is left alone, since a TUI may want it', () => {
   expect(
     matchShortcut(press({ key: 't', metaKey: true, altKey: true }), true),
   ).toBeNull()
@@ -119,6 +119,51 @@ test('alt is left alone, since a TUI may want it', () => {
       press({ key: 'T', ctrlKey: true, shiftKey: true, altKey: true }),
       false,
     ),
+  ).toBeNull()
+})
+
+test('the arrows move between columns under ⌘⌥ on macOS', () => {
+  expect(
+    matchShortcut(
+      press({ key: 'ArrowLeft', metaKey: true, altKey: true }),
+      true,
+    ),
+  ).toEqual({ type: 'focusColumn', step: -1 })
+  expect(
+    matchShortcut(
+      press({ key: 'ArrowRight', metaKey: true, altKey: true }),
+      true,
+    ),
+  ).toEqual({ type: 'focusColumn', step: 1 })
+})
+
+test('elsewhere columns take Ctrl+Shift+Alt, leaving Ctrl+Alt to the driver', () => {
+  expect(
+    matchShortcut(
+      press({ key: 'ArrowRight', ctrlKey: true, shiftKey: true, altKey: true }),
+      false,
+    ),
+  ).toEqual({ type: 'focusColumn', step: 1 })
+  expect(
+    matchShortcut(
+      press({ key: 'ArrowRight', ctrlKey: true, altKey: true }),
+      false,
+    ),
+  ).toBeNull()
+})
+
+test('an alt arrow without the full chord reaches the terminal', () => {
+  expect(
+    matchShortcut(press({ key: 'ArrowLeft', altKey: true }), true),
+  ).toBeNull()
+  expect(
+    matchShortcut(
+      press({ key: 'ArrowLeft', metaKey: true, shiftKey: true, altKey: true }),
+      true,
+    ),
+  ).toBeNull()
+  expect(
+    matchShortcut(press({ key: 'ArrowUp', metaKey: true, altKey: true }), true),
   ).toBeNull()
 })
 
@@ -173,4 +218,18 @@ test('splitting right is ⌘D on macOS and Ctrl+Shift+D elsewhere', () => {
 test('a bare Ctrl+D still reaches the terminal, where it ends input', () => {
   expect(matchShortcut(press({ key: 'd', ctrlKey: true }), false)).toBeNull()
   expect(matchShortcut(press({ key: 'd', ctrlKey: true }), true)).toBeNull()
+})
+
+test('jumping to the tab that wants you is ⌘J on macOS and Ctrl+Shift+J elsewhere', () => {
+  expect(matchShortcut(press({ key: 'j', metaKey: true }), true)).toEqual({
+    type: 'nextWanting',
+  })
+  expect(
+    matchShortcut(press({ key: 'J', ctrlKey: true, shiftKey: true }), false),
+  ).toEqual({ type: 'nextWanting' })
+  expect(shortcutLabels(false).nextWanting).toBe('Ctrl+Shift+J')
+})
+
+test('a bare Ctrl+J still reaches the terminal, where it is a newline', () => {
+  expect(matchShortcut(press({ key: 'j', ctrlKey: true }), false)).toBeNull()
 })

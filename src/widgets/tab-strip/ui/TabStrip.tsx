@@ -442,9 +442,11 @@ const UNREAD_RING =
 /**
  * What the tab's agent is doing, in one dot.
  *
- * Working pulses, unread is ringed in the agent's accent, waiting is solid,
- * and anything else is grey unless the tree has uncommitted changes — an
- * agent that announces nothing stays grey rather than being called idle.
+ * Working pulses, unread is ringed in the agent's accent, asking is ringed in
+ * the ink colour — the one ring an agent's accent can never be mistaken
+ * for — waiting is solid, and anything else is grey unless the tree has
+ * uncommitted changes — an agent that announces nothing stays grey rather
+ * than being called idle.
  * `title` alone would leave the state unreadable to a screen reader, so the
  * same words go in an `sr-only` span.
  */
@@ -459,11 +461,11 @@ function StatusDot({ tab, accent }: { tab: Tab; accent: string }) {
         aria-hidden="true"
         className={`size-1.5 flex-none rounded-full ${
           signal === 'working' ? 'animate-pulse' : ''
-        } ${signal === 'unread' ? UNREAD_RING : ''}`}
+        } ${signal === 'unread' || signal === 'asking' ? UNREAD_RING : ''}`}
         style={{
           // The longhand, so the ring's `bg-clip-content` survives.
           backgroundColor: signal || tab.dirty ? accent : '#48484f',
-          borderColor: accent,
+          borderColor: signal === 'asking' ? 'var(--color-ink)' : accent,
         }}
         title={said ?? undefined}
       />

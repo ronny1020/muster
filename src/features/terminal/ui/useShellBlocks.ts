@@ -166,14 +166,19 @@ export function useShellBlocks({
     // What the shell said it was about to run, which arrives just before the
     // output starts.
     let announced: string | null = null
-    let asked = ''
-    const loadHistory = async (path: string) => {
-      if (asked === path) return
+    /**
+     * The history file still to read. The shell reports it once, so a read
+     * that failed — an unreadable moment, a file not written yet — is tried
+     * again at the next prompt rather than leaving the tab with no
+     * completions for the rest of the session.
+     */
+    let unread: string | null = null
+    const loadHistory = async () => {
+      const path = unread
+      if (path === null) return
       const found = await shellHistory(path)
-      // Marked only once it answered: setting it before the await leaves a
-      // read that failed — an unreadable moment, a path that has gone — as a
-      // tab with no completions for the rest of the session.
-      asked = path
+      if (found === null || unread !== path) return
+      unread = null
       history.current = found
     }
 
@@ -187,6 +192,7 @@ export function useShellBlocks({
           // startup file's own lines reach bash's DEBUG trap — and must not
           // be attributed to whatever runs next.
           announced = null
+          void loadHistory().catch(report)
           return
         }
         case 'promptEnd': {
@@ -257,7 +263,8 @@ export function useShellBlocks({
           announced = event.text
           return
         case 'historyFile':
-          void loadHistory(event.path).catch(report)
+          unread = event.path
+          void loadHistory().catch(report)
       }
     }
   }, [term])
