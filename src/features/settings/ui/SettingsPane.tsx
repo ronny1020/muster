@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import { AGENTS, pickableAgent } from '../../../entities/agent/model/agents'
 import { useBackground } from '../../../shared/lib/useBackground'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useEditors } from '../../../shared/lib/useEditors'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
+
 import {
   type FontFamily,
   fontFamilies,
+  logPath,
   pickDirectory,
   pickImage,
+  report,
 } from '../../../shared/ipc'
+import { revealLabel } from '../../../shared/lib/platform'
 import {
   clearRecentDirs,
   recentDirs,
@@ -427,6 +432,15 @@ export function SettingsPane() {
         </Group>
 
         <Group title={t('groups.data')}>
+          <Row label={t('errorLog.label')} hint={t('errorLog.hint')}>
+            <button
+              type="button"
+              onClick={() => void revealLog()}
+              className="h-8 rounded-lg border border-line bg-surface px-3 hover:bg-surface-hover"
+            >
+              {revealLabel(chromeText)}
+            </button>
+          </Row>
           <Row
             label={t('recentDirs.label')}
             hint={t('recentDirs.hint', { count: remembered })}
@@ -455,6 +469,14 @@ export function SettingsPane() {
       </div>
     </div>
   )
+}
+
+const revealLog = async () => {
+  try {
+    await revealItemInDir(await logPath())
+  } catch (error) {
+    report(error)
+  }
 }
 
 function Group({

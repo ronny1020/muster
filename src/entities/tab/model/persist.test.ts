@@ -280,3 +280,31 @@ test('stored widths too lopsided to draw come back equal', () => {
   saveDeck({ ...deck, widths: [1e-310, 1] })
   expect(loadDeck(nextId).widths).toBeUndefined()
 })
+
+test('a restored tab remembers which tab it was, so its conversation can be found', () => {
+  let deck = initialDeck('tab-1')
+  deck = deckReducer(deck, {
+    type: 'start',
+    id: 'tab-1',
+    session: session(),
+    title: 'api',
+  })
+  saveDeck(deck)
+  const once = loadDeck(nextId)
+  const content = once.tabs[0].content
+  if (content.type !== 'launcher') throw new Error('expected a launcher')
+  expect(content.start?.from).toBe('tab-1')
+
+  // Restarted again without launching, it still points at the same record.
+  saveDeck(once)
+  const twice = loadDeck(nextId).tabs[0].content
+  if (twice.type !== 'launcher') throw new Error('expected a launcher')
+  expect(twice.start?.from).toBe('tab-1')
+})
+
+test('a stored origin that is not a tab id is dropped', () => {
+  const stored = normalizeDeck({
+    tabs: [{ cwd: '/work', agentId: 'claude', from: 42 }],
+  })
+  expect(stored.tabs[0]).not.toHaveProperty('from')
+})

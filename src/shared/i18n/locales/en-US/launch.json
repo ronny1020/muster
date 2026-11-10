@@ -26,6 +26,10 @@
   "doesNotExist": "does not exist yet.",
   "createAndStart": "Create and start",
   "cancel": "Cancel",
+  "pickUp": {
+    "label": "Pick up where this tab left off",
+    "hint": "Reopen the conversation this tab was having"
+  },
   "modes": {
     "new": {
       "label": "New session",

@@ -392,6 +392,7 @@ closing another tab's panel.
 **In [`src/features/terminal/AGENTS.md`](src/features/terminal/AGENTS.md)** — the terminal:
 
 - Terminals blur when they lose the keyboard.
+- An app shortcut is claimed before xterm reads it.
 - An oversized paste is caught in two places, because macOS has no third.
 - `allowTransparency` is set once and never changed.
 - Dispose every addon before the terminal, and hold a handle to each so you can.
@@ -431,6 +432,7 @@ closing another tab's panel.
 - `findFileBlocks` scans where `fileAbove` walks, and the two are not interchangeable.
 - A file mark is a span, and both of its bounds were got wrong once.
 - A tab's status is measured, not announced.
+- A question is read off the bottom of the screen, and only on a footer some rule names.
 - A file drop is a window event, not an element's.
 
 **In [`src-tauri/AGENTS.md`](src-tauri/AGENTS.md)** — the Rust backend:
@@ -452,6 +454,7 @@ closing another tab's panel.
 - Window state is saved on `RunEvent::Exit` too, and for the same reason.
 - A reload is the one browser shortcut this app cannot survive.
 - `single-instance` is registered first, and it has to be.
+- The watchdog judges only the focused window's page.
 - Cleanup runs on `RunEvent::Exit`, not on a window event.
 - A tab moves between windows; its process does not.
 - A tab dragged off the strip lands where the backend says the cursor is.

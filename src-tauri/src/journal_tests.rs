@@ -335,3 +335,55 @@ fn a_sidecar_id_shaped_like_a_flag_reaches_no_argv() {
     let real = "019bf2a4-1c7e-7b3f-9a2d-4e5f60718293";
     assert_eq!(super::resumable_id(real.to_string()), real);
 }
+
+#[test]
+fn a_sidecar_that_is_a_link_is_not_followed() {
+    let dir = scratch("meta-link");
+    let target = dir.join("elsewhere.json");
+    fs::write(&target, r#"{"agentId":"claude","sessionId":"abc"}"#).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, dir.join("t-1.meta")).unwrap();
+    #[cfg(unix)]
+    assert_eq!(read_meta(&dir, "t-1").session_id, "");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_oversized_sidecar_reads_as_nothing_rather_than_without_limit() {
+    let dir = scratch("meta-big");
+    let padding = " ".repeat(MAX_META_BYTES as usize);
+    fs::write(
+        dir.join("t-1.meta"),
+        format!(r#"{{"agentId":"claude",{padding}"sessionId":"abc"}}"#),
+    )
+    .unwrap();
+    assert_eq!(read_meta(&dir, "t-1").session_id, "");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_plain_sidecar_is_still_read() {
+    let dir = scratch("meta-plain");
+    fs::write(
+        dir.join("t-1.meta"),
+        r#"{"agentId":"claude","sessionId":"abc"}"#,
+    )
+    .unwrap();
+    assert_eq!(read_meta(&dir, "t-1").session_id, "abc");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_swapped_in_after_the_check_neither_blocks_nor_passes_as_a_file() {
+    let dir = scratch("meta-fifo");
+    let fifo = dir.join("t-1.meta");
+    let made = std::process::Command::new("mkfifo").arg(&fifo).status();
+    assert!(made.is_ok_and(|status| status.success()), "mkfifo");
+    // The open itself is the race path: with no writer, a blocking open of a
+    // FIFO never returns.
+    let file = crate::review::open_without_following(&fifo).expect("open");
+    assert!(!file.metadata().expect("metadata").is_file());
+    assert_eq!(read_meta(&dir, "t-1").session_id, "");
+    let _ = fs::remove_dir_all(&dir);
+}

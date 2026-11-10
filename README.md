@@ -38,8 +38,10 @@ years. The point is that Muster knows what is _in_ the tab:
   PowerShell the tab
   ends with the agent.
 - 🟠 **Each tab's dot says whether its agent is working** — pulsing while the
-  session is still printing, solid once it goes quiet and wants you. It reads
-  the output itself, so it works for every agent and for a plain shell.
+  session is still printing, solid once it goes quiet and wants you, and ringed
+  in white when what it left on screen is a question or a permission prompt.
+  It reads the output itself, so it works for every agent and for a plain
+  shell. `⌘J` jumps to the next tab that wants you.
 - 🔔 **A finished agent raises a ringed dot on its tab until you look,
   and a desktop notification**
   where the turn is announced — for Claude Code, by a plugin you install —
@@ -266,7 +268,9 @@ shows where it will land. A tab's right-click menu also has **Move to new
 column**. A column closes when its last tab leaves it, and the sessions keep
 running through every move. The tab shortcuts work in the column with the
 keyboard: `⌘1`–`⌘8` pick its tabs and `⌘9` its last, and previous / next tab
-carry on into the neighbouring column at either end. Drag the line between two
+carry on into the neighbouring column at either end. `⌘⌥←` / `⌘⌥→`, or
+`Ctrl+Shift+Alt+←` / `→`, move the keyboard straight to the column on the left
+or right, stopping at the outermost ones. Drag the line between two
 columns to resize them, use the arrow keys on it once it is focused, or
 double-click it to make every column the same width again; the widths are
 remembered with the tabs. Columns stay equal as you split until one is resized;
@@ -333,8 +337,13 @@ server behind.
 
 Tabs come back when you reopen the app: each one returns as a launcher with its
 directory and agent already chosen, one click from going. The session itself is
-not resumed — that would restart the agent mid-thought — so `Continue` is right
-there when the conversation is what you want back.
+not resumed — that would restart the agent mid-thought. Where the tab's own
+conversation can still be found, **Pick up where this tab left off** reopens
+exactly that one — not the newest in the folder, which with two tabs there is
+often the other tab's. That needs a recording of the tab (**Record what sessions print**
+in settings) and an agent that publishes its conversation id, which today is
+Claude Code; elsewhere `Continue` is right there. The same button is on a tab's
+start screen after its session ends.
 
 `cd` somewhere else in the terminal and all of it follows you. Not on Windows,
 which offers no way to read another process's directory: a tab there stays on
@@ -844,6 +853,15 @@ hear about:
 - a desktop notification names the agent and the tab, and quotes its closing
   words where the agent published them.
 
+When an agent stops to ask — a permission prompt, a question, a trust dialog —
+the dot is ringed in white instead, for as long as the question is on screen,
+and the notification says it needs your answer. That is read off the bottom of
+the screen, so it needs no plugin. It has rules for Claude Code, Codex,
+Gemini CLI, OpenCode, Hermes, Antigravity and aider, though only Claude Code's
+have been checked against a real session. A prompt it has no rule for reads as an ordinary finished turn rather than a false alarm. `⌘J`
+(`Ctrl+Shift+J` elsewhere) moves to the next tab in the window asking you
+something, then to the next one with an unread turn.
+
 Agents announce that moment two different ways — some ring the terminal bell,
 others broadcast a structured event instead — and both are read. The bell needs
 nothing. The structured event Claude Code sessions use comes from a hook plugin
@@ -898,29 +916,32 @@ Clicks / Scrollback control is the way to change a tab that is already open.
   flash on an edited file's row, each on its own switch.
 - **Session records** — whether to record what sessions print, and how long to
   keep those records.
-- **Data** — clear remembered directories, or restore every default.
+- **Data** — show the error log, clear remembered directories, or restore
+  every default.
 
 On Windows with WSL installed, **New tabs** also chooses between Windows and a
 distro.
 
 ## ⌨️ Shortcuts
 
-| Action                | macOS                     | Windows / Linux                             |
-| --------------------- | ------------------------- | ------------------------------------------- |
-| New tab               | `⌘T`                      | `Ctrl+Shift+T`                              |
-| Close tab             | `⌘W`                      | `Ctrl+Shift+W`                              |
-| Split right           | `⌘D`                      | `Ctrl+Shift+D`                              |
-| Toggle git history    | `⌘Y`                      | `Ctrl+Shift+Y`                              |
-| Toggle review panel   | `⌘G`                      | `Ctrl+Shift+G`                              |
-| Find in scrollback    | `⌘F`                      | `Ctrl+Shift+F`                              |
-| Copy selection        | `⌘C`                      | `Ctrl+Shift+C`                              |
-| Copy last output      | `⌘⇧O`                     | `Ctrl+Shift+O`                              |
-| Paste                 | `⌘V`                      | `Ctrl+Shift+V`                              |
-| Settings              | `⌘,`                      | `Ctrl+,`                                    |
-| Jump to tab 1–8       | `⌘1`–`⌘8`                 | `Ctrl+1`–`Ctrl+8`                           |
-| Jump to last tab      | `⌘9`                      | `Ctrl+9`                                    |
-| Previous / next tab   | `⌘⇧[` / `⌘⇧]`             | `Ctrl+PageUp` / `Ctrl+PageDown`             |
-| Move tab left / right | `⌘⇧PageUp` / `⌘⇧PageDown` | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` |
+| Action                  | macOS                     | Windows / Linux                             |
+| ----------------------- | ------------------------- | ------------------------------------------- |
+| New tab                 | `⌘T`                      | `Ctrl+Shift+T`                              |
+| Close tab               | `⌘W`                      | `Ctrl+Shift+W`                              |
+| Split right             | `⌘D`                      | `Ctrl+Shift+D`                              |
+| Next tab that wants you | `⌘J`                      | `Ctrl+Shift+J`                              |
+| Toggle git history      | `⌘Y`                      | `Ctrl+Shift+Y`                              |
+| Toggle review panel     | `⌘G`                      | `Ctrl+Shift+G`                              |
+| Find in scrollback      | `⌘F`                      | `Ctrl+Shift+F`                              |
+| Copy selection          | `⌘C`                      | `Ctrl+Shift+C`                              |
+| Copy last output        | `⌘⇧O`                     | `Ctrl+Shift+O`                              |
+| Paste                   | `⌘V`                      | `Ctrl+Shift+V`                              |
+| Settings                | `⌘,`                      | `Ctrl+,`                                    |
+| Jump to tab 1–8         | `⌘1`–`⌘8`                 | `Ctrl+1`–`Ctrl+8`                           |
+| Jump to last tab        | `⌘9`                      | `Ctrl+9`                                    |
+| Previous / next tab     | `⌘⇧[` / `⌘⇧]`             | `Ctrl+PageUp` / `Ctrl+PageDown`             |
+| Move tab left / right   | `⌘⇧PageUp` / `⌘⇧PageDown` | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` |
+| Column left / right     | `⌘⌥←` / `⌘⌥→`             | `Ctrl+Shift+Alt+←` / `Ctrl+Shift+Alt+→`     |
 
 At a shell prompt with a suggestion showing: `→` takes it, `↓`/`↑` walk the
 list, Enter fills the chosen line in, and Escape puts the list away. Every one
@@ -940,6 +961,14 @@ which is why the letters take `Ctrl+Shift` off macOS: bare `Ctrl+C` has to stay
 SIGINT, and `Ctrl+T`/`Ctrl+W` belong to readline.
 
 ## 🩹 If something looks wrong
+
+**Muster froze, crashed or did something odd.** Settings → Data → **Error log**
+shows the file, `~/Library/Logs/io.github.ronny1020.muster/muster.log` on macOS.
+It records errors, crashes, agents that exited with an error, and every time the
+app or the window you were using stopped answering for more than a few seconds — with when it
+started answering again. Attach the lines around the time it happened to an
+issue. If it is frozen right now, run `sample Muster 5 -file ~/Desktop/muster.txt`
+before force-quitting it: that captures what it was doing, which no log can.
 
 **A dropped file typed nothing.** A path containing a control character is
 refused rather than typed, because the sequence that ends a bracketed paste can
@@ -1029,7 +1058,9 @@ a small file beside each recording naming the agent and conversation, and a copy
 of every oversized paste. The recording is **on by default** and has a switch in
 that same place; the paste copies have no switch — they are written whenever a
 paste is large enough to become a file. See "Earlier sessions" above for what a
-recording holds. Everything the review
+recording holds. Muster also keeps an error log, at most
+2 MB, holding errors and freezes but never what a session prints or the
+arguments an agent was started with. Everything the review
 drawer and the file column read is your own disk. A file's _contents_ are read
 when you open it, and the review drawer reads new files — the ones git has not
 seen — to count the lines they would add, for the first few hundred of them.

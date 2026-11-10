@@ -293,6 +293,22 @@ a **pre-filled launcher**, never a spawned session, because the gesture asked
 for a place to work rather than for an agent to be running in it. It answers in
 the focused window (`window::front`), and only there.
 
+**The watchdog judges only the focused window's page.** `diagnostics::watch`
+logs when the main thread or a page stops answering, and a background
+webview's timers are throttled — so judging every window would log a freeze
+for each one left behind another. Gaining focus resets that window's last
+heartbeat for the same reason, and counts as a new watch, so a frozen page
+refocused between two ticks is not logged as recovered. A heartbeat is a
+command the main thread runs, so the page is not judged while the main thread
+is stalled, nor for a few seconds after, until the heartbeats held up behind it
+have landed. A watched page that loses the keyboard while frozen gets a line
+saying so, since its recovery will not be seen, and the watch ends for good
+when the app starts to quit: ending every session on the main thread is not a
+freeze. The thread takes none of `Sessions`'s or the
+store's locks, so it keeps writing while whatever froze the app holds them. The
+log rotates with `KeepSome(1)`, which keeps the previous file, so the lines
+before a freeze survive the rotation.
+
 **Cleanup runs on `RunEvent::Exit`, not on a window event.** `Cmd+Q` and the
 app menu's Quit reach tao as `terminate:`, which emits only `LoopDestroyed` — so
 no window ever sees `CloseRequested` or `Destroyed`, and anything hung off those

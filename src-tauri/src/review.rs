@@ -906,10 +906,17 @@ fn read_capped(path: &Path) -> Result<Capped, ReadError> {
     if !metadata.is_file() {
         return Err(ReadError::Io(format!("not a file: {}", path.display())));
     }
+    let file = open_without_following(path).map_err(|error| ReadError::Io(error.to_string()))?;
+    // Checked again on the handle: a FIFO swapped in after the check above
+    // opens, since the open does not block, and reads as an empty file.
+    let metadata = file
+        .metadata()
+        .map_err(|error| ReadError::Io(error.to_string()))?;
+    if !metadata.is_file() {
+        return Err(ReadError::Io(format!("not a file: {}", path.display())));
+    }
     let mut buffer = Vec::new();
-    open_without_following(path)
-        .map_err(|error| ReadError::Io(error.to_string()))?
-        .take(MAX_BYTES as u64)
+    file.take(MAX_BYTES as u64)
         .read_to_end(&mut buffer)
         .map_err(|error| ReadError::Io(error.to_string()))?;
     if buffer.contains(&0) {
@@ -927,13 +934,15 @@ fn read_capped(path: &Path) -> Result<Capped, ReadError> {
 /// The `symlink_metadata` check above is a separate syscall from the open, so
 /// on its own it is check-then-use: a path can become a link between the two.
 /// `O_NOFOLLOW` closes that, and is the only part of the refusal that cannot
-/// be raced.
+/// be raced. `O_NONBLOCK` keeps a FIFO swapped in between the two from
+/// blocking the open with no writer; it changes nothing for a plain file, and
+/// a caller that must have one checks the open handle.
 #[cfg(unix)]
 pub fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
     std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
 }
 

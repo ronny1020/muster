@@ -26,6 +26,10 @@
   "doesNotExist": "はまだ存在しません。",
   "createAndStart": "作成して開始",
   "cancel": "キャンセル",
+  "pickUp": {
+    "label": "このタブの続きから再開",
+    "hint": "このタブで続けていた会話を再び開く"
+  },
   "modes": {
     "new": {
       "label": "新しいセッション",

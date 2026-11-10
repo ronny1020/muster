@@ -295,6 +295,13 @@ own — `typed`, or `queued` while the agent was still working — cut to 120
 characters and drawn as text; it is the agent's file, so it says what that file
 says.
 
+A restored start screen's **Pick up where this tab left off** reads less: the
+ids the tab's own journal sidecars published, each refused by `is_session_id`
+on the way out, and for each one whether `<session>.jsonl` exists as a plain
+file — through `open_plain`, the transcript read's own open, so the Windows
+gap noted below applies to it too — with nothing in it read. The first id that
+names a file becomes `--resume <id>` on the click.
+
 ## Reading the shell's own history file
 
 A plain zsh or bash tab is started with a startup file of Muster's own, which
@@ -521,6 +528,36 @@ says must not happen. The device names cover the path half on Windows, where
 already outside the alphabet, so `..`, an absolute path and an alternate data
 stream cannot be spelled at all.
 
+## What the error log keeps
+
+`diagnostics.rs` writes `muster.log` to the platform's log directory —
+`~/Library/Logs/<identifier>/` on macOS — for diagnosing a crash or a freeze
+after the fact. It holds a start-up line naming the version and platform, the
+app's errors, panics, a page's uncaught errors and the render errors React
+caught, with their stacks, every error the interface reports to the user —
+a failed hand-off to the OS, such as opening a file, folder, editor or link,
+among them — the name of an agent that failed to start or exited
+non-zero, and each stall the watchdog saw. It never holds PTY output,
+keystrokes, or the arguments or directory a session was started with: a failed
+start is logged by its error kind alone, and `portable-pty`'s own logging,
+which writes a failed spawn's whole command line and directory, is switched
+off. An error message can still name a path, since a failed read reports the
+file it failed on — and an agent chooses its own filenames, so `log_write`
+indents every line of a message after its first and spells out every other
+control character, the Unicode line and paragraph separators and the bidi
+controls: a message cannot forge a record of its own, reorder what a line
+shows, or carry an escape sequence into a terminal that later shows the file.
+It also clips a message to 8,000 characters — after spelling those out, so
+the bound is on what is written — and takes from the pages together a burst
+of at most 128 KB, refilled continuously at 128 KB a minute, with each line
+charged for its prefix too. The file is rotated at 1 MB with one previous file
+kept, so it holds at most about 2 MB, and a flood takes minutes to rotate
+away the lines from before it. It is never sent anywhere.
+
+The log plugin opens `muster.log` by name, so a link planted there is
+followed and appended to. That is the same gap, and dominated the same way, as
+the journal paths listed under the known gaps below.
+
 ## What the review panel will not do
 
 The panel reads a working tree an agent has been editing, so the file contents
@@ -585,7 +622,8 @@ Named rather than hidden, because the code carries the same notes:
   click and at every launch; `attach.rs` writes a pasted attachment with
   `fs::write`, which follows a pre-planted link at that name; and
   `sessions.rs`'s `published_session_id` reads `~/.claude/sessions/<pid>.json`
-  without the check. All three are dominated by the fact that an agent with a
+  without the check — twice a second for a session's first 20 seconds, then
+  every five, for as long as it has not published an id. All three are dominated by the fact that an agent with a
   pty can run `rm` itself, which is why they are gaps rather than
   vulnerabilities — but the invariant `src-tauri/AGENTS.md` states is not currently kept,
   and the fixes are one `symlink_metadata` call, one `create_new(true)`, and

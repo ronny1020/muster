@@ -63,7 +63,9 @@ export function ColumnEdges({
   // A handle you can focus but not move is worse than one you cannot focus.
   const nudge = (edge: number, event: KeyboardEvent) => {
     const step = KEY_STEPS[event.key]
-    if (!step || !grid.current) return
+    // A modified arrow is the app's own — `⌘⌥←` moves to another column.
+    const modified = event.metaKey || event.ctrlKey || event.altKey
+    if (!step || modified || !grid.current) return
     event.preventDefault()
     const delta = step * (event.shiftKey ? 4 : 1)
     onResize(movedEdge(trackWidths(grid.current), { edge, delta, min }))

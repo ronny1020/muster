@@ -3,6 +3,7 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 mod attach;
 mod close;
+mod diagnostics;
 mod editor;
 mod fonts;
 mod ghost;
@@ -73,6 +74,8 @@ pub fn run() {
     }
 
     builder
+        // Before the rest, so what they log at start-up is kept.
+        .plugin(diagnostics::plugin())
         // Size and position across restarts. Without it every launch reopens
         // at the config's 1180x760, wherever the window was left.
         .plugin(
@@ -109,7 +112,16 @@ pub fn run() {
         .manage(window::Strips::default())
         .manage(ghost::Ghost::default())
         .manage(close::Words::default())
+        .manage(diagnostics::Watchdog::default())
         .setup(|app| {
+            diagnostics::record_panics();
+            log::info!(
+                "Muster {} started on {} {}",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
+            diagnostics::watch(app.handle());
             window::restore(app.handle());
             Ok(())
         })
@@ -156,6 +168,7 @@ pub fn run() {
             sessions::agent_session_list,
             journal::journal_sessions,
             transcript::agent_turns,
+            transcript::tab_conversation,
             journal::journal_read,
             journal::journal_sweep,
             attach::attach_text,
@@ -167,6 +180,9 @@ pub fn run() {
             platform::platform_info,
             platform::drop_paths,
             shell::shell_history,
+            diagnostics::log_heartbeat,
+            diagnostics::log_write,
+            diagnostics::log_path,
         ])
         .on_window_event(|window, event| match event {
             // Quitting over a mid-turn agent throws away work that cannot be
@@ -186,8 +202,16 @@ pub fn run() {
                 let words = close::current(&window.state::<close::Words>());
                 close::confirm(window.clone(), &words, live, last);
             }
-            tauri::WindowEvent::Focused(true) => {
-                window.state::<window::Strips>().focused(window.label());
+            tauri::WindowEvent::Focused(focused) => {
+                if *focused {
+                    window.state::<window::Strips>().focused(window.label());
+                }
+                // The drag label sends no heartbeat, so it is never judged.
+                if window.label() != window::DRAG_LABEL {
+                    window
+                        .state::<diagnostics::Watchdog>()
+                        .focus(window.label(), *focused);
+                }
             }
             // The frontend is never unmounted on close, so this is the only
             // chance to reach the agents' own process groups. Only this
@@ -197,6 +221,9 @@ pub fn run() {
                 window.state::<pty::Sessions>().park_window(window.label());
                 window.state::<window::Strips>().forget(window.label());
                 window.state::<window::Handoffs>().forget(window.label());
+                window
+                    .state::<diagnostics::Watchdog>()
+                    .forget(window.label());
                 // A window closed while others stay open takes its tabs with
                 // it. The last one keeps them, so the next launch restores
                 // what was open — as quitting does.
@@ -226,6 +253,7 @@ pub fn run() {
                 return;
             }
             if matches!(event, tauri::RunEvent::Exit) {
+                handle.state::<diagnostics::Watchdog>().quit();
                 handle.state::<pty::Sessions>().end_all();
                 // Saved here rather than left to the plugin's own window
                 // hooks, for the reason the cleanup above is here: `Cmd+Q` and

@@ -17,6 +17,8 @@ export interface TabShortcuts {
   cycle: (step: number) => void
   moveActive: (step: number) => void
   activateIndex: (index: number) => void
+  focusColumn: (step: number) => void
+  nextWanting: () => void
 }
 
 /**
@@ -30,6 +32,8 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     cycle,
     moveActive,
     activateIndex,
+    focusColumn,
+    nextWanting,
     toggleHistory,
     toggleReview,
     find,
@@ -48,6 +52,8 @@ export function useTabShortcuts(handlers: TabShortcuts) {
         cycle,
         moveActive,
         activateIndex,
+        focusColumn,
+        nextWanting,
         toggleHistory,
         toggleReview,
         find,
@@ -64,6 +70,8 @@ export function useTabShortcuts(handlers: TabShortcuts) {
     cycle,
     moveActive,
     activateIndex,
+    focusColumn,
+    nextWanting,
     toggleHistory,
     toggleReview,
     find,
@@ -94,5 +102,9 @@ function run(action: ShortcutAction, handlers: TabShortcuts) {
       return handlers.moveActive(action.step)
     case 'activateIndex':
       return handlers.activateIndex(action.index)
+    case 'focusColumn':
+      return handlers.focusColumn(action.step)
+    case 'nextWanting':
+      return handlers.nextWanting()
   }
 }

@@ -11,6 +11,16 @@ DOM focus in xterm's helper textarea, which then swallows typing meant for the
 tab that has the keyboard. `TerminalView` calls `blur()` when its tab stops
 being active; the launcher claims focus when it comes forward.
 
+**An app shortcut is claimed before xterm reads it.** The tab and column
+keys are answered by a listener on `window`, but a key reaches xterm's
+textarea first, and xterm encodes most modified keys — `Ctrl+PageUp` as
+`ESC[5;5~`, `Ctrl+Shift+Alt+→` as `ESC[1;8C` — sends them to the session and
+stops the event. So the key handler returns `false` for anything
+`matchShortcut` answers: the shortcut then fires from a terminal too, and the
+session never receives it. macOS hides most of this, because xterm passes
+arrows held with `⌘` through untouched — the Windows and Linux chords are
+where it shows.
+
 **An oversized paste is caught in two places, because macOS has no third.**
 `Cmd+V` is a native menu accelerator, so `attachCustomKeyEventHandler` never
 sees it and `clipboardIntent` returns `null` on macOS by design — the DOM
@@ -248,6 +258,9 @@ had their say, because `~/.zsh_history` is wrong for anyone who moved it and
 for every session whose `ZDOTDIR` is not their home. It is read through
 `open_tail` — the same bounded, link-refusing read the transcript takes, and
 for the same reason: it happens on a keystroke with no click behind it.
+Because the path arrives once, a read that fails is tried again at each prompt
+until one succeeds, and `shell_history` answers `null` for a file it could not
+read: an empty list would be taken as a history with nothing in it.
 
 **A user's own messages are found by cell attribute, not by text.** A CLI
 draws the prompt you typed as a tinted block, and that tint is the only thing
@@ -828,6 +841,32 @@ agents in the roster have never been run at all.
 would otherwise dispatch a deck action per write batch. `unknown` is the state
 before a tab has printed anything, and it is not the same as idle — a tab that
 has said nothing must not claim to be idle.
+
+**A question is read off the bottom of the screen, and only on a footer some
+rule names.** On the quiet edge `isAsking` reads the live screen — `baseY`,
+never where the user has scrolled — and tells a permission prompt or a
+question (`asking`) from a finished turn (`waiting`). It answers `false` for
+any agent without rules and any screen no rule matches, because a tab that
+claims to need you and does not is worse than one that says nothing: so a rule
+keys on a dialog's own footer or heading, never on one common word. The
+wording follows herdr's manifests and changes when a CLI redraws its dialogs,
+which nothing here reports — that silence is the cost of the feature, and the
+reason every agent's rules have a test with text they match. Only Claude
+Code's have been checked against a real session here; the rest are herdr's
+wording. A handed-back tab reads
+as the shell, so an agent's last dialog left above the prompt asks nothing.
+
+A question stays `asking` until the screen stops showing one. Moving through a
+prompt's choices redraws it, and reading that as work would flip the tab to
+`working` and back and announce the same question twice. The screen is
+re-read once each write is parsed, so the first output that leaves no question
+on screen clears it, and a second question in the same turn is a new one even
+with no quiet edge between them — unless one dialog replaces the other within
+a single write, which reads as the same question and is not announced again.
+The screen is read once more before reporting `working`, so a tab that arrives
+from another window mid-question keeps asking rather than announcing it again.
+`Pane` announces a question on the move into `asking`, and a dialog's quiet
+edge that lands after the process exited is ignored by the reducer.
 
 **A file drop is a window event, not an element's.** Tauri intercepts the drop
 before the DOM sees it — `dragDropEnabled` is on by default — so there is no

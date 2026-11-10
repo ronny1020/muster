@@ -5,6 +5,7 @@ import {
   columnTabs,
   columnWidths,
   focusedColumn,
+  type AgentStatus,
   type Deck,
   deckReducer,
   initialDeck,
@@ -343,6 +344,24 @@ test('a new turn outranks an unread one on the dot', () => {
   let deck = deckReducer(deckOf(2), { type: 'attention', id: 'tab-2' })
   deck = deckReducer(deck, { type: 'status', id: 'tab-2', status: 'working' })
   expect(tabSignal(deck.tabs[1])).toBe('working')
+})
+
+test('a question outranks an unread turn, and survives being looked at', () => {
+  let deck = deckReducer(deckOf(2), { type: 'attention', id: 'tab-2' })
+  deck = deckReducer(deck, { type: 'status', id: 'tab-2', status: 'asking' })
+  expect(tabSignal(deck.tabs[1])).toBe('asking')
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
+  expect(tabSignal(deck.tabs[1])).toBe('asking')
+})
+
+test('a session that exits mid-question is no longer asking', () => {
+  let deck = deckReducer(deckOf(1), {
+    type: 'status',
+    id: 'tab-1',
+    status: 'asking',
+  })
+  deck = deckReducer(deck, { type: 'exited', id: 'tab-1', code: 0 })
+  expect(tabSignal(deck.tabs[0])).toBe('waiting')
 })
 
 test('a tab that announces nothing has no signal', () => {
@@ -726,6 +745,20 @@ test('splitting opens a start screen on the right and leaves the tab in place', 
   expect(deck.activeId).toBe('fresh')
 })
 
+test("a split's start screen does not offer to reopen its neighbour's conversation", () => {
+  let deck = deckReducer(initialDeck('tab-1'), {
+    type: 'start',
+    id: 'tab-1',
+    session,
+    title: 'repo',
+  })
+  deck = deckReducer(deck, { type: 'split', id: 'fresh' })
+  const fresh = deck.tabs.find((tab) => tab.id === 'fresh')
+  if (fresh?.content.type !== 'launcher') throw new Error('expected a launcher')
+  expect(fresh.content.start?.cwd).toBe('/work/repo')
+  expect(fresh.content.start?.from).toBeUndefined()
+})
+
 test('a split from a column without the keyboard halves that column', () => {
   let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-3' })
   deck = moveActiveRight(deck)
@@ -838,6 +871,26 @@ test('cycling walks past a column into the next, so every tab is reachable', () 
   expect(deck.activeId).toBe('tab-1')
 })
 
+test('moving between columns lands on the tab each column shows', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-1' })
+  deck = moveActiveRight(deck)
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-3' })
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  // Columns: [tab-2, tab-3] then [tab-1], with tab-3 shown on the left.
+  deck = deckReducer(deck, { type: 'focusColumn', step: -1 })
+  expect(deck.activeId).toBe('tab-3')
+  deck = deckReducer(deck, { type: 'focusColumn', step: 1 })
+  expect(deck.activeId).toBe('tab-1')
+})
+
+test('moving between columns stops at the outer ones', () => {
+  let deck = deckReducer(deckOf(2), { type: 'activate', id: 'tab-2' })
+  deck = moveActiveRight(deck)
+  expect(deckReducer(deck, { type: 'focusColumn', step: 1 })).toBe(deck)
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  expect(deckReducer(deck, { type: 'focusColumn', step: -1 })).toBe(deck)
+})
+
 test('reordering a tab leaves the other columns alone', () => {
   let deck = deckReducer(deckOf(4), { type: 'activate', id: 'tab-2' })
   deck = moveActiveRight(deck)
@@ -932,4 +985,38 @@ test('widths for another number of columns, or unusable ones, change nothing', (
   ]) {
     expect(deckReducer(deck, { type: 'resize', widths })).toBe(deck)
   }
+})
+
+const withStatus = (deck: Deck, id: string, status: AgentStatus) =>
+  deckReducer(deck, { type: 'status', id, status })
+
+test('the jump goes to a tab asking a question before an unread one', () => {
+  let deck = deckReducer(deckOf(3), { type: 'attention', id: 'tab-2' })
+  deck = withStatus(deck, 'tab-3', 'asking')
+  deck = deckReducer(deck, { type: 'nextWanting' })
+  expect(deck.activeId).toBe('tab-3')
+  deck = withStatus(deck, 'tab-3', 'working')
+  deck = deckReducer(deck, { type: 'nextWanting' })
+  expect(deck.activeId).toBe('tab-2')
+  expect(deck.tabs[1].attention).toBe(false)
+})
+
+test('the jump wraps past the end of the strip', () => {
+  let deck = deckReducer(deckOf(3), { type: 'activate', id: 'tab-3' })
+  deck = deckReducer(deck, { type: 'attention', id: 'tab-1' })
+  expect(deckReducer(deck, { type: 'nextWanting' }).activeId).toBe('tab-1')
+})
+
+test('the jump crosses into another column', () => {
+  let deck = deckReducer(deckOf(2), { type: 'split', id: 'right' })
+  deck = withStatus(deck, 'right', 'asking')
+  deck = deckReducer(deck, { type: 'activate', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'nextWanting' })
+  expect(deck.activeId).toBe('right')
+  expect(deck.shown).toContain('right')
+})
+
+test('with nothing wanting you, the jump leaves the deck alone', () => {
+  const deck = deckOf(3)
+  expect(deckReducer(deck, { type: 'nextWanting' })).toBe(deck)
 })

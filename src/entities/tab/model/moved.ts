@@ -34,7 +34,12 @@ export function parseMovedTab(input: unknown): Tab | null {
     ]),
     findOpen: raw.findOpen === true,
     attention: raw.attention === true,
-    status: oneOf<AgentStatus>(raw.status, ['unknown', 'working', 'waiting']),
+    status: oneOf<AgentStatus>(raw.status, [
+      'unknown',
+      'working',
+      'waiting',
+      'asking',
+    ]),
     handedBack: raw.handedBack === true,
     // The receiving window places it among its own columns.
     column: 0,

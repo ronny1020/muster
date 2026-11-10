@@ -13,6 +13,7 @@ import { webHref } from '../../../shared/lib/weburl'
 import {
   type DeckAction,
   type ReviewView,
+  type SessionStatus,
   type Tab,
   tabDetail,
   tabSession,
@@ -590,14 +591,18 @@ export function Pane({
     [dispatch, signalAttention, tab.id],
   )
 
-  const onWorking = useCallback(
-    (working: boolean) =>
-      dispatch({
-        type: 'status',
-        id: tab.id,
-        status: working ? 'working' : 'waiting',
-      }),
-    [dispatch, tab.id],
+  /** A question is announced as it arrives; the same one reported again is not. */
+  const onStatus = useCallback(
+    (status: SessionStatus) => {
+      dispatch({ type: 'status', id: tab.id, status })
+      if (
+        status === 'asking' &&
+        tab.status !== 'asking' &&
+        tab.exitCode === null
+      )
+        signalAttention(i18n.t('chrome:session.asking'))
+    },
+    [dispatch, signalAttention, tab.id, tab.status, tab.exitCode],
   )
 
   useEffect(() => {
@@ -665,7 +670,7 @@ export function Pane({
                 onAdoptedExit={(code) =>
                   dispatch({ type: 'exited', id: tab.id, code })
                 }
-                onWorking={onWorking}
+                onStatus={onStatus}
                 ended={tab.exitCode !== null}
                 turns={turns}
                 cwd={cwd}

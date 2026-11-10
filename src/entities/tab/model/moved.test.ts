@@ -56,3 +56,10 @@ test('a damaged field falls back rather than refusing the tab', () => {
   expect(tab?.status).toBe('unknown')
   expect(tab?.reviewView).toBe('changes')
 })
+
+test('a tab moved while asking a question arrives still asking', () => {
+  const asking: Tab = { ...sessionTab, status: 'asking' }
+  expect(parseMovedTab(JSON.parse(JSON.stringify(asking)))?.status).toBe(
+    'asking',
+  )
+})

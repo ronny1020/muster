@@ -27,6 +27,7 @@ import {
   type PastSessions,
   pickDirectory,
   report,
+  tabConversation,
   workspaceInfo,
 } from '../../../shared/ipc'
 import { AGE_TICK_MS, agoLabel } from '../../../shared/lib/ago'
@@ -196,6 +197,12 @@ export function Launcher({
     [agent.id, cwd, runIn],
     null,
   )
+  /**
+   * The conversation this tab was having before it came back to its start
+   * screen — a restart, or a session that ended — and only while the screen
+   * still names the agent, directory and host it ran with.
+   */
+  const pickUp = usePickUp({ start, agent, cwd, backend: runIn })
   /** Narrows `resumeMode.args` below; the list exists only where it does. */
   const resumeMode = agent.modes.find((mode) => mode.id === 'resume')
   /**
@@ -422,7 +429,7 @@ export function Launcher({
   }
 
   const submitOnEnter = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') void launch(agent.modes[0].args)
+    if (event.key === 'Enter') void launch(pickUp ?? agent.modes[0].args)
   }
 
   return (
@@ -568,6 +575,18 @@ export function Launcher({
           </button>
         </div>
 
+        {pickUp && (
+          <button
+            type="button"
+            onClick={() => void launch(pickUp)}
+            style={{ borderColor: `${agent.accent}8c` }}
+            className="mt-0.5 flex flex-col gap-0.5 rounded-[10px] border border-line bg-surface px-3 py-2.5 text-left hover:border-[#43434d] hover:bg-surface-hover"
+          >
+            <strong className="font-medium">{t('pickUp.label')}</strong>
+            <span className="text-[11px] text-muted">{t('pickUp.hint')}</span>
+          </button>
+        )}
+
         <div className="mt-0.5 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2">
           {agent.modes.map((mode, index) => {
             const unavailable = needsHistory(mode.id) && sessions === 0
@@ -587,7 +606,7 @@ export function Launcher({
                     : launch(mode.args))
                 }
                 style={
-                  index === 0 && !unavailable
+                  index === 0 && !unavailable && !pickUp
                     ? { borderColor: `${agent.accent}8c` }
                     : undefined
                 }
@@ -828,4 +847,42 @@ function SessionAge({ at }: { at: number }) {
       {agoLabel(at, now, common)}
     </span>
   )
+}
+
+/**
+ * The arguments that reopen the conversation `start` came from, or `null`.
+ *
+ * Asked only while the screen matches `start`: picking another agent,
+ * directory or host is asking for something else, and resuming one agent's
+ * conversation id with another agent's CLI fails at launch.
+ */
+function usePickUp({
+  start,
+  agent,
+  cwd,
+  backend,
+}: {
+  start?: LauncherStart
+  agent: Agent
+  cwd: string
+  backend: Backend
+}) {
+  const from =
+    start?.from &&
+    start.agentId === agent.id &&
+    start.cwd === cwd &&
+    start.backend === backend
+      ? start.from
+      : ''
+  const [id, setId] = useKeyedState<string | null>([from, cwd, agent.id], null)
+  useEffect(() => {
+    if (!from) return
+    const input = [from, cwd, agent.id]
+    const read = async () => {
+      const found = await tabConversation(cwd, from, agent.id).catch(() => null)
+      setId(input, found)
+    }
+    void read()
+  }, [from, cwd, agent.id, setId])
+  return from && id ? resumeArgs(agent, id) : null
 }
