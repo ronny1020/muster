@@ -429,7 +429,7 @@ export function Launcher({
   }
 
   const submitOnEnter = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') void launch(agent.modes[0].args)
+    if (event.key === 'Enter') void launch(pickUp ?? agent.modes[0].args)
   }
 
   return (

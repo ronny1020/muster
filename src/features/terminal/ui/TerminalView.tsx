@@ -1071,11 +1071,12 @@ export function TerminalView({
       status.current('working')
     }
     // Read once the write has been parsed, since a chunk is reported before
-    // xterm draws it and the screen before it still shows the question.
+    // xterm draws it and the screen before it still shows the question. The
+    // parse can land after the quiet edge, so the edge is armed again here.
     term.onWriteParsed(() => {
       if (asking && !askingNow()) {
         asking = false
-        reportWorking()
+        markWorking()
       }
     })
     const markWorking = () => {

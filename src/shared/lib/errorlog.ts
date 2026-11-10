@@ -30,8 +30,8 @@ export const recordErrors = () => {
  * React's own error hooks. An uncaught render error unmounts the whole tree —
  * the window goes blank — so it is the one most worth a line.
  */
+// Replacing React's default handlers takes the error off the console too.
 export const rootErrorOptions: RootOptions = {
-  // Replacing React's default handler takes the error off the console too.
   onUncaughtError: (error, info) => {
     console.error(error)
     void logWrite(
@@ -40,6 +40,7 @@ export const rootErrorOptions: RootOptions = {
     )
   },
   onCaughtError: (error) => {
+    console.error(error)
     void logWrite('warn', `render error caught: ${describeError(error)}`)
   },
 }
