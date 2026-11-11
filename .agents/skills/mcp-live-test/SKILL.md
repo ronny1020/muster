@@ -187,14 +187,17 @@ always finds nothing, which reads exactly like the handler not firing. Split
 them: dispatch in one call, query in the next. This cost a working hover
 control an hour of looking like a broken one.
 
-**Edit cards sit over the terminal's top-right corner.** With live edits on,
-an edit in the tab puts a stack there for about eight seconds — a
-`[role=log]` inside the terminal's column, so scope the query to it, because
-the drawer's Activity list is a `[role=log]` too —
+**Cards sit over the terminal's top-right corner.** The tab with the keyboard
+also stacks the cards about other tabs there, above its own edit cards:
+`[aria-label="News from other tabs"]`. With live edits on,
+an edit in the tab puts a stack there for about eight seconds —
+`[aria-label="Edits as they land"]`, a `[role=log]` like the news stack and
+the drawer's Activity list, so query it by that label and scope it to the
+terminal's column —
 and it takes the pointer: an `elementFromPoint` probe or a synthetic click in
-that corner can land on a card rather than the grid. Hovering or focusing the
-stack freezes it, so a probe that dispatches `pointerover` there must also
-dispatch `pointerout`, or the stack stays held for the rest of the run.
+that corner can land on a card rather than the grid. Hovering or focusing anything in
+the corner freezes both stacks, so a probe that dispatches `pointerover` there
+should dispatch `pointerout` too — a later `pointerover` elsewhere releases a pointer hold, and a `focusin` or key elsewhere releases a focus hold.
 
 **A terminal's grid is a canvas, so there is nothing to read in the DOM.**
 Assert on what the app exposes instead — an `aria-label`, `scrollTop`, a

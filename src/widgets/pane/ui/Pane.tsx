@@ -83,7 +83,28 @@ import { handbackNotice } from '../../../features/terminal/model/handback'
 import { SettingsPane } from '../../../features/settings/ui/SettingsPane'
 import { StatusBar } from '../../../features/workspace/ui/StatusBar'
 import { TerminalView } from '../../../features/terminal/ui/TerminalView'
+import type { FinishedCommand } from '../../../features/terminal/model/blocks'
+import {
+  LONG_COMMAND_MS,
+  type NoticeEvent,
+} from '../../../features/notices/model/notices'
+import { useGitNotices } from '../../../features/notices/model/useGitNotices'
+import {
+  NoticeCards,
+  type NoticeCardsProps,
+} from '../../../features/notices/ui/NoticeCards'
 import { useKeyChange } from '../../../shared/lib/useKeyChange'
+import { useInside } from '../../../shared/lib/useHold'
+
+/** How close a bell and a broadcast must be to be one turn announced twice. */
+const SAME_TURN_MS = 4000
+
+/**
+ * The top-right corner the cards stack in. `group`, so hovering either stack
+ * pauses both.
+ */
+const CARD_CORNER =
+  'group pointer-events-none absolute right-10 z-20 flex w-[320px] max-w-[60%] flex-col'
 
 /** Why a clicked path could not be shown: the backend's own words, or ours. */
 type PreviewError = { kind: 'noEditor' } | { kind: 'failed'; message: string }
@@ -110,6 +131,13 @@ export interface PaneProps {
   /** Passed rather than dispatched here: a new tab's id is minted in `App`. */
   onOpenSettings: () => void
   dispatch: (action: DeckAction) => void
+  /** News about a tab, for the cards the other tabs show. */
+  onNotice: (tabId: string, event: NoticeEvent) => void
+  /** The cards about the other tabs, for the one with the keyboard to draw. */
+  notices?: Omit<NoticeCardsProps, 'holding'>
+  /** A command a card asked this tab's terminal to scroll to. */
+  reveal: { block: number } | null
+  onRevealed: () => void
 }
 
 /**
@@ -124,11 +152,19 @@ export function Pane({
   onLaunch,
   onOpenSettings,
   dispatch,
+  onNotice,
+  notices,
+  reveal,
+  onRevealed,
 }: PaneProps) {
   const { t } = useTranslation('chrome')
   const { t: tWorkspace } = useTranslation('workspace')
   const { settings } = useSettings()
   const session = tabSession(tab)
+  const raise = useCallback(
+    (event: NoticeEvent) => onNotice(tab.id, event),
+    [onNotice, tab.id],
+  )
   /**
    * What the tab is running: its agent, or the user's shell once the agent has
    * handed the terminal back. From then on there is no conversation here to
@@ -350,7 +386,14 @@ export function Pane({
   const [base, setBase] = useState('')
   /** Changes when the working tree does, which is what re-reads git. */
   const revision = treeRevision(cwd, git ?? null)
-  const gitRun = useGitRun(refresh)
+  // A failure is news unless a drawer that shows it is in front of the reader
+  // as it lands.
+  const gitRun = useGitRun(refresh, (text) => {
+    // The review drawer shows git's answer on its Changes view alone.
+    const inDrawer =
+      shown && (historyOpen || (tab.reviewOpen && reviewView === 'changes'))
+    if (!(inDrawer && document.hasFocus())) raise({ kind: 'gitFailed', text })
+  })
   const { edits, nudge } = useEdits({
     cwd,
     enabled:
@@ -395,6 +438,10 @@ export function Pane({
   // Filled in by the terminal once it exists, so the panel and a file drop
   // can both put text in front of the agent.
   const paste = useRef<((text: string) => void) | null>(null)
+
+  // One hold for both stacks in the corner: either one moving would slide
+  // the other under the pointer.
+  const corner = useInside(shown)
 
   const home = useHomeDir()
   const [preview, setPreview] = useState<ImagePreviewState>({
@@ -569,14 +616,41 @@ export function Pane({
     ],
   )
 
-  const onBell = useCallback(() => signalAttention(), [signalAttention])
+  /**
+   * When the agent last broadcast a turn's end. One that also rings is
+   * announcing the same turn, and the broadcast is the card with its words.
+   */
+  const turnBroadcastAt = useRef(0)
+  const onBell = useCallback(() => {
+    signalAttention()
+    // A shell's bell is a script's, not a turn ending.
+    const isAgent = Boolean(running) && running !== SHELL_AGENT
+    if (isAgent && Date.now() - turnBroadcastAt.current > SAME_TURN_MS) {
+      raise({ kind: 'finished' })
+    }
+  }, [signalAttention, raise, running])
 
   const onAgentEvent = useCallback(
     (event: AgentEvent) => {
-      if (endsTurn(event)) signalAttention(event.response)
+      if (endsTurn(event)) {
+        turnBroadcastAt.current = Date.now()
+        signalAttention(event.response)
+        raise(
+          event.name === 'stop_failure'
+            ? { kind: 'stopped', code: null, said: event.response }
+            : { kind: 'finished', said: event.response },
+        )
+      }
       if (wroteFile(event)) nudge()
     },
-    [signalAttention, nudge],
+    [signalAttention, nudge, raise],
+  )
+
+  const onCommandDone = useCallback(
+    (done: FinishedCommand) => {
+      if (done.ms >= LONG_COMMAND_MS) raise({ kind: 'command', ...done })
+    },
+    [raise],
   )
 
   // A separate moment from a turn ending, so it is never merged into one:
@@ -587,8 +661,9 @@ export function Pane({
       signalAttention(handbackNotice(code, i18n.getFixedT(null, 'terminal')), {
         fresh: true,
       })
+      raise({ kind: 'stopped', code })
     },
-    [dispatch, signalAttention, tab.id],
+    [dispatch, signalAttention, tab.id, raise],
   )
 
   /** A question is announced as it arrives; the same one reported again is not. */
@@ -599,11 +674,15 @@ export function Pane({
         status === 'asking' &&
         tab.status !== 'asking' &&
         tab.exitCode === null
-      )
+      ) {
         signalAttention(i18n.t('chrome:session.asking'))
+        raise({ kind: 'asking' })
+      }
     },
-    [dispatch, signalAttention, tab.id, tab.status, tab.exitCode],
+    [dispatch, signalAttention, tab.id, tab.status, tab.exitCode, raise],
   )
+
+  useGitNotices({ cwd, git }, raise)
 
   useEffect(() => {
     if (!workspace) return
@@ -631,12 +710,17 @@ export function Pane({
       {tab.content.type === 'settings' && <SettingsPane />}
       {tab.content.type === 'launcher' && (
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 min-w-64 flex-1">
+          <div className="relative flex min-h-0 min-w-64 flex-1">
             <Launcher
               active={active}
               onLaunch={onLaunch}
               start={tab.content.start}
             />
+            {notices && (
+              <div {...corner.props} className={`${CARD_CORNER} top-3`}>
+                <NoticeCards {...notices} holding={corner.inside} />
+              </div>
+            )}
           </div>
           {journalOpen && (
             <JournalPanel
@@ -671,6 +755,9 @@ export function Pane({
                   dispatch({ type: 'exited', id: tab.id, code })
                 }
                 onStatus={onStatus}
+                onCommandDone={onCommandDone}
+                reveal={reveal}
+                onRevealed={onRevealed}
                 ended={tab.exitCode !== null}
                 turns={turns}
                 cwd={cwd}
@@ -682,32 +769,41 @@ export function Pane({
                 onCloseFind={closeFind}
                 paste={paste}
               />
-              {settings.editCards && (
-                <EditCards
-                  edits={edits}
-                  lowered={tab.findOpen}
-                  accent={runningAccent}
-                  onOpen={openEdit}
-                  onShowAll={
-                    settings.editActivity
-                      ? () => {
-                          // Opened, never toggled: the drawer may already be
-                          // on Activity, and this click asks to see it.
-                          dispatch({
-                            type: 'setReviewView',
-                            id: tab.id,
-                            view: 'activity',
-                          })
-                          dispatch({
-                            type: 'setReview',
-                            id: tab.id,
-                            open: true,
-                          })
-                        }
-                      : undefined
-                  }
-                />
-              )}
+              <div
+                {...corner.props}
+                // Clear of the find bar, which sits in the same corner.
+                className={`${CARD_CORNER} ${tab.findOpen ? 'top-14' : 'top-3'}`}
+              >
+                {notices && (
+                  <NoticeCards {...notices} holding={corner.inside} />
+                )}
+                {settings.editCards && (
+                  <EditCards
+                    edits={edits}
+                    holding={corner.inside}
+                    accent={runningAccent}
+                    onOpen={openEdit}
+                    onShowAll={
+                      settings.editActivity
+                        ? () => {
+                            // Opened, never toggled: the drawer may already be
+                            // on Activity, and this click asks to see it.
+                            dispatch({
+                              type: 'setReviewView',
+                              id: tab.id,
+                              view: 'activity',
+                            })
+                            dispatch({
+                              type: 'setReview',
+                              id: tab.id,
+                              open: true,
+                            })
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+              </div>
             </div>
             {viewed && (
               <FileViewer

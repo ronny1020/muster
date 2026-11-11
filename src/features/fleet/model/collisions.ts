@@ -27,6 +27,8 @@ export interface Collision {
   path: string
   /** The other tabs, by title, in the order their tabs are open. */
   others: string[]
+  /** The same tabs, by id. */
+  otherIds: string[]
 }
 
 /**
@@ -44,21 +46,73 @@ export function collisionsByTab(
   for (const group of groupByRepo(changes)) {
     for (const [path, tabs] of sharedPaths(group)) {
       for (const tab of tabs) {
-        const others = tabs
-          .filter((other) => other.root !== tab.root)
-          .map((other) => other.title)
+        const elsewhere = tabs.filter((other) => other.root !== tab.root)
         // Two tabs in one working tree share every file by definition — they
         // are one tree. Warning about that would light permanently, and a
         // warning that is always on is one nobody reads.
-        if (others.length === 0) continue
+        if (elsewhere.length === 0) continue
         found.set(tab.tabId, [
           ...(found.get(tab.tabId) ?? []),
-          { path, others },
+          {
+            path,
+            others: elsewhere.map((other) => other.title),
+            otherIds: elsewhere.map((other) => other.tabId),
+          },
         ])
       }
     }
   }
   return found
+}
+
+/** A path that has started colliding, and every tab now changing it. */
+interface NewCollision {
+  path: string
+  tabIds: string[]
+}
+
+/**
+ * The overlaps in `after` some tab was not part of in `before`, each once.
+ *
+ * A tab joining an overlap that was already there counts too, since the
+ * overlap now reaches a tree it did not; the answer names every tab in it,
+ * and only those — a path is per repository, so the same one changing in
+ * another repository is another overlap.
+ */
+export function newCollisions(
+  before: Map<string, Collision[]>,
+  after: Map<string, Collision[]>,
+): NewCollision[] {
+  const fresh: NewCollision[] = []
+  for (const [tabId, collisions] of after) {
+    const known = new Set(before.get(tabId)?.map((entry) => entry.path))
+    for (const { path, otherIds } of collisions) {
+      if (known.has(path)) continue
+      // Tabs sharing a tree each leave the other out, so each sees its own
+      // set; sets on one file that share a tab are one overlap.
+      const tabIds = [tabId, ...otherIds]
+      const same = fresh.find(
+        (entry) =>
+          entry.path === path && entry.tabIds.some((id) => tabIds.includes(id)),
+      )
+      if (same) same.tabIds = [...new Set([...same.tabIds, ...tabIds])].sort()
+      else fresh.push({ path, tabIds: [...tabIds].sort() })
+    }
+  }
+  // A tab already in the overlap, in the same tree as the one joining it, is
+  // left out of the joiner's own set, so every tab on the file is asked.
+  for (const entry of fresh) {
+    for (const [tabId, collisions] of after) {
+      const there = collisions.find((found) => found.path === entry.path)
+      if (
+        there &&
+        [tabId, ...there.otherIds].some((id) => entry.tabIds.includes(id))
+      ) {
+        entry.tabIds = [...new Set([...entry.tabIds, tabId])].sort()
+      }
+    }
+  }
+  return fresh
 }
 
 function groupByRepo(changes: TabChanges[]): TabChanges[][] {

@@ -1,28 +1,32 @@
-import { type FocusEvent, type PointerEvent, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { basename, folderOf } from '../model/changes'
 import type { Edit } from '../model/edits'
-import { Icon } from '../../../shared/ui/Icon'
+import { DismissButton } from '../../../shared/ui/DismissButton'
+import { useFrozen } from '../../../shared/lib/useHold'
 import { FileTypeIcon } from '../../../shared/ui/FileTypeIcon'
 import { EditBar, EditCounts, EditLines } from './EditLines'
 
 export interface EditCardsProps {
   /** The pane's feed, newest first. */
   edits: Edit[]
-  /** Clear of the find bar, which sits in the same corner. */
-  lowered: boolean
+  /** The pointer or focus is in the corner, which freezes what is drawn. */
+  holding: boolean
   /**
    * The tab's agent colour. The cards sit beside the terminal rather than in
    * it, so they do not inherit the `agent` token the terminal sets.
    */
   accent: string
   onOpen: (edit: Edit) => void
-  /** Absent when the Activity view is off, and the overflow line says less. */
+  /**
+   * Opens the Activity view. Absent when Activity is off; the folded card
+   * then opens the newest edit's diff.
+   */
   onShowAll?: () => void
 }
 
-/** Cards on screen at once; the rest are summarised in one line. */
+/** Cards drawn one by one; more than this fold into one card for them all. */
 const SHOWN = 3
 
 /** Lines of an edit a card draws: a glimpse, the diff is a click away. */
@@ -30,20 +34,20 @@ const CARD_LINES = 6
 
 /**
  * A card over the terminal for each file that changes in the tab's working
- * tree, newest on top.
+ * tree, newest on top — or, once more land than fit, one card for them all.
  *
  * Each card lives as long as its CSS animation and is cleared on
  * `animationend`, so no timer runs in any pane — and since a hidden pane
  * draws nothing, a tab you return to shows what landed while you were away,
- * then lets it go. While the pointer or focus is anywhere in the stack, every
- * card pauses and the stack stops changing: a card that moved or vanished
- * under a pointer or a keyboard user would take the click or the focus with
- * it. The oldest card ending clears the backlog behind it, so a backlog never
- * drips out three at a time; any other card goes alone.
+ * then lets it go. While `holding`, every card pauses and the stack stops
+ * changing: a card that moved or vanished under a pointer or a keyboard user
+ * would take the click or the focus with it. The oldest card ending clears
+ * the cards behind it, so they never drip out one at a time; any other card
+ * goes alone.
  */
 export function EditCards({
   edits,
-  lowered,
+  holding,
   accent,
   onOpen,
   onShowAll,
@@ -53,86 +57,101 @@ export function EditCards({
   // made while they were switched off; neither is news.
   const [cleared, setCleared] = useState(() => edits[0]?.id ?? 0)
   const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set())
-  const [held, setHeld] = useState<Hold | null>(null)
   const live = (edit: Edit) => edit.id > cleared && !dismissed.has(edit.id)
   const pending = edits.filter(live)
-  // A hold with nothing left in it holds nothing: its last card was
-  // dismissed, and the stack unmounting would leave no event to release it.
-  const kept = held?.cards.filter(live)
-  const shown = kept?.length ? kept : pending.slice(0, SHOWN)
+  const { frozen } = useFrozen(holding, () => pending)
+  const shown = frozen?.filter(live) ?? pending
   if (shown.length === 0) return null
-  const hidden = Math.max(0, pending.length - shown.length)
   const oldest = shown[shown.length - 1].id
-
-  const enter = (by: 'pointer' | 'focus') => () =>
-    setHeld((was) => ({
-      pointer: false,
-      focus: false,
-      ...was,
-      cards: was?.cards.some(live) ? was.cards : shown,
-      [by]: true,
-    }))
-  // Pointer and focus hold separately: the mouse passing over and out must
-  // not release a stack a keyboard user is still in, nor the reverse.
-  const leave =
-    (by: 'pointer' | 'focus') => (event: FocusEvent | PointerEvent) => {
-      const next = event.relatedTarget
-      if (next instanceof Node && event.currentTarget.contains(next)) return
-      setHeld((was) => {
-        if (!was) return null
-        const still = { ...was, [by]: false }
-        return still.pointer || still.focus ? still : null
-      })
-    }
   const done = (edit: Edit) => {
     if (edit.id === oldest) setCleared((was) => Math.max(was, edit.id))
     else setDismissed((was) => new Set(was).add(edit.id))
   }
+  const burst = shown.length > SHOWN
 
   return (
     <div
       role="log"
       aria-label={t('edits.cards')}
       style={Object.fromEntries([['--color-agent', accent]])}
-      onPointerOver={enter('pointer')}
-      onPointerOut={leave('pointer')}
-      onFocus={enter('focus')}
-      onBlur={leave('focus')}
-      className={`group pointer-events-none absolute right-10 z-20 flex w-[320px] max-w-[60%] flex-col ${
-        lowered ? 'top-14' : 'top-3'
-      }`}
+      className="flex flex-col"
     >
-      {shown.map((edit) => (
-        // The space between cards is the wrapper's padding rather than a gap,
-        // so the pointer never crosses the terminal on its way between two.
-        <div key={edit.id} className="pointer-events-auto pb-1.5">
-          <Card
-            edit={edit}
-            onOpen={() => onOpen(edit)}
-            onDone={() => done(edit)}
-            onDismiss={() => setDismissed((was) => new Set(was).add(edit.id))}
+      {burst ? (
+        <div className="pointer-events-auto pb-1.5">
+          <Burst
+            key={shown[0].id}
+            edits={shown}
+            onOpen={onShowAll ?? (() => onOpen(shown[0]))}
+            onDone={() => setCleared((was) => Math.max(was, shown[0].id))}
           />
         </div>
-      ))}
-      {hidden > 0 && (
-        <button
-          type="button"
-          onClick={onShowAll}
-          disabled={!onShowAll}
-          className="pointer-events-auto self-end rounded-md border border-line bg-chrome/95 px-2 py-0.5 text-[10px] text-muted shadow-lg backdrop-blur-sm enabled:hover:text-ink"
-        >
-          {t('edits.more', { count: hidden })}
-        </button>
+      ) : (
+        shown.map((edit) => (
+          // The space between cards is the wrapper's padding rather than a
+          // gap, so the pointer never crosses the terminal between two.
+          <div key={edit.id} className="pointer-events-auto pb-1.5">
+            <Card
+              edit={edit}
+              onOpen={() => onOpen(edit)}
+              onDone={() => done(edit)}
+              onDismiss={() => setDismissed((was) => new Set(was).add(edit.id))}
+            />
+          </div>
+        ))
       )}
     </div>
   )
 }
 
-/** The stack frozen as it was when the pointer or focus came in. */
-interface Hold {
-  cards: Edit[]
-  pointer: boolean
-  focus: boolean
+/**
+ * A run of edits too quick to read one by one, as one card.
+ *
+ * Keyed on the newest edit, so each one that lands starts its life again and
+ * it goes once the run has been quiet for a card's lifetime. The stack's hold
+ * freezes it like the single cards, so it never remounts under the pointer.
+ */
+function Burst({
+  edits,
+  onOpen,
+  onDone,
+}: {
+  edits: Edit[]
+  onOpen: () => void
+  onDone: () => void
+}) {
+  const { t } = useTranslation('review')
+  const files = [...new Set(edits.map((edit) => edit.path))]
+  const added = edits.reduce((sum, edit) => sum + edit.added, 0)
+  const removed = edits.reduce((sum, edit) => sum + edit.removed, 0)
+  return (
+    <div
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) onDone()
+      }}
+      className="animate-edit-card overflow-hidden rounded-lg border border-l-2 border-line border-l-agent bg-chrome/95 shadow-xl backdrop-blur-sm group-focus-within:[animation-play-state:paused] group-hover:[animation-play-state:paused]"
+    >
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
+        >
+          <span className="text-xs text-ink">
+            {t('edits.burst', { count: files.length, added, removed })}
+          </span>
+          <span className="flex min-w-0 items-center gap-1 text-[10px] text-faint">
+            {files.slice(0, 4).map((path) => (
+              <span key={path} className="flex min-w-0 items-center gap-1">
+                <FileTypeIcon path={path} />
+                <span className="truncate">{basename(path)}</span>
+              </span>
+            ))}
+          </span>
+        </button>
+        <DismissButton label={t('edits.dismiss')} onClick={onDone} />
+      </div>
+    </div>
+  )
 }
 
 interface CardProps {
@@ -174,15 +193,7 @@ function Card({ edit, onOpen, onDone, onDismiss }: CardProps) {
           <EditCounts edit={edit} />
           <EditBar edit={edit} />
         </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={t('edits.dismiss')}
-          title={t('edits.dismiss')}
-          className="flex size-4 flex-none items-center justify-center rounded-sm text-faint hover:bg-surface-hover hover:text-ink"
-        >
-          <Icon name="close" className="size-3" />
-        </button>
+        <DismissButton label={t('edits.dismiss')} onClick={onDismiss} />
       </div>
       {edit.lines.length > 0 && (
         <button

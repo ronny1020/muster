@@ -11,6 +11,8 @@ export interface GitStatus {
   repo: boolean
   branch: string
   detached: boolean
+  /** The commit `HEAD` names, in full; empty before the first commit. */
+  head: string
   upstream: string | null
   ahead: number
   behind: number

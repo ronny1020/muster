@@ -182,6 +182,11 @@ building.
 | A session's output stream and its backlog                              | `src-tauri/src/output.rs`                                            |
 | A tab moving between windows                                           | `src/app/handoff.ts`, `src/features/terminal/model/handoff.ts`       |
 | Notification policy                                                    | `src/shared/lib/notify.ts`                                           |
+| Cards for other tabs: which survive, and which reach you               | `src/features/notices/model/notices.ts`                              |
+| Drawing those cards                                                    | `src/features/notices/ui/NoticeCards.tsx`                            |
+| Raising them: the window's list, overlaps, reveal                      | `src/app/useNotices.ts`                                              |
+| A commit or a conflict a tab's git polls show                          | `src/features/notices/model/useGitNotices.ts`                        |
+| Freezing a live stack under the pointer                                | `src/shared/lib/useHold.ts`                                          |
 | Editor detection and launching                                         | `src-tauri/src/editor.rs`                                            |
 | Installed font family enumeration                                      | `src-tauri/src/fonts.rs`                                             |
 | Finding your messages in the scrollback                                | `src/features/terminal/model/messages.ts`                            |
@@ -304,7 +309,7 @@ modules.
 src/app/        composition root — App, main, the stylesheet, shortcut wiring
 src/widgets/    surfaces that compose several features — Pane, TabStrip
 src/features/   one capability each — terminal, workspace, launch, settings,
-                review, journal, fleet
+                review, journal, fleet, sync, notices
 src/entities/   vocabulary features share — tab, agent, preferences, transcript
 src/shared/     ipc.ts, lib/ for contained libraries, ui/ for presentation
                 with no domain in it

@@ -15,6 +15,8 @@ pub struct GitStatus {
     /// Branch name, or a short SHA when the head is detached.
     pub branch: String,
     pub detached: bool,
+    /// The commit `HEAD` names, in full; empty before the first commit.
+    pub head: String,
     pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
@@ -704,8 +706,14 @@ fn tracks_own_name(status: &GitStatus) -> bool {
 fn read_branch_header(status: &mut GitStatus, header: &str) {
     let mut fields = header.split_whitespace();
     match (fields.next(), fields.next()) {
-        (Some("branch.oid"), Some(oid)) if status.branch.is_empty() => {
-            status.branch = oid.chars().take(7).collect();
+        (Some("branch.oid"), Some(oid)) => {
+            // `(initial)` on an unborn branch, which names no commit.
+            if oid != "(initial)" {
+                status.head = oid.to_string();
+            }
+            if status.branch.is_empty() {
+                status.branch = oid.chars().take(7).collect();
+            }
         }
         (Some("branch.head"), Some("(detached)")) => status.detached = true,
         (Some("branch.head"), Some(head)) => {

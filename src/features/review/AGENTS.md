@@ -106,14 +106,21 @@ shows its counts and no lines, rather than its whole diff dressed as one edit.
 The cards and the flash carry no timer either. A card is removed on its CSS
 animation's `animationend`, and a hidden pane paints nothing, so a tab you
 return to shows what landed while you were away and then lets it go. While
-the pointer or focus is anywhere in the stack, every card pauses and the stack
-is frozen — a newer card ending or a fourth edit arriving would otherwise
-remove the card under the pointer, or the one holding keyboard focus. The
-pointer and focus hold separately, the space between cards is padding rather
-than a gap so the pointer never crosses the terminal between two, and a hold
-whose cards are all dismissed lets go — the stack unmounts with it, and no
-event would arrive to release it. Only the oldest card ending clears the
-backlog behind it; any other goes alone.
+the pointer or focus is anywhere in the corner, every card pauses and the
+stack is frozen — a newer card ending or a fourth edit folding the stack into one card would
+otherwise remove the card under the pointer, or the one holding keyboard
+focus. The hold is the corner's, not the stack's, because the cards for other
+tabs share that corner: one stack moving slides the other under the pointer.
+`Pane` measures it with `useInside` and each stack freezes its own list with
+`useFrozen`, both in `shared/lib/useHold`. The pointer and focus hold
+separately, the space between cards is padding rather than a gap so the
+pointer never crosses the terminal between two, and a hold whose cards are all
+dismissed draws nothing new until it ends. A pane being hidden ends its hold,
+since no leave event will. Only the oldest card ending clears the
+backlog behind it; any other goes alone. More than fit fold into one card,
+keyed on the newest edit so each arrival restarts its life — which is safe
+only because the hold freezes it, or the remount would take the pointer and
+focus with it.
 
 A row's flash is a span keyed on the edit id, so the next edit remounts it and
 plays it again — and so does anything else that mounts the row. Every

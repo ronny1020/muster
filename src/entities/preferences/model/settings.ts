@@ -104,6 +104,8 @@ export interface Settings {
   /** Stay quiet while the user is already looking at that very tab. */
   notifyOnlyWhenUnfocused: boolean
   notifySound: boolean
+  /** Cards in the corner for what happens in the other tabs. */
+  tabNotices: boolean
   /**
    * Record each session's output so it outlives the process. The record is
    * verbatim — whatever the agent printed, secrets included — which is why it
@@ -149,6 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyOnDone: true,
   notifyOnlyWhenUnfocused: true,
   notifySound: true,
+  tabNotices: true,
   journalEnabled: true,
   journalRetentionDays: 14,
   backgroundImage: '',
@@ -254,6 +257,7 @@ export function normalizeSettings(input: unknown): Settings {
       DEFAULT_SETTINGS.notifyOnlyWhenUnfocused,
     ),
     notifySound: flag(raw.notifySound, DEFAULT_SETTINGS.notifySound),
+    tabNotices: flag(raw.tabNotices, DEFAULT_SETTINGS.tabNotices),
     journalEnabled: flag(raw.journalEnabled, DEFAULT_SETTINGS.journalEnabled),
     journalRetentionDays: number(
       raw.journalRetentionDays,

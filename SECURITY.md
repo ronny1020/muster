@@ -347,13 +347,23 @@ startup file sources theirs first and hands `ZDOTDIR` back before it does, and
 the setting is read at spawn, so a tab already running is never altered under
 it.
 
-## Four places an agent's own text is drawn outside the grid
+## Five places an agent's own text is drawn outside the grid
 
-All four are display-only, and all four are worth knowing because the grid is
+All five are display-only, and all five are worth knowing because the grid is
 where agent output is normally confined.
 
 **A desktop notification body**, from `OSC 777`'s `stop` and `stop_failure`
 events — bounded as the section above describes.
+
+**A card for another tab**, which quotes the same `stop` and `stop_failure`
+text under the same cap, a command the shell reported through the `OSC 133`
+gate described above, git's own words — a commit's subject from the log and the branch it landed on, the
+last line of a refused write, and the path two tabs are both changing — and
+the titles of the tabs involved. All are drawn as React text and reach nothing
+else — a card's click switches tabs and opens a drawer, and no field of a
+notice becomes a path, a pty write or an IPC argument. A command's exit status
+is read only as a plain number no higher than 255, so a sequence anything
+printed cannot put other text in its place.
 
 **The message rail's tooltip and accessible name.** `findMessageRows` marks a
 row whose first columns carry a non-default background, and `labelled` reads
