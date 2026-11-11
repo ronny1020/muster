@@ -16,7 +16,7 @@ export function useGitNotices(
   { cwd, git }: { cwd: string; git: GitStatus | undefined },
   raise: (event: NoticeEvent) => void,
 ) {
-  const last = useRef<{ cwd: string; git: GitStatus; at: number } | null>(null)
+  const last = useRef<Poll | null>(null)
   // Follows the git polls, whose answers arrive from outside React.
   useEffect(() => {
     if (!git?.repo) {
@@ -24,32 +24,63 @@ export function useGitNotices(
       return
     }
     const was = last.current
-    last.current = { cwd, git, at: Date.now() }
+    const poll = { cwd, git, at: Date.now() }
+    last.current = poll
     if (was?.cwd !== cwd) return
+    // Git could fail to name the root while still reporting a status.
+    const tree = git.root || cwd
     if (was.git.conflicted === 0 && git.conflicted > 0) {
-      raise({ kind: 'conflict', head: git.head, count: git.conflicted })
+      raise({ kind: 'conflict', tree, head: git.head, count: git.conflicted })
     } else if (headMoved(was.git, git)) {
-      void announceCommit({ cwd, was: was.git, now: git, since: was.at }, raise)
+      void announceCommit({
+        was,
+        now: poll,
+        tree,
+        isCurrent: () => last.current?.cwd === cwd,
+        raise,
+      })
     }
   }, [git, cwd, raise])
 }
 
-async function announceCommit(
-  {
-    cwd,
-    was,
-    now,
-    since,
-  }: { cwd: string; was: GitStatus; now: GitStatus; since: number },
-  raise: (event: NoticeEvent) => void,
-) {
-  const log = await gitLog(cwd, LOG_DEPTH).catch(() => [])
-  const commit = landedCommit({ was, now, log, since: since / 1000 })
-  if (commit) {
+interface Poll {
+  cwd: string
+  git: GitStatus
+  /** When it was read, in milliseconds since the epoch. */
+  at: number
+}
+
+/**
+ * Raises the commit `HEAD` moved to, if it looks made here (`landedCommit`).
+ * The log arrives later, so a tab that has since moved to another directory
+ * raises nothing: its card would name a commit the tab no longer shows.
+ */
+async function announceCommit({
+  was,
+  now,
+  tree,
+  isCurrent,
+  raise,
+}: {
+  was: Poll
+  now: Poll
+  tree: string
+  isCurrent: () => boolean
+  raise: (event: NoticeEvent) => void
+}) {
+  const log = await gitLog(now.cwd, LOG_DEPTH).catch(() => [])
+  const commit = landedCommit({
+    was: was.git,
+    now: now.git,
+    log,
+    since: was.at / 1000,
+  })
+  if (commit && isCurrent()) {
     raise({
       kind: 'committed',
-      head: now.head,
-      branch: now.branch,
+      tree,
+      head: now.git.head,
+      branch: now.git.branch,
       subject: commit.subject,
     })
   }

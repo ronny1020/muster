@@ -17,6 +17,9 @@ pub struct GitStatus {
     pub detached: bool,
     /// The commit `HEAD` names, in full; empty before the first commit.
     pub head: String,
+    /// The top of this working tree, resolved: what tells one tree's news
+    /// from another's. Empty when git could not say.
+    pub root: String,
     pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
@@ -537,8 +540,10 @@ pub(crate) fn git_verbatim(cwd: &Path, args: &[&str]) -> Option<String> {
 /// When there is one, [`count_untracked`] counts untracked files, because a
 /// pathspec on `status` would hide a gitlink staged at that path too.
 pub(crate) fn git_status(cwd: &Path) -> GitStatus {
-    let around = worktree::layout(cwd)
-        .map(|layout| worktree::neighbours(&layout))
+    let layout = worktree::layout(cwd);
+    let around = layout
+        .as_ref()
+        .map(worktree::neighbours)
         .unwrap_or_default();
     let skip = worktree::excluding(&around.nested);
     let untracked = if skip.is_empty() {
@@ -552,6 +557,9 @@ pub(crate) fn git_status(cwd: &Path) -> GitStatus {
 
     let mut status = GitStatus {
         repo: true,
+        root: layout.map_or_else(String::new, |layout| {
+            layout.root.to_string_lossy().into_owned()
+        }),
         worktree_of: around
             .main
             .map(|main| collapse_home(&main.to_string_lossy())),

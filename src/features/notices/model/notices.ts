@@ -24,10 +24,19 @@ export type NoticeEvent =
       ms: number
       block: number
     }
-  /** `head` is the commit, which every tab in its tree reports alike. */
-  | { kind: 'committed'; head: string; branch: string; subject: string }
+  /**
+   * `tree` is the working tree's root, which every tab in it reports alike;
+   * `head` is the commit.
+   */
+  | {
+      kind: 'committed'
+      tree: string
+      head: string
+      branch: string
+      subject: string
+    }
   /** `head` is the commit the conflict stopped at. */
-  | { kind: 'conflict'; head: string; count: number }
+  | { kind: 'conflict'; tree: string; head: string; count: number }
   | { kind: 'gitFailed'; text: string }
   /** `tabIds` holds every tab changing `path`, `tabId` among them. */
   | { kind: 'collision'; path: string; tabIds: string[] }
@@ -89,25 +98,28 @@ export const worthRaising = (event: NoticeEvent, watching: boolean) =>
 
 /**
  * What names news about a working tree, which every tab in that tree reports
- * alike — the kind and the commit — or `null` for news about one tab.
+ * alike — the kind, the tree and the commit — or `null` for news about one tab.
  */
 export function treeNews(event: NoticeEvent) {
   return event.kind === 'committed' || event.kind === 'conflict'
-    ? `${event.kind}:${event.head}`
+    ? `${event.kind}:${event.tree}:${event.head}`
     : null
 }
 
 /**
  * The slot a notice fills: a tab has one card of each kind, the latest
- * replacing the last. An overlap is one card per file and set of tabs, and a
- * commit one card per commit, however many tabs report it.
+ * replacing the last. An overlap is one card per file and set of tabs, a
+ * commit one card per commit and a conflict one per tree, however many tabs
+ * report it.
  */
 function slotOf(notice: Notice) {
   switch (notice.kind) {
     case 'collision':
       return `collision:${notice.path}:${notice.tabIds.join(',')}`
     case 'committed':
-      return `committed:${notice.head}`
+      return `committed:${notice.tree}:${notice.head}`
+    case 'conflict':
+      return `conflict:${notice.tree}`
     default:
       return `${notice.tabId}:${notice.kind}`
   }

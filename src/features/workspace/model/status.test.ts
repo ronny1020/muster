@@ -17,6 +17,7 @@ const status = (overrides: Partial<GitStatus> = {}): GitStatus => ({
   branch: 'main',
   detached: false,
   head: '',
+  root: '',
   upstream: 'origin/main',
   ahead: 0,
   behind: 0,

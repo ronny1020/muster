@@ -151,11 +151,12 @@ only one tab has the keyboard — all of it in `src/app/useNotices.ts`. An
 overlap is the one thing no tab can see, so it is raised there from the
 collision detector, and the first comparison of two or more tabs raises
 nothing, because what was already there is not news. A commit or a conflict
-is the opposite case: every tab in the tree sees it, so one reported by a tab
-on screen stops the others raising the same news for two minutes —
-long enough for every tab's next poll, short enough that the same commit or
-conflict arising again later still reaches you. A commit names itself, so
-whichever tab reports it first stands for all of them. Whether a card is
+is the opposite case: every tab in the tree sees it, so whichever tab reports
+it first — on screen or not — stops the others raising the same news for two
+minutes: long enough for every tab's next poll, short enough that the same
+commit or conflict arising again later still reaches you. That news is keyed
+on the tree's root as well as the commit, since two clones can stop at the
+same commit, and a tree shows one conflict card at a time. Whether a card is
 still true is decided when it is drawn (`noticeCards`), never by a timer in a
 pane; which card replaces which, when one is added (`addNotice`).
 

@@ -25,6 +25,8 @@ export interface TabChanges {
 /** One file more than one tab is changing, and who else is changing it. */
 export interface Collision {
   path: string
+  /** The repository `path` is in, since a path is per repository. */
+  commonDir: string
   /** The other tabs, by title, in the order their tabs are open. */
   others: string[]
   /** The same tabs, by id. */
@@ -55,6 +57,7 @@ export function collisionsByTab(
           ...(found.get(tab.tabId) ?? []),
           {
             path,
+            commonDir: tab.commonDir,
             others: elsewhere.map((other) => other.title),
             otherIds: elsewhere.map((other) => other.tabId),
           },
@@ -85,9 +88,10 @@ export function newCollisions(
 ): NewCollision[] {
   const fresh: NewCollision[] = []
   for (const [tabId, collisions] of after) {
-    const known = new Set(before.get(tabId)?.map((entry) => entry.path))
-    for (const { path, otherIds } of collisions) {
-      if (known.has(path)) continue
+    const known = new Set(before.get(tabId)?.map(collisionKey))
+    for (const entry of collisions) {
+      if (known.has(collisionKey(entry))) continue
+      const { path, otherIds } = entry
       // Tabs sharing a tree each leave the other out, so each sees its own
       // set; sets on one file that share a tab are one overlap.
       const tabIds = [tabId, ...otherIds]
@@ -114,6 +118,8 @@ export function newCollisions(
   }
   return fresh
 }
+
+const collisionKey = ({ commonDir, path }: Collision) => `${commonDir}\n${path}`
 
 function groupByRepo(changes: TabChanges[]): TabChanges[][] {
   const repos = new Map<string, TabChanges[]>()

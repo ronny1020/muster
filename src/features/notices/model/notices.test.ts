@@ -12,6 +12,7 @@ import {
   headMoved,
   landedCommit,
   overlapKey,
+  treeNews,
   type Notice,
   type NoticeEvent,
   noticeCards,
@@ -69,12 +70,36 @@ describe('addNotice', () => {
   test('tabs sharing a tree make one card of one commit', () => {
     const event: NoticeEvent = {
       kind: 'committed',
+      tree: '/repo',
       head: 'abc',
       branch: 'main',
       subject: 'fix',
     }
     const list = [notice('a', event)]
     expect(addNotice(list, notice('b', event))).toHaveLength(1)
+  })
+
+  test('tabs sharing a tree make one card of one conflict', () => {
+    const event: NoticeEvent = {
+      kind: 'conflict',
+      tree: '/repo',
+      head: 'abc',
+      count: 1,
+    }
+    const list = [notice('a', event)]
+    expect(addNotice(list, notice('b', event))).toHaveLength(1)
+  })
+
+  test('the same conflict in two trees is two cards', () => {
+    const event = (tree: string): NoticeEvent => ({
+      kind: 'conflict',
+      tree,
+      head: 'abc',
+      count: 1,
+    })
+    const list = [notice('a', event('/repo'))]
+    expect(addNotice(list, notice('b', event('/clone')))).toHaveLength(2)
+    expect(treeNews(event('/repo'))).not.toBe(treeNews(event('/clone')))
   })
 
   test('a flood of news never drops a card that waits for you', () => {

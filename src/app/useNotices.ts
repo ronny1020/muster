@@ -46,7 +46,7 @@ export function useNotices({
   /**
    * News about a tree already reported, and when, so another tab in that tree
    * reporting it on its next poll raises nothing: not what the reader watched
-   * happen, nor a commit already raised and since seen or faded.
+   * happen, nor a card already raised and since seen or faded.
    */
   const treeReported = useRef(new Map<string, number>())
 
@@ -73,10 +73,7 @@ export function useNotices({
           return
         }
         if (reported.has(tree)) return
-        // A commit names itself, so its first report stands for every tab. A
-        // conflict at one commit may be two worktrees' own, so only one the
-        // reader watched happen stands for the rest.
-        if (event.kind === 'committed') reported.set(tree, at)
+        reported.set(tree, at)
       }
       if (worthRaising(event, watching)) {
         const id = (ids.current += 1)

@@ -24,10 +24,20 @@ test('two worktrees of one repo editing one file collide', () => {
     tab({ tabId: 'b', title: 'codex', paths: ['src/auth.ts'] }),
   ])
   expect(found.get('a')).toEqual([
-    { path: 'src/auth.ts', others: ['codex'], otherIds: ['b'] },
+    {
+      path: 'src/auth.ts',
+      commonDir: '/repo/.git',
+      others: ['codex'],
+      otherIds: ['b'],
+    },
   ])
   expect(found.get('b')).toEqual([
-    { path: 'src/auth.ts', others: ['a'], otherIds: ['a'] },
+    {
+      path: 'src/auth.ts',
+      commonDir: '/repo/.git',
+      others: ['a'],
+      otherIds: ['a'],
+    },
   ])
 })
 
@@ -50,7 +60,12 @@ test('a third tab in a shared tree does not hide a real collision', () => {
     tab({ tabId: 'c', title: 'codex', paths: ['src/auth.ts'] }),
   ])
   expect(found.get('a')).toEqual([
-    { path: 'src/auth.ts', others: ['codex'], otherIds: ['c'] },
+    {
+      path: 'src/auth.ts',
+      commonDir: '/repo/.git',
+      others: ['codex'],
+      otherIds: ['c'],
+    },
   ])
   expect(found.get('c')?.[0].others.sort()).toEqual(['a', 'b'])
 })
@@ -93,15 +108,32 @@ test('one tab listing a path twice does not collide with itself', () => {
 test('the summary leads with the file, not the count', () => {
   expect(
     collisionSummary(
-      [{ path: 'src/auth.ts', others: ['codex'], otherIds: [] }],
+      [
+        {
+          path: 'src/auth.ts',
+          commonDir: '/repo/.git',
+          others: ['codex'],
+          otherIds: [],
+        },
+      ],
       t,
     ),
   ).toBe('src/auth.ts also in codex')
   expect(
     collisionSummary(
       [
-        { path: 'src/auth.ts', others: ['codex'], otherIds: [] },
-        { path: 'README.md', others: ['codex'], otherIds: [] },
+        {
+          path: 'src/auth.ts',
+          commonDir: '/repo/.git',
+          others: ['codex'],
+          otherIds: [],
+        },
+        {
+          path: 'README.md',
+          commonDir: '/repo/.git',
+          others: ['codex'],
+          otherIds: [],
+        },
       ],
       t,
     ),
@@ -111,7 +143,14 @@ test('the summary leads with the file, not the count', () => {
 test('several other tabs are counted rather than listed', () => {
   expect(
     collisionSummary(
-      [{ path: 'src/auth.ts', others: ['codex', 'gemini'], otherIds: [] }],
+      [
+        {
+          path: 'src/auth.ts',
+          commonDir: '/repo/.git',
+          others: ['codex', 'gemini'],
+          otherIds: [],
+        },
+      ],
       t,
     ),
   ).toBe('src/auth.ts also in 2 other tabs')
@@ -124,7 +163,14 @@ test('nothing to say is an empty string, not a zero', () => {
 test('the summary speaks the catalog it is given', () => {
   expect(
     collisionSummary(
-      [{ path: 'src/auth.ts', others: ['codex', 'gemini'], otherIds: [] }],
+      [
+        {
+          path: 'src/auth.ts',
+          commonDir: '/repo/.git',
+          others: ['codex', 'gemini'],
+          otherIds: [],
+        },
+      ],
       i18n.getFixedT('ja', 'workspace'),
     ),
   ).toBe('src/auth.ts は他のタブ 2 件でも変更中')
@@ -132,7 +178,14 @@ test('the summary speaks the catalog it is given', () => {
 
 test('a single tab is named apart from the sentence around it in any script', () => {
   const summary = collisionSummary(
-    [{ path: 'src/auth.ts', others: ['api'], otherIds: [] }],
+    [
+      {
+        path: 'src/auth.ts',
+        commonDir: '/repo/.git',
+        others: ['api'],
+        otherIds: [],
+      },
+    ],
     i18n.getFixedT('zh-TW', 'workspace'),
   )
   expect(summary).toBe('src/auth.ts 也在「api」中變更')
@@ -200,5 +253,19 @@ test('a joiner in a tree already in the overlap names every tab on the file', ()
   ])
   expect(newCollisions(before, after)).toEqual([
     { path: 'p', tabIds: ['a', 'b', 'c'] },
+  ])
+})
+
+test('the same tabs and path in another repository are a new overlap', () => {
+  const before = collisionsByTab([
+    tab({ tabId: 'a', commonDir: '/x/.git', paths: ['package.json'] }),
+    tab({ tabId: 'b', commonDir: '/x/.git', paths: ['package.json'] }),
+  ])
+  const after = collisionsByTab([
+    tab({ tabId: 'a', commonDir: '/y/.git', paths: ['package.json'] }),
+    tab({ tabId: 'b', commonDir: '/y/.git', paths: ['package.json'] }),
+  ])
+  expect(newCollisions(before, after)).toEqual([
+    { path: 'package.json', tabIds: ['a', 'b'] },
   ])
 })
