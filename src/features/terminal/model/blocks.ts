@@ -21,9 +21,20 @@ export type ShellEvent =
   | { kind: 'promptStart' }
   | { kind: 'promptEnd' }
   | { kind: 'outputStart' }
-  | { kind: 'commandEnd' }
+  /** `code` is the exit status, or `null` where the shell sent none. */
+  | { kind: 'commandEnd'; code: number | null }
   | { kind: 'historyFile'; path: string }
   | { kind: 'command'; text: string }
+
+/** A command that ran to its end, as the shell reported it. */
+export interface FinishedCommand {
+  command: string
+  /** The exit status, or `null` where the shell sent none. */
+  code: number | null
+  ms: number
+  /** Which of the terminal's commands it was, to scroll back to. */
+  block: number
+}
 
 /**
  * One `OSC 133` payload — everything after `133;` — or `null` for anything
@@ -45,12 +56,24 @@ export function parseShellEvent(data: string): ShellEvent | null {
     case 'C':
       return { kind: 'outputStart' }
     case 'D':
-      return { kind: 'commandEnd' }
+      return { kind: 'commandEnd', code: exitStatus(rest) }
     case 'P':
       return propertyEvent(rest)
     default:
       return null
   }
+}
+
+/**
+ * A status as a shell reports one, which is never above 255.
+ *
+ * Anything can print this sequence, so whatever is not a plain status is
+ * no status at all rather than a number for a card to show.
+ */
+function exitStatus(text: string): number | null {
+  if (!/^\d{1,3}$/.test(text)) return null
+  const code = Number(text)
+  return code <= 255 ? code : null
 }
 
 /**

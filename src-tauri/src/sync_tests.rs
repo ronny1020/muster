@@ -594,3 +594,15 @@ fn committing_everything_leaves_a_nested_worktree_out() {
     assert!(result.is_ok(), "{result:?}");
     assert_eq!(files, vec!["new.txt"], "no embedded repository is staged");
 }
+
+#[test]
+fn the_status_names_the_top_of_its_working_tree_from_a_subdirectory() {
+    let repo = scratch_repo("status-root");
+    std::fs::create_dir_all(repo.join("src/deep")).expect("mkdir");
+
+    let status = git_status(&repo.join("src/deep"));
+    let top = crate::worktree::resolved(&repo);
+    let _ = std::fs::remove_dir_all(&repo);
+
+    assert_eq!(status.root, top.to_string_lossy());
+}

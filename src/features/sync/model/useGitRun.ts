@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import { gitCancel } from '../../../shared/ipc'
 
@@ -35,13 +35,21 @@ export interface GitRun {
  * drawer mid-run does not orphan a command nothing can stop, and the commit
  * draft survives the drawer closing, its Files view and a `cd`.
  */
-export function useGitRun(onDone: () => void): GitRun {
+export function useGitRun(
+  onDone: () => void,
+  onFailed: (text: string) => void,
+): GitRun {
   const [running, setRunning] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [draft, setDraft] = useState('')
   // `running` disables the buttons only once React has re-rendered, so two
   // clicks inside one frame would both start; a ref answers at once.
   const inFlight = useRef(false)
+  // Read when a run ends, which may be renders after the one that started it.
+  const failed = useRef(onFailed)
+  useLayoutEffect(() => {
+    failed.current = onFailed
+  }, [onFailed])
 
   const run = useCallback(
     async (action: (op: string) => Promise<string>, done: Done) => {
@@ -58,7 +66,9 @@ export function useGitRun(onDone: () => void): GitRun {
         )
         return true
       } catch (error) {
-        setNotice({ failed: true, text: lastLines(String(error)) })
+        const text = lastLines(String(error))
+        setNotice({ failed: true, text })
+        failed.current(text)
         return false
       } finally {
         inFlight.current = false

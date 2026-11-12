@@ -20,6 +20,8 @@ const status = (extra: Partial<GitStatus> = {}): GitStatus => ({
   repo: true,
   branch: 'main',
   detached: false,
+  head: '',
+  root: '',
   upstream: null,
   ahead: 0,
   behind: 0,

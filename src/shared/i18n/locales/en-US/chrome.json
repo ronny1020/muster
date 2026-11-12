@@ -62,5 +62,26 @@
     "quitBody_other": "{{count}} sessions still running. Quitting ends them and anything they started.",
     "closeBody_one": "{{count}} session still running. Closing the window ends it and anything it started.",
     "closeBody_other": "{{count}} sessions still running. Closing the window ends them and anything they started."
+  },
+  "notices": {
+    "label": "News from other tabs",
+    "dismiss": "Dismiss",
+    "more_one": "{{count}} more",
+    "more_other": "{{count}} more",
+    "asking": "Asking you a question",
+    "turnFailed": "Turn failed",
+    "exited": "Exited",
+    "exited_failed": "Exited with code {{code}}",
+    "finished": "Finished its turn",
+    "commandDone": "Ended after {{duration}}",
+    "commandDone_code": "Exited {{code}} after {{duration}}",
+    "committed": "Committed on {{branch}}",
+    "conflict_one": "{{count}} file in conflict",
+    "conflict_other": "{{count}} files in conflict",
+    "gitFailed": "Git failed",
+    "collision": "Also changing in {{tabs}}",
+    "seconds": "{{s}}s",
+    "minutes": "{{m}}m {{s}}s",
+    "hours": "{{h}}h {{m}}m"
   }
 }

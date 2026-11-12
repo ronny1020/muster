@@ -437,7 +437,9 @@ not the file's whole diff, which is a click further.
 While an agent works, its edits show as they land. A card slides in over the
 terminal's top-right corner for each file it touches, with the file's name,
 `+N −M` and the first lines it wrote; hover to hold it, click it for the diff
-(or the file, for an edit that took it back to its last commit).
+(or the file, for an edit that took it back to its last commit). When more
+land than fit, they fold into one card counting the files and lines, which
+opens the Activity view — or the newest edit's diff, with Activity off.
 In Changes and Files, the row of a file just edited flashes — in Files with
 the edit's `+N −M` beside it — and a closed folder flashes for the file inside
 it. A
@@ -868,7 +870,7 @@ nothing. The structured event Claude Code sessions use comes from a hook plugin
 you install into that CLI, so a session without one still shows a solid
 "waiting" dot and the status bar, but no ring and no notification. A turn that
 ends in an API error — a rate limit, an overload — is announced the same way as
-one that finished.
+one that finished, except that its card says it failed.
 
 Nothing fires while you are already looking at that tab, and a turn announced
 two ways becomes a single notification. On macOS, Linux and WSL an agent that
@@ -876,6 +878,24 @@ exits hands its tab to your shell rather than ending it, and says so in a
 notification of its own, with the exit code when it failed. A session that ends
 is announced the same way — the shell a tab was handed to, or under Windows
 PowerShell the agent itself. All of it is adjustable, including off.
+
+### Cards for other tabs
+
+News from your tabs — mostly the ones you are not looking at — appears as a
+card in the top-right corner of the one you are (unless that is the settings
+tab, where they wait until you leave): another tab asking you something,
+finishing its turn, failing a turn or ending, committing, or hitting a merge
+conflict; two tabs starting to change the same file; a shell command of ten
+seconds or more ending, with its exit code; and a commit, pull or push that
+failed while its drawer was not in front of you. Click a card to go to that
+tab — and to the command's output, its history or its changes, where that is
+the news. A question comes first, then anything blocked or broken — an agent
+that stopped, a failed git write, an overlap — and these stay until you
+dismiss them: a question also goes once it is answered, a stopped agent when
+you go to its tab or, for a failed turn, when that tab finishes its next one,
+and an overlap once it ends. A failed git write stays until dismissed. The
+rest fade, and none moves while the pointer is over the corner.
+**Cards for other tabs** in Settings turns them off.
 
 ## ⚙️ Settings
 
@@ -909,7 +929,7 @@ Clicks / Scrollback control is the way to change a tab that is already open.
   judged against the text it sits behind.
 - **Editor** — which editor the status bar's button opens.
 - **Notifications** — whether to notify, whether to stay quiet on the tab you
-  are watching, whether to play a sound.
+  are watching, whether to play a sound, and the cards for other tabs.
 - **Git** — how often to re-read status, how many commits history loads, and
   whether the footer shows the branch's pull request.
 - **Live edits** — the cards over the terminal, the Activity view, and the

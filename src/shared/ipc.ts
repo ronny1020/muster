@@ -11,6 +11,10 @@ export interface GitStatus {
   repo: boolean
   branch: string
   detached: boolean
+  /** The commit `HEAD` names, in full; empty before the first commit. */
+  head: string
+  /** The top of this working tree, resolved; empty when git could not say. */
+  root: string
   upstream: string | null
   ahead: number
   behind: number

@@ -79,6 +79,7 @@ import { currentMessage, nextMessage, previousMessage } from '../model/messages'
 import { type AgentEvent, parseAgentEvent } from '../model/agentevents'
 import { HANDBACK_VERB, parseHandback } from '../model/handback'
 import {
+  type FinishedCommand,
   parseShellEvent,
   type Position,
   type ShellEvent,
@@ -144,6 +145,15 @@ export interface TerminalViewProps {
    * screen is asking a question — see `isAsking`.
    */
   onStatus: (status: SessionStatus) => void
+  /** A command the shell reported ran to its end. */
+  onCommandDone: (done: FinishedCommand) => void
+  /**
+   * A command to scroll to, by its block key. A new object asks again, so
+   * the same command can be revealed twice.
+   */
+  reveal: { block: number } | null
+  /** The terminal has scrolled to `reveal`, or found it gone. */
+  onRevealed: () => void
   /**
    * Whether the session's process has gone. Only the mouse gate reads it —
    * see `agentReadsMouse`.
@@ -225,6 +235,9 @@ export function TerminalView({
   onUrl,
   onReplay,
   onStatus,
+  onCommandDone,
+  reveal,
+  onRevealed,
   ended,
   turns,
   findOpen,
@@ -276,7 +289,18 @@ export function TerminalView({
     active,
     live: !ended,
     sink: shellSink,
+    onFinished: onCommandDone,
   })
+
+  // Scrolls xterm's viewport, which React does not own, to a command a card
+  // asked to show.
+  const { rowOf } = shell
+  useEffect(() => {
+    if (!reveal) return
+    const row = rowOf(reveal.block)
+    if (row !== null) terminal.current?.scrollToLine(row)
+    onRevealed()
+  }, [reveal, rowOf, onRevealed])
   /**
    * When the last copy happened, so the control can confirm it.
    *

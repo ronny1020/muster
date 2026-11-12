@@ -13,6 +13,7 @@ import {
   CollisionProvider,
   type FleetTab,
 } from '../features/fleet/model/useCollisions'
+import { useNotices } from './useNotices'
 import type { LaunchRequest } from '../features/launch/ui/Launcher'
 import {
   type ColumnPlace,
@@ -147,6 +148,17 @@ export function App({ adopted }: AppProps) {
   useLayoutEffect(() => {
     current.current = { deck, settings }
   }, [deck, settings])
+
+  const {
+    cards,
+    raise,
+    openNotice,
+    dismissNotice,
+    markNoticesSeen,
+    onCollisions,
+    reveal,
+    clearReveal,
+  } = useNotices({ deck, settings, current, dispatch })
 
   const open = useCallback(
     () => dispatch({ type: 'open', id: nextTabId() }),
@@ -314,11 +326,12 @@ export function App({ adopted }: AppProps) {
       saveDeck(current.current.deck)
       await takeHandoffs()
       dispatch({ type: 'seen' })
+      markNoticesSeen()
     }
     const onFocus = () => void markSeen()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [takeHandoffs])
+  }, [takeHandoffs, markNoticesSeen])
 
   // Tabs sent here after this window drew. Taken once on subscribing as well,
   // for any that arrived between the first take and the listener.
@@ -332,9 +345,10 @@ export function App({ adopted }: AppProps) {
     const unlisten = onPtyExit(({ id, code }) => {
       dispatch({ type: 'exited', id, code })
       announceExit(current.current, id, code, dispatch)
+      raise(id, { kind: 'stopped', code })
     })
     return () => void unlisten.then((stop) => stop())
-  }, [])
+  }, [raise])
 
   // A second launch was turned away and handed its directory here. It opens a
   // tab ready to start rather than started: the shell that ran `muster ~/proj`
@@ -506,7 +520,11 @@ export function App({ adopted }: AppProps) {
           onDrop={drop}
         />
       ))}
-      <CollisionProvider tabs={watched} pollSeconds={settings.gitPollSeconds}>
+      <CollisionProvider
+        tabs={watched}
+        pollSeconds={settings.gitPollSeconds}
+        onChange={onCollisions}
+      >
         {byId(deck.tabs).map((tab) => (
           <Pane
             key={tab.id}
@@ -517,6 +535,14 @@ export function App({ adopted }: AppProps) {
             onLaunch={launch(tab.id)}
             onOpenSettings={openSettings}
             dispatch={dispatch}
+            onNotice={raise}
+            notices={
+              tab.id === deck.activeId
+                ? { cards, onOpen: openNotice, onDismiss: dismissNotice }
+                : undefined
+            }
+            reveal={reveal?.tabId === tab.id ? reveal : null}
+            onRevealed={clearReveal}
           />
         ))}
       </CollisionProvider>

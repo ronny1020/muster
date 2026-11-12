@@ -36,14 +36,19 @@ describe('parseShellEvent', () => {
     expect(parseShellEvent('A')).toEqual({ kind: 'promptStart' })
     expect(parseShellEvent('B')).toEqual({ kind: 'promptEnd' })
     expect(parseShellEvent('C')).toEqual({ kind: 'outputStart' })
-    expect(parseShellEvent('D;0')).toEqual({ kind: 'commandEnd' })
+    expect(parseShellEvent('D;0')).toEqual({ kind: 'commandEnd', code: 0 })
   })
 
   it('ends the command however the shell spells the status', () => {
-    // The status is part of the sequence and nothing here shows it, so both
-    // spellings have to end the command rather than one of them being missed.
-    expect(parseShellEvent('D;130')).toEqual({ kind: 'commandEnd' })
-    expect(parseShellEvent('D')).toEqual({ kind: 'commandEnd' })
+    expect(parseShellEvent('D;130')).toEqual({ kind: 'commandEnd', code: 130 })
+    expect(parseShellEvent('D')).toEqual({ kind: 'commandEnd', code: null })
+  })
+
+  it('reads no status from anything a shell would not send', () => {
+    // Anything can print the sequence, so a card must not show its number.
+    for (const text of ['D;256', 'D;-1', 'D;1e3', 'D;12345', 'D;1;2']) {
+      expect(parseShellEvent(text)).toEqual({ kind: 'commandEnd', code: null })
+    }
   })
 
   it('takes the history file back through its escaping', () => {

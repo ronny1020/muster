@@ -60,5 +60,24 @@
     "cancel": "取消",
     "quitBody_other": "仍有 {{count}} 個工作階段在執行。結束會一併終止它們及其啟動的所有程式。",
     "closeBody_other": "仍有 {{count}} 個工作階段在執行。關閉此視窗會一併終止它們及其啟動的所有程式。"
+  },
+  "notices": {
+    "label": "其他分頁的動態",
+    "dismiss": "關閉",
+    "more_other": "還有 {{count}} 則",
+    "asking": "正在問你問題",
+    "turnFailed": "這一輪失敗了",
+    "exited": "已結束",
+    "exited_failed": "已結束，代碼 {{code}}",
+    "finished": "完成這一輪",
+    "commandDone": "{{duration}} 後結束",
+    "commandDone_code": "{{duration}} 後結束，代碼 {{code}}",
+    "committed": "已提交到 {{branch}}",
+    "conflict_other": "{{count}} 個檔案有衝突",
+    "gitFailed": "Git 執行失敗",
+    "collision": "{{tabs}} 也在改這個檔案",
+    "seconds": "{{s}} 秒",
+    "minutes": "{{m}} 分 {{s}} 秒",
+    "hours": "{{h}} 小時 {{m}} 分"
   }
 }

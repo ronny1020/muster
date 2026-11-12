@@ -10,6 +10,8 @@ const clean: GitStatus = {
   repo: true,
   branch: 'main',
   detached: false,
+  head: '',
+  root: '',
   upstream: 'origin/main',
   ahead: 0,
   behind: 0,

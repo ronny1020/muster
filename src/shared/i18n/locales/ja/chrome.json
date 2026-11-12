@@ -60,5 +60,24 @@
     "cancel": "キャンセル",
     "quitBody_other": "{{count}} 件のセッションが実行中です。終了すると、セッションとそこから起動したものがすべて終了します。",
     "closeBody_other": "{{count}} 件のセッションが実行中です。閉じると、セッションとそこから起動したものがすべて終了します。"
+  },
+  "notices": {
+    "label": "ほかのタブの知らせ",
+    "dismiss": "閉じる",
+    "more_other": "ほか {{count}} 件",
+    "asking": "質問しています",
+    "turnFailed": "ターンが失敗しました",
+    "exited": "終了しました",
+    "exited_failed": "コード {{code}} で終了しました",
+    "finished": "ターンを終えました",
+    "commandDone": "{{duration}} で終了",
+    "commandDone_code": "{{duration}} 後にコード {{code}} で終了",
+    "committed": "{{branch}} にコミットしました",
+    "conflict_other": "{{count}} ファイルが競合しています",
+    "gitFailed": "Git が失敗しました",
+    "collision": "{{tabs}} もこのファイルを変更中",
+    "seconds": "{{s}} 秒",
+    "minutes": "{{m}} 分 {{s}} 秒",
+    "hours": "{{h}} 時間 {{m}} 分"
   }
 }

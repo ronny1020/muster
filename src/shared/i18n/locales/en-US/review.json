@@ -99,8 +99,6 @@
     "cards": "Edits as they land",
     "open": "Open the diff of {{path}}",
     "dismiss": "Dismiss",
-    "more_one": "and {{count}} more edit",
-    "more_other": "and {{count}} more edits",
     "moreLines_one": "{{count}} more line",
     "moreLines_other": "{{count}} more lines",
     "created": "new",
@@ -110,6 +108,8 @@
     "noLines": "Only the line counts are known for this edit.",
     "openDiff": "Open the full diff",
     "summary_one": "{{count}} recent edit",
-    "summary_other": "{{count}} recent edits"
+    "summary_other": "{{count}} recent edits",
+    "burst_one": "{{count}} file edited · +{{added}} −{{removed}}",
+    "burst_other": "{{count}} files edited · +{{added}} −{{removed}}"
   }
 }

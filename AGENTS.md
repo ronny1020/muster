@@ -141,6 +141,27 @@ in _every_ tab, forever, visible or not. `useWorkspace` already git-polls on
 that basis, at a user-set interval. Anything ticking faster — a per-second
 clock, an animation — needs to check whether its pane is shown first.
 
+**A card about a tab is raised by that tab and drawn by the one with the
+keyboard.** Each pane reports only its own tab's news through `onNotice`, so
+nothing is detected N times; `App` holds the one list, declines news about a
+tab on screen in a focused window, drops a tab's cards when it comes on screen
+— except a failed git write or an overlap, which follow you — and hands the
+stack to the active pane alone, since
+only one tab has the keyboard — all of it in `src/app/useNotices.ts`. An
+overlap is the one thing no tab can see, so it is raised there from the
+collision detector, and the first comparison of two or more tabs raises
+nothing, because what was already there is not news. A commit or a conflict
+is the opposite case: every tab in the tree sees it, so whichever tab reports
+it first — on screen or not — stops the others raising the same news for two
+minutes: long enough for every tab's next poll, short enough that the same
+commit or conflict arising again later still reaches you. A tab reporting
+the same news twice has seen it end and begin again, so a merge aborted and
+retried raises a card even inside that window (`firstReport`). That news is keyed
+on the tree's root as well as the commit, since two clones can stop at the
+same commit, and a tree shows one conflict card at a time. Whether a card is
+still true is decided when it is drawn (`noticeCards`), never by a timer in a
+pane; which card replaces which, when one is added (`addNotice`).
+
 **No `StrictMode`.** Its double-invoked effects spawn two PTYs per tab in
 development. `src/app/main.tsx` says so — leave it.
 

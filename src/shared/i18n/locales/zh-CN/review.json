@@ -98,7 +98,6 @@
     "cards": "实时的编辑",
     "open": "打开 {{path}} 的差异",
     "dismiss": "关闭",
-    "more_other": "还有 {{count}} 次编辑",
     "moreLines_other": "还有 {{count}} 行",
     "created": "新增",
     "deleted": "删除",
@@ -106,6 +105,7 @@
     "none": "暂无编辑。此标签页工作时工作树一有变更，就会出现在这里。",
     "noLines": "这次编辑只知道行数。",
     "openDiff": "打开完整差异",
-    "summary_other": "最近 {{count}} 次编辑"
+    "summary_other": "最近 {{count}} 次编辑",
+    "burst_other": "编辑了 {{count}} 个文件 · +{{added}} −{{removed}}"
   }
 }

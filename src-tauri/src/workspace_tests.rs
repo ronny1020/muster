@@ -159,6 +159,18 @@ fn a_detached_head_falls_back_to_the_short_oid() {
 }
 
 #[test]
+fn reads_the_commit_head_names() {
+    assert_eq!(parse(STATUS).head, "8c9d0e1f2a3b4c5d6e7f");
+}
+
+#[test]
+fn an_unborn_branch_has_no_head() {
+    let status = parse("# branch.oid (initial)\n# branch.head main");
+    assert_eq!(status.head, "");
+    assert_eq!(status.branch, "main");
+}
+
+#[test]
 fn a_clean_tree_is_not_dirty() {
     let status = parse("# branch.oid abc123\n# branch.head main");
     assert!(!status.dirty());

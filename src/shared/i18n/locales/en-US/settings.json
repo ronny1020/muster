@@ -107,6 +107,11 @@
     "label": "Play a sound",
     "control": "Play a notification sound"
   },
+  "tabNotices": {
+    "label": "Cards for other tabs",
+    "hint": "A card in the corner when another tab asks you something, finishes, stops, commits or hits a conflict, when two tabs start changing the same file, when a long shell command ends, and when a git write fails out of sight. Click one to go there.",
+    "control": "Show cards for other tabs"
+  },
   "gitPoll": "Status refresh",
   "historyLimit": "History length",
   "pullRequests": {

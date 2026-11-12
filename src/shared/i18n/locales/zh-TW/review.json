@@ -98,7 +98,6 @@
     "cards": "即時的編輯",
     "open": "開啟 {{path}} 的差異",
     "dismiss": "關閉",
-    "more_other": "還有 {{count}} 次編輯",
     "moreLines_other": "還有 {{count}} 行",
     "created": "新增",
     "deleted": "刪除",
@@ -106,6 +105,7 @@
     "none": "尚無編輯。此分頁工作時工作樹一有變更，就會出現在這裡。",
     "noLines": "這次編輯只知道行數。",
     "openDiff": "開啟完整差異",
-    "summary_other": "最近 {{count}} 次編輯"
+    "summary_other": "最近 {{count}} 次編輯",
+    "burst_other": "編輯了 {{count}} 個檔案 · +{{added}} −{{removed}}"
   }
 }

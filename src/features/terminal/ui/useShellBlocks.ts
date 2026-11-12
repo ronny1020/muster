@@ -10,6 +10,7 @@ import type { IMarker, Terminal } from '@xterm/xterm'
 
 import {
   commandOf,
+  type FinishedCommand,
   outputOf,
   type Position,
   type ShellBlock,
@@ -39,6 +40,8 @@ interface TrackedBlock {
   end: Tracked | null
   /** What ran, as the shell reported it; empty until the command starts. */
   command: string
+  /** `Date.now()` when its output started, or `0` before. */
+  startedAt: number
 }
 
 /** A block with its rows read back, which is how everything outside uses one. */
@@ -97,6 +100,8 @@ export interface ShellSurface {
   blockAt: (row: number) => ResolvedBlock | null
   /** The newest command that has finished, for the keyboard route. */
   lastFinished: () => ResolvedBlock | null
+  /** The row a command was typed on, or `null` once it has left the scrollback. */
+  rowOf: (key: number) => number | null
   /** Everything `block` printed. */
   outputText: (block: ResolvedBlock) => string
 }
@@ -133,6 +138,7 @@ export function useShellBlocks({
   active,
   live,
   sink,
+  onFinished,
 }: {
   term: Terminal | null
   sessionId: string
@@ -141,6 +147,7 @@ export function useShellBlocks({
   live: boolean
   /** Filled in with the handler the terminal's OSC 133 route calls. */
   sink: React.RefObject<ShellSink | null>
+  onFinished: (done: FinishedCommand) => void
 }): ShellSurface {
   const blocks = useRef<TrackedBlock[]>([])
   const openPrompt = useRef<TrackedBlock | null>(null)
@@ -153,6 +160,11 @@ export function useShellBlocks({
   const [reporting, setReporting] = useState(false)
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null)
   const [selected, setSelected] = useState(-1)
+  // Read by the sink, which is built once per terminal.
+  const finished = useRef(onFinished)
+  useLayoutEffect(() => {
+    finished.current = onFinished
+  }, [onFinished])
 
   // Filled through `useImperativeHandle`, so the handler is installed and
   // cleared in step with the terminal it was built for.
@@ -212,6 +224,7 @@ export function useShellBlocks({
               output: null,
               end: null,
               command: '',
+              startedAt: 0,
             }
           }
           return
@@ -220,6 +233,7 @@ export function useShellBlocks({
           const block = openPrompt.current
           if (!block) return
           block.output = mark(at)
+          block.startedAt = Date.now()
           // The shell's own answer first: read off the grid instead, a
           // session with a right prompt captured the command, its padding and
           // the right prompt as one string — and accepting a suggestion typed
@@ -257,6 +271,15 @@ export function useShellBlocks({
           const block = blocks.current.at(-1)
           if (!block || block.end) return
           block.end = mark(at)
+          // A command whose output never began has no run to time.
+          if (block.command && block.startedAt > 0) {
+            finished.current({
+              command: block.command,
+              code: event.code,
+              ms: Date.now() - block.startedAt,
+              block: block.key,
+            })
+          }
           return
         }
         case 'command':
@@ -401,6 +424,12 @@ export function useShellBlocks({
     return null
   }, [])
 
+  const rowOf = useCallback((key: number): number | null => {
+    const block = blocks.current.find((entry) => entry.key === key)
+    const row = block ? block.input.marker.line : -1
+    return row >= 0 ? row : null
+  }, [])
+
   const outputText = useCallback(
     (block: ResolvedBlock) => (term ? outputOf(term.buffer.active, block) : ''),
     [term],
@@ -414,6 +443,7 @@ export function useShellBlocks({
     accept,
     blockAt,
     lastFinished,
+    rowOf,
     outputText,
   }
 }

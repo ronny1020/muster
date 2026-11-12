@@ -60,5 +60,24 @@
     "cancel": "取消",
     "quitBody_other": "仍有 {{count}} 个会话在运行。退出会一并终止它们及其启动的所有程序。",
     "closeBody_other": "仍有 {{count}} 个会话在运行。关闭此窗口会一并终止它们及其启动的所有程序。"
+  },
+  "notices": {
+    "label": "其他标签页的动态",
+    "dismiss": "关闭",
+    "more_other": "还有 {{count}} 条",
+    "asking": "正在问你问题",
+    "turnFailed": "这一轮失败了",
+    "exited": "已结束",
+    "exited_failed": "已结束，代码 {{code}}",
+    "finished": "完成这一轮",
+    "commandDone": "{{duration}} 后结束",
+    "commandDone_code": "{{duration}} 后结束，代码 {{code}}",
+    "committed": "已提交到 {{branch}}",
+    "conflict_other": "{{count}} 个文件有冲突",
+    "gitFailed": "Git 执行失败",
+    "collision": "{{tabs}} 也在改这个文件",
+    "seconds": "{{s}} 秒",
+    "minutes": "{{m}} 分 {{s}} 秒",
+    "hours": "{{h}} 小时 {{m}} 分"
   }
 }

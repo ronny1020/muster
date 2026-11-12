@@ -34,6 +34,11 @@ export interface CollisionProviderProps {
   /** Every tab with a live session. Tabs without one cannot collide. */
   tabs: FleetTab[]
   pollSeconds: number
+  /**
+   * Every answer as it lands, and whether it compared anything: with fewer
+   * than two tabs there is no comparison, only an empty answer.
+   */
+  onChange?: (index: Map<string, Collision[]>, compared: boolean) => void
   children: ReactNode
 }
 
@@ -48,6 +53,7 @@ export interface CollisionProviderProps {
 export function CollisionProvider({
   tabs,
   pollSeconds,
+  onChange,
   children,
 }: CollisionProviderProps) {
   const [index, setIndex] = useState<Map<string, Collision[]>>(new Map())
@@ -57,9 +63,11 @@ export function CollisionProvider({
   // shape the compiler cannot check.
   const watching = JSON.stringify(tabs)
   const latest = useRef(tabs)
+  const changed = useRef(onChange)
   useLayoutEffect(() => {
     latest.current = tabs
-  }, [tabs])
+    changed.current = onChange
+  }, [tabs, onChange])
 
   useEffect(() => {
     const watched = latest.current
@@ -67,6 +75,7 @@ export function CollisionProvider({
     // subprocess every few seconds for an answer that is always empty.
     if (watched.length < 2) {
       setIndex(new Map())
+      changed.current?.(new Map(), false)
       return
     }
 
@@ -98,7 +107,9 @@ export function CollisionProvider({
       )
       if (cancelled || mine < landed) return
       landed = mine
-      setIndex(collisionsByTab(read))
+      const found = collisionsByTab(read)
+      setIndex(found)
+      changed.current?.(found, true)
     }
 
     void poll()

@@ -370,6 +370,13 @@ export function SettingsPane() {
               label={t('notifySound.control')}
             />
           </Row>
+          <Row label={t('tabNotices.label')} hint={t('tabNotices.hint')}>
+            <Toggle
+              checked={settings.tabNotices}
+              onChange={(tabNotices) => update({ tabNotices })}
+              label={t('tabNotices.control')}
+            />
+          </Row>
         </Group>
 
         <Group title={t('groups.git')}>
