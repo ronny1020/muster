@@ -9,21 +9,16 @@ import {
 import {
   addNotice,
   dropSeen,
+  firstReport,
   type Notice,
   type NoticeEvent,
   noticeCards,
   overlapKey,
   treeNews,
+  type TreeReport,
   worthRaising,
 } from '../features/notices/model/notices'
 import { useKeyChange } from '../shared/lib/useKeyChange'
-
-/**
- * How long news about a tree, seen happen in one tab, keeps the other tabs in
- * that tree from raising it: past every tab's next git poll at any interval
- * the settings allow.
- */
-const TREE_NEWS_MS = 2 * 60 * 1000
 
 /**
  * The window's one list of notices, and the glue between it and the collision
@@ -44,11 +39,11 @@ export function useNotices({
   const [notices, setNotices] = useState<Notice[]>([])
   const ids = useRef(0)
   /**
-   * News about a tree already reported, and when, so another tab in that tree
+   * News about a tree already reported, by whom and when, so another tab in that tree
    * reporting it on its next poll raises nothing: not what the reader watched
    * happen, nor a card already raised and since seen or faded.
    */
-  const treeReported = useRef(new Map<string, number>())
+  const treeReported = useRef(new Map<string, TreeReport>())
 
   /**
    * Raises news about a tab: dropped when the reader is already looking
@@ -62,18 +57,16 @@ export function useNotices({
       const watching = now.shown.includes(tabId) && document.hasFocus()
       const tree = treeNews(event)
       if (tree) {
-        const reported = treeReported.current
-        const at = Date.now()
-        for (const [key, when] of reported) {
-          if (at - when > TREE_NEWS_MS) reported.delete(key)
-        }
+        const fresh = firstReport(treeReported.current, {
+          key: tree,
+          tabId,
+          at: Date.now(),
+        })
         if (watching) {
-          reported.set(tree, at)
           setNotices((list) => list.filter((entry) => treeNews(entry) !== tree))
           return
         }
-        if (reported.has(tree)) return
-        reported.set(tree, at)
+        if (!fresh) return
       }
       if (worthRaising(event, watching)) {
         const id = (ids.current += 1)

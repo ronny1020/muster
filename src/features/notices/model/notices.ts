@@ -107,6 +107,40 @@ export function treeNews(event: NoticeEvent) {
 }
 
 /**
+ * How long news about a tree keeps the other tabs in that tree from raising
+ * it: past every tab's next git poll at any interval the settings allow.
+ */
+const TREE_NEWS_MS = 2 * 60 * 1000
+
+/** Who has reported one piece of tree news, and since when. */
+export interface TreeReport {
+  at: number
+  tabIds: Set<string>
+}
+
+/**
+ * Records a tab reporting news about its tree (`treeNews`), and answers
+ * whether it is new: each tab in the tree reports it once, so only the first
+ * is. A tab reporting it again has seen it end and begin again — a conflict
+ * aborted and retried — so that starts it afresh.
+ */
+export function firstReport(
+  reported: Map<string, TreeReport>,
+  { key, tabId, at }: { key: string; tabId: string; at: number },
+) {
+  for (const [entry, report] of reported) {
+    if (at - report.at > TREE_NEWS_MS) reported.delete(entry)
+  }
+  const report = reported.get(key)
+  if (report && !report.tabIds.has(tabId)) {
+    report.tabIds.add(tabId)
+    return false
+  }
+  reported.set(key, { at, tabIds: new Set([tabId]) })
+  return true
+}
+
+/**
  * The slot a notice fills: a tab has one card of each kind, the latest
  * replacing the last. An overlap is one card per file and set of tabs, a
  * commit one card per commit and a conflict one per tree, however many tabs

@@ -9,6 +9,7 @@ import {
 import {
   addNotice,
   dropSeen,
+  firstReport,
   headMoved,
   landedCommit,
   overlapKey,
@@ -16,6 +17,7 @@ import {
   type Notice,
   type NoticeEvent,
   noticeCards,
+  type TreeReport,
   worthRaising,
 } from './notices'
 
@@ -425,4 +427,29 @@ test('an overlap card never names the tab you are on', () => {
   const overlaps = new Set([overlapKey('a', 'p'), overlapKey('b', 'p')])
   const [card] = cardsOf([overlap], { deck, overlaps })
   expect(card.notice.tabId).toBe('b')
+})
+
+describe('firstReport', () => {
+  const report = (reported: Map<string, TreeReport>, tabId: string, at = 0) =>
+    firstReport(reported, { key: 'conflict:/repo:abc', tabId, at })
+
+  test('tabs sharing a tree raise their news once', () => {
+    const reported = new Map<string, TreeReport>()
+    expect(report(reported, 'a')).toBe(true)
+    expect(report(reported, 'b')).toBe(false)
+  })
+
+  test('a conflict aborted and retried at the same commit is news again', () => {
+    const reported = new Map<string, TreeReport>()
+    report(reported, 'a')
+    report(reported, 'b')
+    expect(report(reported, 'a', 1000)).toBe(true)
+    expect(report(reported, 'b', 1000)).toBe(false)
+  })
+
+  test('news reported again after two minutes is news', () => {
+    const reported = new Map<string, TreeReport>()
+    report(reported, 'a')
+    expect(report(reported, 'b', 2 * 60 * 1000 + 1)).toBe(true)
+  })
 })

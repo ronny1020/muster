@@ -154,7 +154,9 @@ nothing, because what was already there is not news. A commit or a conflict
 is the opposite case: every tab in the tree sees it, so whichever tab reports
 it first — on screen or not — stops the others raising the same news for two
 minutes: long enough for every tab's next poll, short enough that the same
-commit or conflict arising again later still reaches you. That news is keyed
+commit or conflict arising again later still reaches you. A tab reporting
+the same news twice has seen it end and begin again, so a merge aborted and
+retried raises a card even inside that window (`firstReport`). That news is keyed
 on the tree's root as well as the commit, since two clones can stop at the
 same commit, and a tree shows one conflict card at a time. Whether a card is
 still true is decided when it is drawn (`noticeCards`), never by a timer in a
