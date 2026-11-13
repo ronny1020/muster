@@ -469,7 +469,7 @@ fn without_terminal(command: &mut Command) -> &mut Command {
 /// `pre-push`, `gh` as a credential helper — installed where only their
 /// profile looks. Sessions get that `PATH` by running through the login shell;
 /// these commands borrow it. Read on the first click that needs it — or the
-/// first pull request read, when the footer's opt-in chip is on — because it
+/// first pull request read, when the footer's chip is on — because it
 /// runs the user's startup files, and bounded, because those can wait on
 /// something nobody will answer. A success is kept for the life of the app; a
 /// failure only for [`RETRY_AFTER`], since a slow first start — a cold `nvm` —

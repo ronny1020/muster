@@ -98,9 +98,9 @@ The git writes the drawers make — commit, pull, push, checkout — are not
 sessions, but they run the user's programs too: a husky hook calling `bunx`, a
 git-lfs `pre-push`, `gh` as a credential helper. So `sync::login_path` borrows
 the login shell's `PATH`, read on the first click that needs it — or the first
-pull request read, when the footer's opt-in chip is on — and bounded by a
-deadline, because it runs the user's startup files; a success is kept and a
-failure retried after a minute. Without it the same commit
+pull request read, when the footer's chip is on, as it is by default — and
+bounded by a deadline, because it runs the user's startup files; a success is
+kept and a failure retried after a minute. Without it the same commit
 passes under `bun run dev`, which inherits a terminal's `PATH`, and fails from
 the Dock.
 

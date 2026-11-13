@@ -112,7 +112,7 @@
   "historyLimit": "历史长度",
   "pullRequests": {
     "label": "页脚显示拉取请求",
-    "hint": "显示此分支的拉取请求及其检查，由你自己的 GitHub CLI 在标签页显示时每分钟查询一次。请安装 gh（cli.github.com）并运行 gh auth login 才会显示；没有的话页脚不显示任何内容。"
+    "hint": "显示此分支的拉取请求及其检查，由你自己的 GitHub CLI 在标签页显示时每分钟查询一次。请安装 gh（cli.github.com）并运行 gh auth login 才会显示；没有的话不显示此项。"
   },
   "editCards": {
     "label": "在终端上显示编辑卡片",

@@ -189,8 +189,9 @@ would in your usual terminal. The drawers' **Pull** and **Push** run your own
 `git` against your own remote, and only when you press them. **Pull request in
 the footer** has your own `gh` ask GitHub about the branch of the tab on screen
 once a minute — the one request made with no gesture at all. It is on by
-default, does nothing without `gh` and a GitHub login, and is turned off in
-Settings.
+default, shows nothing without `gh` and a working GitHub login, sends nothing
+until `gh` holds a login — an expired one is still tried — and is turned off
+in Settings.
 
 The agent CLIs are separate, and Muster deliberately does not bundle them.
 Install whichever you use — `claude`, `codex`, `agy` — and check each runs in
@@ -302,15 +303,15 @@ Along the bottom of each tab:
   button. Click it for the review drawer's Changes view, which is where those
   files are. A clean tree just says `clean`, and goes nowhere.
 - **`#18`** — the branch's pull request on GitHub, while **Pull request in the
-  footer** is on in Settings, as it is by default. Its mark is green while open; a draft, a merged
-  or a closed one is grey, purple or red, with `draft`, `merged` or `closed`
-  beside the number. A check, a cross or an amber dot after
-  it says whether its checks passed, failed or are still running, and the
-  tooltip names the repository and says how many, with the review decision. Click it to open the pull
-  request in your browser. It is asked of your own GitHub CLI, once a minute and
-  only for the tab on screen. It needs the [GitHub CLI](https://cli.github.com)
-  installed and signed in with `gh auth login`; without either, the chip is
-  not drawn at all.
+  footer** is on in Settings, as it is by default. Its mark is green while
+  open; a draft, a merged or a closed one is grey, purple or red, with
+  `draft`, `merged` or `closed` beside the number. A check, a cross or an amber
+  dot after it says whether its checks passed, failed or are still running, and
+  the tooltip names the repository and says how many, with the review decision.
+  Click it to open the pull request in your browser. It is asked of your own
+  GitHub CLI, once a minute and only for the tab on screen. It needs the
+  [GitHub CLI](https://cli.github.com) installed and signed in with
+  `gh auth login`; without either, the chip is not drawn at all.
 - **`src/auth.ts also in …`** — a file another tab is changing at the same time.
   See "When two tabs touch one file".
 - **Clicks / Scrollback** — two buttons with the tab's own mode held down.

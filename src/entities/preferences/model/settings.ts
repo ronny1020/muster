@@ -82,8 +82,8 @@ export interface Settings {
   historyLimit: number
   /**
    * Whether the footer shows the branch's pull request, asked of the user's
-   * own `gh`. On by default because it shows nothing without `gh` and a login,
-   * so it reaches only someone who has already set GitHub up.
+   * own `gh`. On by default because without `gh` and a working login it shows
+   * nothing, and it sends a request only once `gh` holds a login.
    */
   pullRequests: boolean
   /**

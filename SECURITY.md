@@ -46,11 +46,14 @@ The review and history drawers' buttons run `git commit` — with `git add
 `git pull --ff-only`, `git push` and `git switch` in the tab's directory, on a
 click and never otherwise. They run the same `git` with the same hooks,
 credential helper, SSH agent and remote a terminal in that directory would use,
-and with the `PATH` your login shell sets up: read by starting that shell,
-interactively, on the first click that needs it — or the first pull request
-read, when that chip is on — and given up on after five
-seconds; a success is kept, a failure retried a minute later. They run with
-your full rights, outside any sandbox an agent runs in. That is the reach to weigh: an
+and with the `PATH` your login shell sets up: on macOS and Linux, read by
+starting that shell, interactively, on the first click that needs it — or the
+first pull request read, which, the footer's pull request chip being on by
+default, comes as soon as a session on a git branch is on screen, with no click
+of its own and whether or not `gh` is installed — and given up on after five
+seconds; a success is kept, a failure retried a minute later. Windows inherits
+its `PATH` and starts no shell. They run with your full rights, outside any
+sandbox an agent runs in. That is the reach to weigh: an
 unsandboxed agent could have run `git push` itself, but a sandboxed one allowed
 to write its workspace and not the network can plant a hook, set
 `core.hooksPath` or repoint `origin`, and your click runs it for them. Read
@@ -69,7 +72,12 @@ the history drawer's `log` runs the repository's `gpg.program` for every
 signed commit. Until those are closed, treat a tab open on a repository an
 agent has had unsupervised the way the buttons above ask you to: read
 `.git/config`'s `filter.*`, `log.*` and `gpg.*` entries and `.git/hooks`
-first.
+first. The pull request chip's `gh` runs git with no click too, and that git
+is `gh`'s own, without the switches above. What `gh pr view` runs —
+`symbolic-ref`, `config`, `remote -v` and `rev-parse`, traced against gh 2.103 —
+reads no index and writes nothing, and `gh pr checks`, asked by the pull
+request's URL, runs no git at all; so neither `core.fsmonitor` nor a hook runs.
+A later `gh` that ran `status` would change that.
 
 `GIT_DIR`, `GIT_INDEX_FILE` and the other variables that point git at a
 repository are removed from every git the app runs, so none of them can be
@@ -93,14 +101,15 @@ one argument after `-m`, so no message can be read as an option.
 
 ## The pull request chip runs your own gh
 
-With **Pull request in the footer** on — it is on by default, and off is one
-switch in Settings — the tab on screen runs `gh pr view` and `gh pr checks` in its directory once a minute,
-when it comes into view and when the window regains focus. It is your own `gh`, found on the
-`PATH` your login shell sets up, as the git writes above are, with no terminal
-and each stopped after twenty seconds. It signs its requests with whatever login `gh`
-has — the one you gave it, or a `GH_TOKEN` exported in the shell Muster was
-started from; Muster itself never reads or stores a token. `GH_PROMPT_DISABLED` keeps
-it from asking anything, and `GH_NO_UPDATE_NOTIFIER` and `GH_TELEMETRY=0` from
+**Pull request in the footer** is on by default and turned off in Settings.
+While it is on, the tab on screen runs `gh pr view` and `gh pr checks` in its
+directory once a minute, when it comes into view and when the window regains
+focus. It is your own `gh`, found on the `PATH` your login shell sets up, as
+the git writes above are, with no terminal and each stopped after twenty
+seconds. It signs its requests with whatever login `gh` has — the one you gave
+it, or a `GH_TOKEN` exported in the shell Muster was started from; Muster
+itself never reads or stores a token. `GH_PROMPT_DISABLED` keeps it from
+asking anything, and `GH_NO_UPDATE_NOTIFIER` and `GH_TELEMETRY=0` from
 checking for a newer `gh` and sending its usage data, which would be requests
 nobody asked for.
 
