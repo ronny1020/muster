@@ -444,11 +444,14 @@ Two checks hold the catalogs together, and they split the work:
   plural form `Intl.PluralRules` says the language uses — `_one` and `_other`
   in English, `_other` alone in Chinese and Japanese.
 
-The one native surface with words of its own, the dialog asked before
-quitting over running sessions, is drawn by Rust so that it still answers when
-a webview hangs. Its words live in the `chrome` catalog like any other;
+The dialog asked before quitting or closing a window over running sessions is
+the one native surface drawn by Rust, so that it still answers when a webview
+hangs. Its words live in the `chrome` catalog like any other;
 `src/app/closewords.ts` sends them over on launch and on every language
-change, with `{{count}}` left in for Rust to fill.
+change, with `{{count}}` left in for Rust to fill. The prompt before closing
+tabs over a running session is native too, but asked from the webview
+through `askWarning` in `shared/ipc.ts`, so it takes its words straight from
+the catalog: it is only ever opened from a webview that answers.
 
 So a new key is added to `en-US`, `zh-TW`, `zh-CN` and `ja`. `en-GB` holds only
 what British spelling changes and falls back to `en-US` for the rest.

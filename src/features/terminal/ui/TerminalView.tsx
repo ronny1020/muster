@@ -730,8 +730,8 @@ export function TerminalView({
      * Sends an agent's own hyperlinks — Claude Code's PR links, a long URL it
      * breaks across rows — to the browser as a URL is, since their target need
      * not match their text. xterm draws them from a provider of its own, and
-     * its fallback is `window.confirm`, which the dialog plugin replaces with
-     * a command this app does not grant.
+     * its fallback asks through the dialog plugin's `window.confirm` and then
+     * calls `window.open`, which this webview refuses — so it opens nothing.
      *
      * While tracking is on the plain click is the agent's and the ⌘-click is
      * `onLinkMouseDown`'s, so activation there opens nothing.

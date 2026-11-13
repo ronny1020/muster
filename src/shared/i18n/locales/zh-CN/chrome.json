@@ -9,6 +9,8 @@
     "newTab": "新标签页",
     "newTabHint": "新标签页（{{shortcut}}）",
     "close": "关闭标签页",
+    "closeOthers": "关闭其他标签页",
+    "closeAll": "关闭所有标签页",
     "moveToNewColumn": "移到新的分栏",
     "splitRight": "向右拆分",
     "splitRightHint": "向右拆分（{{shortcut}}）",
@@ -59,7 +61,15 @@
     "close": "关闭",
     "cancel": "取消",
     "quitBody_other": "仍有 {{count}} 个会话在运行。退出会一并终止它们及其启动的所有程序。",
-    "closeBody_other": "仍有 {{count}} 个会话在运行。关闭此窗口会一并终止它们及其启动的所有程序。"
+    "closeBody_other": "仍有 {{count}} 个会话在运行。关闭此窗口会一并终止它们及其启动的所有程序。",
+    "closeTabTitle": "要关闭此标签页吗？",
+    "closeTab": "关闭标签页",
+    "closeTabBody": "它的会话仍在运行。关闭此标签页会一并终止它及其启动的所有程序。",
+    "closeAllTitle": "要关闭所有标签页吗？",
+    "closeAll": "全部关闭",
+    "closeOthersTitle": "要关闭其他标签页吗？",
+    "closeOthers": "关闭其他",
+    "closeTabsBody_other": "仍有 {{count}} 个会话在运行。关闭这些标签页会一并终止它们及其启动的所有程序。"
   },
   "notices": {
     "label": "其他标签页的动态",

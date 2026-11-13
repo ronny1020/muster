@@ -63,6 +63,22 @@ test('closing the active tab focuses the one that takes its place', () => {
   expect(closed.activeId).toBe('tab-3')
 })
 
+test("closing a column's other tabs leaves the other columns alone", () => {
+  const deck = deckReducer(deckOf(3), {
+    type: 'moveToColumn',
+    id: 'tab-3',
+    column: 1,
+    split: true,
+  })
+  const closed = deckReducer(deck, {
+    type: 'closeTabs',
+    ids: ['tab-1'],
+    replacementId: 'fresh',
+  })
+  expect(closed.tabs.map((tab) => tab.id)).toEqual(['tab-2', 'tab-3'])
+  expect(closed.shown).toEqual(['tab-2', 'tab-3'])
+})
+
 test('closing the last tab in the strip falls back to its neighbour', () => {
   const deck = deckReducer(deckOf(2), { type: 'activate', id: 'tab-2' })
   expect(
@@ -88,6 +104,48 @@ test('closing the only tab leaves a fresh launcher tab', () => {
   })
   expect(closed.tabs.map((tab) => tab.id)).toEqual(['fresh'])
   expect(closed.activeId).toBe('fresh')
+})
+
+test('closing all tabs leaves one fresh launcher tab in one column', () => {
+  const deck = deckReducer(deckOf(3), {
+    type: 'moveToColumn',
+    id: 'tab-3',
+    column: 1,
+    split: true,
+  })
+  const closed = deckReducer(deck, {
+    type: 'closeTabs',
+    ids: deck.tabs.map((tab) => tab.id),
+    replacementId: 'fresh',
+  })
+  expect(closed).toEqual(initialDeck('fresh'))
+})
+
+test("closing all of a column's tabs removes the column and leaves the rest", () => {
+  const deck = deckReducer(deckOf(3), {
+    type: 'moveToColumn',
+    id: 'tab-3',
+    column: 1,
+    split: true,
+  })
+  const closed = deckReducer(deck, {
+    type: 'closeTabs',
+    ids: ['tab-1', 'tab-2'],
+    replacementId: 'fresh',
+  })
+  expect(closed.tabs.map((tab) => [tab.id, tab.column])).toEqual([['tab-3', 0]])
+  expect(closed.shown).toEqual(['tab-3'])
+  expect(closed.activeId).toBe('tab-3')
+})
+
+test('closing all tabs spares a tab that arrived after they were named', () => {
+  const closed = deckReducer(deckOf(3), {
+    type: 'closeTabs',
+    ids: ['tab-1', 'tab-2'],
+    replacementId: 'fresh',
+  })
+  expect(closed.tabs.map((tab) => tab.id)).toEqual(['tab-3'])
+  expect(closed.activeId).toBe('tab-3')
 })
 
 test('closing an unknown tab changes nothing', () => {

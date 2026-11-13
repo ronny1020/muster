@@ -112,6 +112,8 @@ export type DeckAction =
   | { type: 'open'; id: string; start?: LauncherStart; column?: number }
   | { type: 'openSettings'; id: string }
   | { type: 'close'; id: string; replacementId: string }
+  /** Closes the tabs named in `ids`; one that arrives after they were named stays. */
+  | { type: 'closeTabs'; ids: string[]; replacementId: string }
   | { type: 'activate'; id: string }
   /** The window regained focus, so the user is looking at the active tab. */
   | { type: 'seen' }
@@ -198,6 +200,9 @@ export function tabSignal(tab: Tab): TabSignal {
   if (tab.status === 'waiting') return 'waiting'
   return null
 }
+
+export const isRunning = (tab: Tab) =>
+  tabSession(tab) !== null && tab.exitCode === null
 
 export const newTab = (
   id: string,
@@ -322,6 +327,12 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
 
     case 'close':
       return closeTab(deck, action.id, action.replacementId)
+
+    case 'closeTabs':
+      return action.ids.reduce(
+        (rest, id) => closeTab(rest, id, action.replacementId),
+        deck,
+      )
 
     case 'activate':
       if (!deck.tabs.some((tab) => tab.id === action.id)) return deck

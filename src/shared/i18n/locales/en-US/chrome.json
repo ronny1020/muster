@@ -9,6 +9,8 @@
     "newTab": "New tab",
     "newTabHint": "New tab ({{shortcut}})",
     "close": "Close tab",
+    "closeOthers": "Close other tabs",
+    "closeAll": "Close all tabs",
     "moveToNewColumn": "Move to new column",
     "splitRight": "Split right",
     "splitRightHint": "Split right ({{shortcut}})",
@@ -61,7 +63,16 @@
     "quitBody_one": "{{count}} session still running. Quitting ends it and anything it started.",
     "quitBody_other": "{{count}} sessions still running. Quitting ends them and anything they started.",
     "closeBody_one": "{{count}} session still running. Closing the window ends it and anything it started.",
-    "closeBody_other": "{{count}} sessions still running. Closing the window ends them and anything they started."
+    "closeBody_other": "{{count}} sessions still running. Closing the window ends them and anything they started.",
+    "closeTabTitle": "Close this tab?",
+    "closeTab": "Close tab",
+    "closeTabBody": "Its session is still running. Closing the tab ends it and anything it started.",
+    "closeAllTitle": "Close all tabs?",
+    "closeAll": "Close all",
+    "closeOthersTitle": "Close other tabs?",
+    "closeOthers": "Close others",
+    "closeTabsBody_one": "{{count}} session still running. Closing these tabs ends it and anything it started.",
+    "closeTabsBody_other": "{{count}} sessions still running. Closing these tabs ends them and anything they started."
   },
   "notices": {
     "label": "News from other tabs",
