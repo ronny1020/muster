@@ -113,10 +113,6 @@
   "pullRequest": {
     "heading": "プルリクエスト {{repo}}#{{number}}：{{title}}",
     "open": "クリックで GitHub で開く",
-    "missing": "このブランチのプルリクエストには GitHub CLI が必要です。gh をインストールして gh auth login を実行してください。",
-    "missingShort": "gh なし",
-    "signedOut": "このブランチのプルリクエストには GitHub へのログインが必要です。ターミナルで gh auth login を実行してください。",
-    "signedOutShort": "gh 未ログイン",
     "stage": {
       "open": "オープン",
       "draft": "ドラフト",

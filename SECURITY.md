@@ -28,7 +28,7 @@ None of those four is you, and none of them should be able to read a file you
 did not choose or put an argument in front of a program you did not type. The
 network is the exception, twice over and on purpose: hovering a link fetches
 its page for the preview — see "What hovering a link fetches" below — and the
-opt-in pull request chip asks GitHub through your own `gh` — see "The pull
+pull request chip asks GitHub through your own `gh` — see "The pull
 request chip runs your own gh".
 
 The last one is worth spelling out, because it is the only inbound channel a
@@ -93,8 +93,8 @@ one argument after `-m`, so no message can be read as an option.
 
 ## The pull request chip runs your own gh
 
-With **Pull request in the footer** on — it is off by default — the tab on
-screen runs `gh pr view` and `gh pr checks` in its directory once a minute,
+With **Pull request in the footer** on — it is on by default, and off is one
+switch in Settings — the tab on screen runs `gh pr view` and `gh pr checks` in its directory once a minute,
 when it comes into view and when the window regains focus. It is your own `gh`, found on the
 `PATH` your login shell sets up, as the git writes above are, with no terminal
 and each stopped after twenty seconds. It signs its requests with whatever login `gh`

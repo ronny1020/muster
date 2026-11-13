@@ -19,7 +19,7 @@ const found = (overrides: Partial<PullRequest> = {}) => ({
 
 const chip = (overrides: Partial<PullRequest> = {}) => {
   const drawn = pullRequestChip(found(overrides), t)
-  if (drawn?.kind !== 'pullRequest') throw new Error('expected a chip')
+  if (!drawn) throw new Error('expected a chip')
   return drawn
 }
 
@@ -28,12 +28,9 @@ test('nothing to show draws nothing, and neither does a read not yet back', () =
   expect(pullRequestChip(null, t)).toBeNull()
 })
 
-test('a missing gh and a missing login each say what to do about it', () => {
-  const missing = pullRequestChip({ kind: 'missing' }, t)
-  const signedOut = pullRequestChip({ kind: 'signedOut' }, t)
-  expect(missing?.kind).toBe('hint')
-  expect(missing?.title).toContain('Install gh')
-  expect(signedOut?.title).toContain('gh auth login')
+test('a missing gh or a missing login hides the chip rather than nagging', () => {
+  expect(pullRequestChip({ kind: 'missing' }, t)).toBeNull()
+  expect(pullRequestChip({ kind: 'signedOut' }, t)).toBeNull()
 })
 
 test('the chip shows the number and opens the pull request', () => {

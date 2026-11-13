@@ -117,10 +117,6 @@
   "pullRequest": {
     "heading": "Pull request {{repo}}#{{number}}: {{title}}",
     "open": "Click to open it on GitHub",
-    "missing": "The pull request for this branch needs the GitHub CLI. Install gh, then run gh auth login.",
-    "missingShort": "no gh",
-    "signedOut": "The pull request for this branch needs a GitHub login. Run gh auth login in a terminal.",
-    "signedOutShort": "gh signed out",
     "stage": {
       "open": "Open",
       "draft": "Draft",

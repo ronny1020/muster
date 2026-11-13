@@ -82,8 +82,8 @@ export interface Settings {
   historyLimit: number
   /**
    * Whether the footer shows the branch's pull request, asked of the user's
-   * own `gh`. Off by default: unlike Pull and Push, it reaches GitHub without
-   * anyone pressing anything.
+   * own `gh`. On by default because it shows nothing without `gh` and a login,
+   * so it reaches only someone who has already set GitHub up.
    */
   pullRequests: boolean
   /**
@@ -143,7 +143,7 @@ export const DEFAULT_SETTINGS: Settings = {
   allSystemFonts: false,
   gitPollSeconds: 4,
   historyLimit: 60,
-  pullRequests: false,
+  pullRequests: true,
   editCards: true,
   editActivity: true,
   editPulse: true,

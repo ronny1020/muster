@@ -3,81 +3,57 @@ import type { TFunction } from 'i18next'
 import type { PullRequest, PullRequestState } from '../../../shared/ipc'
 
 /** What the footer draws for a branch's pull request. */
-export type PullRequestChip =
-  | {
-      kind: 'pullRequest'
-      text: string
-      title: string
-      /** What a screen reader reads: the title, less the lines it can do without. */
-      label: string
-      stage: PullRequest['stage']
-      /**
-       * The stage in words, beside the number, so it is not carried by colour
-       * alone. An open pull request is the usual case, and has none.
-       */
-      stageText: string | null
-      /** The checks' worst outcome, which is the one worth a colour. */
-      checks: 'failed' | 'pending' | 'passed' | null
-      url: string
-    }
-  | {
-      /**
-       * Why nothing can be shown, for someone who turned the chip on: without
-       * it, a missing `gh` and a branch with no pull request look the same.
-       */
-      kind: 'hint'
-      text: string
-      title: string
-    }
+export interface PullRequestChip {
+  text: string
+  title: string
+  /** What a screen reader reads: the title, less the lines it can do without. */
+  label: string
+  stage: PullRequest['stage']
+  /**
+   * The stage in words, beside the number, so it is not carried by colour
+   * alone. An open pull request is the usual case, and has none.
+   */
+  stageText: string | null
+  /** The checks' worst outcome, which is the one worth a colour. */
+  checks: 'failed' | 'pending' | 'passed' | null
+  url: string
+}
 
+/**
+ * The chip for a found pull request, and nothing otherwise: a missing `gh` or
+ * login hides it like a branch with none, so the chip, on by default, never
+ * nags someone who does not use GitHub. The setting's hint says what it needs.
+ */
 export function pullRequestChip(
   state: PullRequestState | null,
   t: TFunction<'workspace'>,
 ): PullRequestChip | null {
-  switch (state?.kind) {
-    case 'missing':
-      return {
-        kind: 'hint',
-        text: t('pullRequest.missingShort'),
-        title: t('pullRequest.missing'),
-      }
-    case 'signedOut':
-      return {
-        kind: 'hint',
-        text: t('pullRequest.signedOutShort'),
-        title: t('pullRequest.signedOut'),
-      }
-    case 'found': {
-      const summary = summarize(state, t)
-      const repo = repository(state.url)
-      return {
-        kind: 'pullRequest',
-        text: `#${state.number}`,
-        title: [
-          t('pullRequest.heading', {
-            repo,
-            number: state.number,
-            title: state.title,
-          }),
-          summary,
-          t('pullRequest.open'),
-        ].join('\n'),
-        label: t('pullRequest.label', {
-          repo,
-          number: state.number,
-          state: summary,
-        }),
-        stage: state.stage,
-        stageText:
-          state.stage === 'open'
-            ? null
-            : t(`pullRequest.stage.${state.stage}`).toLocaleLowerCase(),
-        checks: worstCheck(state.checks),
-        url: state.url,
-      }
-    }
-    default:
-      return null
+  if (state?.kind !== 'found') return null
+  const summary = summarize(state, t)
+  const repo = repository(state.url)
+  return {
+    text: `#${state.number}`,
+    title: [
+      t('pullRequest.heading', {
+        repo,
+        number: state.number,
+        title: state.title,
+      }),
+      summary,
+      t('pullRequest.open'),
+    ].join('\n'),
+    label: t('pullRequest.label', {
+      repo,
+      number: state.number,
+      state: summary,
+    }),
+    stage: state.stage,
+    stageText:
+      state.stage === 'open'
+        ? null
+        : t(`pullRequest.stage.${state.stage}`).toLocaleLowerCase(),
+    checks: worstCheck(state.checks),
+    url: state.url,
   }
 }
 
