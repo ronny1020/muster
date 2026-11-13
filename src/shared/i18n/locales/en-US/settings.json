@@ -116,7 +116,7 @@
   "historyLimit": "History length",
   "pullRequests": {
     "label": "Pull request in the footer",
-    "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI (gh) once a minute while the tab is on screen. Needs gh installed and signed in."
+    "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI once a minute while the tab is on screen. Install gh (cli.github.com) and run gh auth login to see it; without them the chip is not shown."
   },
   "editCards": {
     "label": "Edit cards over the terminal",

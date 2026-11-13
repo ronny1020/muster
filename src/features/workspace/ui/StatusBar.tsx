@@ -341,19 +341,8 @@ function ChipGroup({ chips, label, expanded, onClick }: ChipGroupProps) {
   )
 }
 
-/**
- * The branch's pull request, which opens it on GitHub — or, where `gh` cannot
- * be asked, a word saying why, as text rather than a control, since nothing
- * here can install `gh` or sign it in.
- */
+/** The branch's pull request, which opens it on GitHub. */
 function PullRequestControl({ chip }: { chip: PullRequestChip }) {
-  if (chip.kind === 'hint') {
-    return (
-      <span title={chip.title} className="flex-none text-faint">
-        {chip.text}
-      </span>
-    )
-  }
   const href = webHref(chip.url)
   const mark =
     chip.checks && chip.checks !== 'pending' && CHECK_MARK[chip.checks]

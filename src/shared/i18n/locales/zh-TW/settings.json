@@ -112,7 +112,7 @@
   "historyLimit": "歷史長度",
   "pullRequests": {
     "label": "頁尾顯示拉取請求",
-    "hint": "顯示此分支的拉取請求與檢查結果，由你自己的 GitHub CLI（gh）在分頁顯示時每分鐘查詢一次。需要安裝 gh 並已登入。"
+    "hint": "顯示此分支的拉取請求與檢查結果，由你自己的 GitHub CLI 在分頁顯示時每分鐘查詢一次。請安裝 gh（cli.github.com）並執行 gh auth login 才會顯示；沒有的話不會顯示此項目。"
   },
   "editCards": {
     "label": "在終端機上顯示編輯卡片",
