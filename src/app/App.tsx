@@ -208,38 +208,49 @@ export function App({ adopted }: AppProps) {
 
   const asking = useRef(false)
   /**
+   * Tabs on their way to another window. A close passes over them: the move
+   * either lands, and the session runs on there, or fails and takes the tab
+   * back — closing one mid-move would leave its detached session with no tab.
+   */
+  const moving = useRef(new Set<string>())
+  /**
    * Asks first when one of `ids` is running, as the window's close button
    * does; `keep`, the tab whose menu it was, takes the keyboard. A close
    * arriving while a prompt is open is dropped, so a repeated ⌘W cannot
    * stack a second prompt over the first.
    */
-  const closeTabs = useCallback(async ({ ids, kind, keep }: CloseRequest) => {
-    if (asking.current) return
-    const live = current.current.deck.tabs.filter(
-      (tab) => ids.includes(tab.id) && isRunning(tab),
-    ).length
-    const words = {
-      title: i18n.t(CLOSE_WORDS[kind].title),
-      ok: i18n.t(CLOSE_WORDS[kind].ok),
-      cancel: i18n.t('chrome:closeDialog.cancel'),
-    }
-    const body = i18n.t(CLOSE_WORDS[kind].body, { count: live })
-    if (live > 0) {
-      asking.current = true
-      try {
-        if (!(await askWarning(body, words))) return
-      } finally {
-        asking.current = false
+  const closeTabs = useCallback(
+    async ({ keep, kind, ...request }: CloseRequest) => {
+      const ids = request.ids.filter((id) => !moving.current.has(id))
+      if (asking.current || ids.length === 0) return
+      const live = current.current.deck.tabs.filter(
+        (tab) => ids.includes(tab.id) && isRunning(tab),
+      ).length
+      const words = {
+        title: i18n.t(CLOSE_WORDS[kind].title),
+        ok: i18n.t(CLOSE_WORDS[kind].ok),
+        cancel: i18n.t('chrome:closeDialog.cancel'),
       }
-    }
-    dispatch({ type: 'closeTabs', ids, replacementId: nextTabId() })
-    if (keep) dispatch({ type: 'activate', id: keep })
-  }, [])
+      const body = i18n.t(CLOSE_WORDS[kind].body, { count: live })
+      if (live > 0) {
+        asking.current = true
+        try {
+          if (!(await askWarning(body, words))) return
+        } finally {
+          asking.current = false
+        }
+      }
+      dispatch({ type: 'closeTabs', ids, replacementId: nextTabId() })
+      if (keep) dispatch({ type: 'activate', id: keep })
+    },
+    [],
+  )
 
   /** A tab closed by hand, which asks first while its session runs. */
   const close = useCallback(
     (id: string) => {
       const { tabs } = current.current.deck
+      if (moving.current.has(id)) return
       if (tabs.length === 1) release(id)
       else void closeTabs({ ids: [id], kind: 'one' }).catch(report)
     },
@@ -255,25 +266,34 @@ export function App({ adopted }: AppProps) {
   const handOff = useCallback(
     async (id: string, destination: Destination) => {
       const tab = current.current.deck.tabs.find((entry) => entry.id === id)
-      if (!tab) return
-      const terminal = await detachTerminal(id)
-      if (tabSession(tab) && !terminal) return
-      // An ended session has nothing left to hand over but its screen.
-      const session = terminal && tab.exitCode === null ? id : null
+      if (!tab || moving.current.has(id)) return
+      moving.current.add(id)
       try {
-        if (destination.kind === 'window') {
-          const handoff = writeHandoff({ tab, terminal, dropX: destination.x })
-          await sendToWindow(destination.label, handoff, session)
-        } else {
-          const handoff = writeHandoff({ tab, terminal, dropX: null })
-          await openWindow({ handoff, session, grab: destination.grab })
+        const terminal = await detachTerminal(id)
+        if (tabSession(tab) && !terminal) return
+        // An ended session has nothing left to hand over but its screen.
+        const session = terminal && tab.exitCode === null ? id : null
+        try {
+          if (destination.kind === 'window') {
+            const handoff = writeHandoff({
+              tab,
+              terminal,
+              dropX: destination.x,
+            })
+            await sendToWindow(destination.label, handoff, session)
+          } else {
+            const handoff = writeHandoff({ tab, terminal, dropX: null })
+            await openWindow({ handoff, session, grab: destination.grab })
+          }
+        } catch (error) {
+          report(error)
+          resumeTerminal(id)
+          return
         }
-      } catch (error) {
-        report(error)
-        resumeTerminal(id)
-        return
+        release(id)
+      } finally {
+        moving.current.delete(id)
       }
-      release(id)
     },
     [release],
   )
