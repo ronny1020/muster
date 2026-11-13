@@ -52,6 +52,10 @@ export interface TabStripProps {
   joinAt: number | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  /** Closes every tab in this column. */
+  onCloseAll: () => void
+  /** Closes the rest of this column's tabs. */
+  onCloseOthers: (id: string) => void
   /** A tab dragged, or moved by keyboard, to `index` of the strip. */
   onMove: (id: string, index: number) => void
   /** Takes a tab out into a window of its own, its session still running. */
@@ -84,6 +88,8 @@ export function TabStrip({
   joinAt,
   onSelect,
   onClose,
+  onCloseAll,
+  onCloseOthers,
   onMove,
   onMoveToNewWindow,
   onTearOff,
@@ -143,7 +149,8 @@ export function TabStrip({
   } | null>(null)
 
   // A column's only tab would leave an empty column behind it, and the
-  // window's only tab an empty window.
+  // window's only tab an empty window. The bulk closes act on the column, as
+  // VS Code's do on an editor group, so with one tab they are Close tab.
   const menuItems = (id: string): MenuItem[] => [
     ...(tabs.length > 1 && canSplit
       ? [
@@ -162,6 +169,12 @@ export function TabStrip({
           },
         ]),
     { label: t('tab.close'), onSelect: () => onClose(id) },
+    ...(tabs.length > 1
+      ? [
+          { label: t('tab.closeOthers'), onSelect: () => onCloseOthers(id) },
+          { label: t('tab.closeAll'), onSelect: onCloseAll },
+        ]
+      : []),
   ]
 
   // A tab reached by shortcut or by cycling can be scrolled out of sight, and

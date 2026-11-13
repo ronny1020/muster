@@ -9,6 +9,8 @@
     "newTab": "新しいタブ",
     "newTabHint": "新しいタブ（{{shortcut}}）",
     "close": "タブを閉じる",
+    "closeOthers": "他のタブを閉じる",
+    "closeAll": "すべてのタブを閉じる",
     "moveToNewColumn": "新しい列に移動",
     "splitRight": "右に分割",
     "splitRightHint": "右に分割（{{shortcut}}）",
@@ -59,7 +61,15 @@
     "close": "閉じる",
     "cancel": "キャンセル",
     "quitBody_other": "{{count}} 件のセッションが実行中です。終了すると、セッションとそこから起動したものがすべて終了します。",
-    "closeBody_other": "{{count}} 件のセッションが実行中です。閉じると、セッションとそこから起動したものがすべて終了します。"
+    "closeBody_other": "{{count}} 件のセッションが実行中です。閉じると、セッションとそこから起動したものがすべて終了します。",
+    "closeTabTitle": "このタブを閉じますか？",
+    "closeTab": "タブを閉じる",
+    "closeTabBody": "このタブのセッションはまだ実行中です。閉じると、セッションとそこから起動したものがすべて終了します。",
+    "closeAllTitle": "すべてのタブを閉じますか？",
+    "closeAll": "すべて閉じる",
+    "closeOthersTitle": "他のタブを閉じますか？",
+    "closeOthers": "他を閉じる",
+    "closeTabsBody_other": "{{count}} 件のセッションが実行中です。これらのタブを閉じると、セッションとそこから起動したものがすべて終了します。"
   },
   "notices": {
     "label": "ほかのタブの知らせ",

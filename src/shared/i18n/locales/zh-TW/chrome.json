@@ -9,6 +9,8 @@
     "newTab": "新分頁",
     "newTabHint": "新分頁（{{shortcut}}）",
     "close": "關閉分頁",
+    "closeOthers": "關閉其他分頁",
+    "closeAll": "關閉所有分頁",
     "moveToNewColumn": "移到新的分欄",
     "splitRight": "向右分割",
     "splitRightHint": "向右分割（{{shortcut}}）",
@@ -59,7 +61,15 @@
     "close": "關閉",
     "cancel": "取消",
     "quitBody_other": "仍有 {{count}} 個工作階段在執行。結束會一併終止它們及其啟動的所有程式。",
-    "closeBody_other": "仍有 {{count}} 個工作階段在執行。關閉此視窗會一併終止它們及其啟動的所有程式。"
+    "closeBody_other": "仍有 {{count}} 個工作階段在執行。關閉此視窗會一併終止它們及其啟動的所有程式。",
+    "closeTabTitle": "要關閉此分頁嗎？",
+    "closeTab": "關閉分頁",
+    "closeTabBody": "它的工作階段仍在執行。關閉此分頁會一併終止它及其啟動的所有程式。",
+    "closeAllTitle": "要關閉所有分頁嗎？",
+    "closeAll": "全部關閉",
+    "closeOthersTitle": "要關閉其他分頁嗎？",
+    "closeOthers": "關閉其他",
+    "closeTabsBody_other": "仍有 {{count}} 個工作階段在執行。關閉這些分頁會一併終止它們及其啟動的所有程式。"
   },
   "notices": {
     "label": "其他分頁的動態",

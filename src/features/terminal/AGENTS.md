@@ -431,10 +431,13 @@ hold a link it offered before tracking began and would open that one too. A
 `OSC 8` links — Claude Code's PR links, and a long URL it breaks across rows
 with the full target on each — come from a provider xterm registers itself,
 so `gateLinks` never sees it and xterm ranks it first. With no `linkHandler`,
-xterm activates one through `window.confirm` — which `tauri-plugin-dialog`
-replaces with a `plugin:dialog|confirm` command the capabilities do not
-grant, so without a handler every such link throws, on every platform. The
-handler opens them in the browser, as a URL is, on a plain click — a choice
+xterm activates one through `window.confirm` and then `window.open`. The
+dialog plugin makes `window.confirm` an `async` prompt — shown because
+`dialog:allow-message` grants its `message` command — whose Promise xterm
+reads as yes before anything is chosen, and the webview refuses
+`window.open`, since the app registers no new-window handler. So without a
+handler every such link opens nothing, and asks a question that decides
+nothing. The handler opens them in the browser, as a URL is, on a plain click — a choice
 made knowingly: an agent can make a whole row one hyperlink, so a click meant
 to focus the pane loads its page, and the corner label is what shows where it
 goes. It opens nothing while

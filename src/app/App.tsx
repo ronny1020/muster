@@ -30,6 +30,7 @@ import {
   type DeckAction,
   deckReducer,
   focusedColumn,
+  isRunning,
   type Tab,
   tabSession,
 } from '../entities/tab/model/deck'
@@ -37,6 +38,7 @@ import { useSettings } from '../entities/preferences/model/useSettings'
 import { useTabShortcuts } from './useTabShortcuts'
 import { ColumnEdges } from './ColumnEdges'
 import {
+  askWarning,
   attachSweep,
   closeWindow,
   dropTarget,
@@ -69,6 +71,31 @@ import { i18n } from '../shared/i18n/i18n'
  * spawn path reads a reused id as "end that session and take its place".
  */
 const nextTabId = () => crypto.randomUUID()
+
+/** The prompt's words for each way of closing tabs over running sessions. */
+const CLOSE_WORDS = {
+  one: {
+    title: 'chrome:closeDialog.closeTabTitle',
+    ok: 'chrome:closeDialog.closeTab',
+    body: 'chrome:closeDialog.closeTabBody',
+  },
+  others: {
+    title: 'chrome:closeDialog.closeOthersTitle',
+    ok: 'chrome:closeDialog.closeOthers',
+    body: 'chrome:closeDialog.closeTabsBody',
+  },
+  all: {
+    title: 'chrome:closeDialog.closeAllTitle',
+    ok: 'chrome:closeDialog.closeAll',
+    body: 'chrome:closeDialog.closeTabsBody',
+  },
+} as const
+
+interface CloseRequest {
+  ids: string[]
+  kind: keyof typeof CLOSE_WORDS
+  keep?: string
+}
 
 /**
  * A session ending is worth the same interruption as one finishing a turn —
@@ -129,9 +156,7 @@ export function App({ adopted }: AppProps) {
   // after the process ends, and treating those as live would protect their
   // records from the sweep forever, so nothing would ever expire.
   const liveTabs = JSON.stringify(
-    deck.tabs
-      .filter((tab) => tabSession(tab) && tab.exitCode === null)
-      .map((tab) => tab.id),
+    deck.tabs.filter(isRunning).map((tab) => tab.id),
   )
   useEffect(() => {
     // Attachments expire on the same setting: both are records of a session,
@@ -164,9 +189,13 @@ export function App({ adopted }: AppProps) {
     () => dispatch({ type: 'open', id: nextTabId() }),
     [],
   )
-  // Closing the last tab closes the window, as in Chrome — through the same
-  // prompt as its close button, so running sessions are still asked about.
-  const close = useCallback((id: string) => {
+  /**
+   * Takes a tab out without asking about its session, since a tab handed to
+   * another window leaves through here with its session running there. The
+   * last tab closes the window, as in Chrome — through the same prompt as its
+   * close button, so running sessions are still asked about.
+   */
+  const release = useCallback((id: string) => {
     const { deck } = current.current
     if (deck.tabs.length === 1 && deck.tabs[0].id === id) {
       // Stored empty first, so a closed tab does not come back on the next
@@ -177,6 +206,57 @@ export function App({ adopted }: AppProps) {
     } else dispatch({ type: 'close', id, replacementId: nextTabId() })
   }, [])
 
+  const asking = useRef(false)
+  /**
+   * Tabs on their way to another window. A close passes over them: the move
+   * either lands, and the session runs on there, or fails and takes the tab
+   * back — closing one mid-move would leave its detached session with no tab.
+   */
+  const moving = useRef(new Set<string>())
+  /**
+   * Asks first when one of `ids` is running, as the window's close button
+   * does; `keep`, the tab whose menu it was, takes the keyboard. A close
+   * arriving while a prompt is open is dropped, so a repeated ⌘W cannot
+   * stack a second prompt over the first.
+   */
+  const closeTabs = useCallback(
+    async ({ keep, kind, ...request }: CloseRequest) => {
+      const ids = request.ids.filter((id) => !moving.current.has(id))
+      if (asking.current || ids.length === 0) return
+      const live = current.current.deck.tabs.filter(
+        (tab) => ids.includes(tab.id) && isRunning(tab),
+      ).length
+      const words = {
+        title: i18n.t(CLOSE_WORDS[kind].title),
+        ok: i18n.t(CLOSE_WORDS[kind].ok),
+        cancel: i18n.t('chrome:closeDialog.cancel'),
+      }
+      const body = i18n.t(CLOSE_WORDS[kind].body, { count: live })
+      if (live > 0) {
+        asking.current = true
+        try {
+          if (!(await askWarning(body, words))) return
+        } finally {
+          asking.current = false
+        }
+      }
+      dispatch({ type: 'closeTabs', ids, replacementId: nextTabId() })
+      if (keep) dispatch({ type: 'activate', id: keep })
+    },
+    [],
+  )
+
+  /** A tab closed by hand, which asks first while its session runs. */
+  const close = useCallback(
+    (id: string) => {
+      const { tabs } = current.current.deck
+      if (moving.current.has(id)) return
+      if (tabs.length === 1) release(id)
+      else void closeTabs({ ids: [id], kind: 'one' }).catch(report)
+    },
+    [release, closeTabs],
+  )
+
   /**
    * Hands a tab to another window, or to a new one. A live session keeps
    * running: the other window takes over its output, and this one lets go
@@ -186,27 +266,36 @@ export function App({ adopted }: AppProps) {
   const handOff = useCallback(
     async (id: string, destination: Destination) => {
       const tab = current.current.deck.tabs.find((entry) => entry.id === id)
-      if (!tab) return
-      const terminal = await detachTerminal(id)
-      if (tabSession(tab) && !terminal) return
-      // An ended session has nothing left to hand over but its screen.
-      const session = terminal && tab.exitCode === null ? id : null
+      if (!tab || moving.current.has(id)) return
+      moving.current.add(id)
       try {
-        if (destination.kind === 'window') {
-          const handoff = writeHandoff({ tab, terminal, dropX: destination.x })
-          await sendToWindow(destination.label, handoff, session)
-        } else {
-          const handoff = writeHandoff({ tab, terminal, dropX: null })
-          await openWindow({ handoff, session, grab: destination.grab })
+        const terminal = await detachTerminal(id)
+        if (tabSession(tab) && !terminal) return
+        // An ended session has nothing left to hand over but its screen.
+        const session = terminal && tab.exitCode === null ? id : null
+        try {
+          if (destination.kind === 'window') {
+            const handoff = writeHandoff({
+              tab,
+              terminal,
+              dropX: destination.x,
+            })
+            await sendToWindow(destination.label, handoff, session)
+          } else {
+            const handoff = writeHandoff({ tab, terminal, dropX: null })
+            await openWindow({ handoff, session, grab: destination.grab })
+          }
+        } catch (error) {
+          report(error)
+          resumeTerminal(id)
+          return
         }
-      } catch (error) {
-        report(error)
-        resumeTerminal(id)
-        return
+        release(id)
+      } finally {
+        moving.current.delete(id)
       }
-      close(id)
     },
-    [close],
+    [release],
   )
 
   // A lone tab has nowhere to move to: its window would be left empty.
@@ -316,7 +405,7 @@ export function App({ adopted }: AppProps) {
   }, [])
 
   // The window regaining focus is how a cancelled close prompt is noticed:
-  // `close` stored an empty deck before asking, and the tabs are still here.
+  // `release` stored an empty deck before asking, and the tabs are still here.
   // It also means the user is looking at the active tab again, so a turn that
   // ended while they were in another app is no longer unread. A tab dropped
   // here is queued before this window is focused, so it is taken first: it is
@@ -506,6 +595,21 @@ export function App({ adopted }: AppProps) {
           onMoveToNewWindow={(id) => void moveToNewWindow(id)}
           onTearOff={tearOff}
           onClose={close}
+          onCloseAll={() =>
+            void closeTabs({
+              ids: columnTabs(deck, column).map((tab) => tab.id),
+              kind: 'all',
+            }).catch(report)
+          }
+          onCloseOthers={(id) =>
+            void closeTabs({
+              ids: columnTabs(deck, column)
+                .filter((tab) => tab.id !== id)
+                .map((tab) => tab.id),
+              kind: 'others',
+              keep: id,
+            }).catch(report)
+          }
           onOpen={() => dispatch({ type: 'open', id: nextTabId(), column })}
           onSplit={() => dispatch({ type: 'split', id: nextTabId(), column })}
           onMoveToNewColumn={(id) =>

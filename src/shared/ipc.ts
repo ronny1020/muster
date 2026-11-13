@@ -1,6 +1,6 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-dialog'
+import { ask, open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
@@ -856,3 +856,15 @@ export const closeWindow = async () => getCurrentWindow().close()
 export const isWindowMaximized = async () => getCurrentWindow().isMaximized()
 export const onWindowResized = async (run: () => void) =>
   getCurrentWindow().onResized(run)
+
+/** A native warning with two buttons; `true` when `ok` was chosen. */
+export const askWarning = (
+  body: string,
+  words: { title: string; ok: string; cancel: string },
+) =>
+  ask(body, {
+    title: words.title,
+    kind: 'warning',
+    okLabel: words.ok,
+    cancelLabel: words.cancel,
+  })

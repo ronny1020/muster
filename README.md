@@ -784,6 +784,11 @@ moves with everything on its screen and keeps running — nothing restarts.
 Closing a tab that is a window's last closes the window, as in Chrome; closing
 the last window quits. Either asks first if a session in that window is still
 running. A window closed while others stay open takes its tabs with it.
+Right-click a tab and choose **Close other tabs** to close the rest of its
+column, or **Close all tabs** to close the whole column — in a window with one
+column, that starts over from one fresh start screen. Closing tabs in any way —
+these, **Close tab**, the tab's ×, a middle-click or the shortcut — asks first
+if one of them still has a session running.
 
 Launching it twice focuses the window you already have instead of opening a
 second copy — which matters because two copies would restore the same tabs,
