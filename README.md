@@ -202,7 +202,7 @@ toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🚀 Using it
 
-![The start screen: a directory, the agent picker, Claude Code's terminal mode, and New session / Continue / Resume… — the last two greyed, since this directory has no conversation yet](docs/launcher.jpg)
+![The start screen: a directory, the agent picker, Claude Code's terminal mode, and New session / Continue / Resume… — the last two greyed, since this directory has no conversation yet — and below them the card that opens a plain shell](docs/launcher.jpg)
 
 A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent** — type to filter the list, since
