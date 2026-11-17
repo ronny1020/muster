@@ -11,7 +11,10 @@
   "wslDistro": "WSL distro",
   "defaultDistro": "Default distro",
   "extraFlags": "Extra flags",
-  "openShell": "Open a plain shell instead",
+  "openShell": {
+    "label": "Open a plain shell instead",
+    "hint": "No agent — your default shell in this directory"
+  },
   "noPastSessions": "No past sessions in this directory",
   "nothingToContinue": "Nothing to continue here yet",
   "readingPast": "Reading past conversations…",

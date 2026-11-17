@@ -11,7 +11,10 @@
   "wslDistro": "WSL 发行版",
   "defaultDistro": "默认发行版",
   "extraFlags": "额外参数",
-  "openShell": "改为打开普通 shell",
+  "openShell": {
+    "label": "改为打开普通 shell",
+    "hint": "不启动智能体，在此目录打开默认 shell"
+  },
   "noPastSessions": "此文件夹中没有过去的会话",
   "nothingToContinue": "这里还没有可继续的内容",
   "readingPast": "正在读取过去的对话…",

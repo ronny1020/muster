@@ -13,6 +13,8 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { Combobox } from '../../../shared/ui/Combobox'
+import { Icon } from '../../../shared/ui/Icon'
+import type { IconName } from '../../../shared/ui/icons'
 import type { LauncherStart } from '../../../entities/tab/model/deck'
 import { usePlatform } from '../../../shared/lib/usePlatform'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
@@ -563,18 +565,6 @@ export function Launcher({
           </Field>
         )}
 
-        <div className="mt-0.5 flex justify-end">
-          <button
-            type="button"
-            onClick={() =>
-              void launch(SHELL_AGENT.modes[0].args, { as: SHELL_AGENT })
-            }
-            className="rounded-lg px-2 py-1 text-[11px] text-muted hover:bg-surface hover:text-ink"
-          >
-            {t('openShell')}
-          </button>
-        </div>
-
         {pickUp && (
           <button
             type="button"
@@ -582,7 +572,7 @@ export function Launcher({
             style={{ borderColor: `${agent.accent}8c` }}
             className="mt-0.5 flex flex-col gap-0.5 rounded-[10px] border border-line bg-surface px-3 py-2.5 text-left hover:border-[#43434d] hover:bg-surface-hover"
           >
-            <strong className="font-medium">{t('pickUp.label')}</strong>
+            <CardLabel icon="replay">{t('pickUp.label')}</CardLabel>
             <span className="text-[11px] text-muted">{t('pickUp.hint')}</span>
           </button>
         )}
@@ -612,9 +602,9 @@ export function Launcher({
                 }
                 className="flex flex-col gap-0.5 rounded-[10px] border border-line bg-surface px-3 py-2.5 text-left enabled:hover:border-[#43434d] enabled:hover:bg-surface-hover disabled:opacity-40"
               >
-                <strong className="font-medium">
+                <CardLabel icon={MODE_ICONS[mode.id] ?? 'terminal'}>
                   {modeText(mode, t).label}
-                </strong>
+                </CardLabel>
                 <span className="text-[11px] text-muted">
                   {unavailable
                     ? t('nothingToContinue')
@@ -681,6 +671,17 @@ export function Launcher({
           </ul>
         )}
 
+        <button
+          type="button"
+          onClick={() =>
+            void launch(SHELL_AGENT.modes[0].args, { as: SHELL_AGENT })
+          }
+          className="flex flex-col gap-0.5 rounded-[10px] border border-dashed border-line px-3 py-2.5 text-left hover:border-[#43434d] hover:bg-surface-hover"
+        >
+          <CardLabel icon="terminal">{t('openShell.label')}</CardLabel>
+          <span className="text-[11px] text-muted">{t('openShell.hint')}</span>
+        </button>
+
         {/* Mounted whether or not there is a hint: a region inserted with its
             content already in it is announced by almost nothing, and this is
             the only explanation a screen-reader user gets. */}
@@ -739,6 +740,29 @@ export function Launcher({
         )}
       </div>
     </div>
+  )
+}
+
+/** The glyph beside each launch card's label, by mode id. */
+const MODE_ICONS: Record<string, IconName> = {
+  new: 'add',
+  continue: 'play_arrow',
+  resume: 'history',
+}
+
+/** A launch card's title, led by the icon that tells the cards apart at a glance. */
+function CardLabel({
+  icon,
+  children,
+}: {
+  icon: IconName
+  children: React.ReactNode
+}) {
+  return (
+    <strong className="flex items-center gap-1.5 font-medium">
+      <Icon name={icon} className="h-4 w-4 text-muted" />
+      {children}
+    </strong>
   )
 }
 

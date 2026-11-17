@@ -11,7 +11,10 @@
   "wslDistro": "WSL 發行版",
   "defaultDistro": "預設發行版",
   "extraFlags": "額外參數",
-  "openShell": "改為開啟一般 shell",
+  "openShell": {
+    "label": "改為開啟一般 shell",
+    "hint": "不啟動代理程式，在這個目錄開啟預設 shell"
+  },
   "noPastSessions": "這個資料夾沒有過去的工作階段",
   "nothingToContinue": "這裡還沒有可繼續的內容",
   "readingPast": "正在讀取過去的對話…",
