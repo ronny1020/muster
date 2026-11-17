@@ -202,15 +202,14 @@ toolchain: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🚀 Using it
 
-![The start screen: a directory, the agent picker, Claude Code's terminal mode, and New session / Continue / Resume… — the last two greyed, since this directory has no conversation yet](docs/launcher.jpg)
+![The start screen: a directory, the agent picker, Claude Code's terminal mode, and New session / Continue / Resume… — the last two greyed, since this directory has no conversation yet — and below them the card that opens a plain shell](docs/launcher.jpg)
 
 A new tab opens on a start screen: choose a **directory** (recent ones are one
 click away, or browse for it), an **agent** — type to filter the list, since
-there are nine of them — and how the session should open. The
-shell is not among them; its button sits between the agent list and the
-modes. Claude Code also offers **Terminal mode** there, Scrollback or Clicks,
-starting on whichever Settings names as the default.
-Pick a mode and the terminal takes over the tab.
+there are nine of them — and how the session should open. The shell is not
+among them; its card sits below the modes. Claude Code also offers **Terminal
+mode** there, Scrollback or Clicks, starting on whichever Settings names as the
+default. Pick a mode and the terminal takes over the tab.
 
 | Agent       | Command         | New session | Continue          | Pick from past       |
 | ----------- | --------------- | ----------- | ----------------- | -------------------- |
@@ -246,7 +245,8 @@ open.
 
 **Open a plain shell instead** is there for the times you want a plain
 terminal in the same window — it takes no flags, because there is no program to
-pass them to, which is why it sits beside the agent list rather than in it.
+pass them to, which is why it is a card of its own rather than an entry in the
+agent list.
 
 **A directory that does not exist yet** is not an error: Muster offers to create
 it, parents included, and starts the session there once you confirm. `~` means
@@ -802,11 +802,10 @@ for a folder is not asking for an agent to be running in it.
 
 ## 🐚 Just a shell
 
-The start screen lists the agents; below that list, and above the mode
-buttons, sits **Open a plain shell instead**, because the shell is not one of
-them — no flags, no modes, nothing to
-resume. Minimising the window on macOS and clicking the Dock icon brings it
-back; closing the last window quits the app.
+The start screen lists the agents; below the mode buttons sits **Open a plain
+shell instead**, a card of its own, because the shell is not one of them — no
+flags, no modes, nothing to resume. Minimising the window on macOS and clicking
+the Dock icon brings it back; closing the last window quits the app.
 
 A **zsh or bash** tab gets two things an agent tab has no use for. Two
 characters in, the past commands that begin the same way appear under the
