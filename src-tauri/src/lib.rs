@@ -7,6 +7,7 @@ mod diagnostics;
 mod editor;
 mod fonts;
 mod ghost;
+mod github_api;
 mod image;
 mod journal;
 mod link;

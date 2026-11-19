@@ -116,7 +116,11 @@
   "historyLimit": "History length",
   "pullRequests": {
     "label": "Pull request in the footer",
-    "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI once a minute while the tab is on screen. Install gh (cli.github.com) and run gh auth login to see it; without them the chip is not shown."
+    "hint": "Shows the branch's pull request and its checks, asked of your own GitHub CLI once a minute while the tab is on screen. Install gh (cli.github.com) and run gh auth login to see it; without them the chip is not shown, unless the setting below is on."
+  },
+  "pullRequestsPublicApi": {
+    "label": "Without gh, ask GitHub directly",
+    "hint": "When gh is missing or signed out, asks GitHub's public API about a pushed branch of a public github.com repository instead. Muster makes the request itself, sending no login; GitHub allows 60 such requests an hour, so each answer is kept five minutes, and the review decision is not shown. A private repository's name and branch are sent too; GitHub answers with nothing."
   },
   "editCards": {
     "label": "Edit cards over the terminal",

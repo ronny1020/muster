@@ -5,7 +5,8 @@ import { useKeyedState } from '../../../shared/lib/useKeyedState'
 import { type Known, withLastKnown } from './pullrequest'
 
 /**
- * The pull request of `branch`, checked out in `cwd`, while `enabled`.
+ * The pull request of `branch`, checked out in `cwd`, while `enabled`;
+ * `publicApi` lets a missing or signed-out `gh` fall back to GitHub's API.
  *
  * Callers enable it only for the tab on screen: every pane stays mounted, and
  * a hidden tab asking GitHub every minute would spend the user's rate limit
@@ -18,7 +19,7 @@ import { type Known, withLastKnown } from './pullrequest'
 export function usePullRequest(
   cwd: string,
   branch: string,
-  enabled: boolean,
+  { enabled, publicApi }: { enabled: boolean; publicApi: boolean },
 ): PullRequestState | null {
   const [state, setState] = useKeyedState<PullRequestState | null>(
     [cwd, branch],
@@ -44,7 +45,7 @@ export function usePullRequest(
       reading = true
       const last =
         known.current.key === key ? known.current : { state: null, misses: 0 }
-      const next = withLastKnown(await readPullRequest(cwd), last)
+      const next = withLastKnown(await readPullRequest(cwd, publicApi), last)
       reading = false
       if (!live) return
       known.current = { key, ...next }
@@ -59,14 +60,14 @@ export function usePullRequest(
       clearInterval(timer)
       window.removeEventListener('focus', onTick)
     }
-  }, [cwd, branch, enabled, setState])
+  }, [cwd, branch, enabled, publicApi, setState])
 
   return enabled && branch ? state : null
 }
 
-const readPullRequest = async (cwd: string) => {
+const readPullRequest = async (cwd: string, publicApi: boolean) => {
   try {
-    return await pullRequest(cwd)
+    return await pullRequest(cwd, publicApi)
   } catch {
     /* the backend answers every failure as a state; this is the IPC itself */
     return null

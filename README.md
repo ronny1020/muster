@@ -177,9 +177,9 @@ and Scoop routes additionally verify a checksum recorded in their manifests.
 
 ### 🕶️ Privacy
 
-Muster makes one kind of network request of its own: resting the pointer on a
-web link fetches that page, and the image it names, for the hover preview —
-any address the link names, `localhost` included. A Stack Exchange question
+Muster makes two kinds of network request of its own. One is the hover
+preview: resting the pointer on a web link fetches that page, and the image it
+names — any address the link names, `localhost` included. A Stack Exchange question
 is asked of `api.stackexchange.com` instead, and its site's icon of
 `cdn.sstatic.net`. A link you click opens in
 your browser, which makes that request. It has no telemetry, no update check, and no accounts — it
@@ -188,10 +188,15 @@ Those CLIs do talk to their own providers, on their own terms, exactly as they
 would in your usual terminal. The drawers' **Pull** and **Push** run your own
 `git` against your own remote, and only when you press them. **Pull request in
 the footer** has your own `gh` ask GitHub about the branch of the tab on screen
-once a minute — the one request made with no gesture at all. It is on by
+once a minute — a request made with no gesture at all. It is on by
 default, shows nothing without `gh` and a working GitHub login, sends nothing
 until `gh` holds a login — an expired one is still tried — and is turned off
-in Settings.
+in Settings. The other kind is **Without gh, ask GitHub directly**, off by
+default: with it on and `gh` missing or signed out, Muster itself asks
+`api.github.com` about a pushed branch of a github.com repository, with no
+login and no gesture, keeping each answer five minutes. A private repository's
+name and branch are sent too, and GitHub answers that there is no such
+repository.
 
 The agent CLIs are separate, and Muster deliberately does not bundle them.
 Install whichever you use — `claude`, `codex`, `agy` — and check each runs in
@@ -305,13 +310,18 @@ Along the bottom of each tab:
 - **`#18`** — the branch's pull request on GitHub, while **Pull request in the
   footer** is on in Settings, as it is by default. Its mark is green while
   open; a draft, a merged or a closed one is grey, purple or red, with
-  `draft`, `merged` or `closed` beside the number. A check, a cross or an amber
+  `draft`, `merged` or `closed` beside the number. A merged one is dropped
+  once this clone's branch has commits past it, with a git new enough to know
+  `--no-lazy-fetch`; an older one keeps it. A check, a cross or an amber
   dot after it says whether its checks passed, failed or are still running, and
   the tooltip names the repository and says how many, with the review decision.
   Click it to open the pull request in your browser. It is asked of your own
   GitHub CLI, once a minute and only for the tab on screen. It needs the
   [GitHub CLI](https://cli.github.com) installed and signed in with
-  `gh auth login`; without either, the chip is not drawn at all.
+  `gh auth login`; without either, the chip is not drawn at all, unless
+  **Without gh, ask GitHub directly** is on, which covers a pushed branch of a
+  public github.com repository without them — refreshed every five minutes
+  rather than every minute, and without the review decision.
 - **`src/auth.ts also in …`** — a file another tab is changing at the same time.
   See "When two tabs touch one file".
 - **Clicks / Scrollback** — two buttons with the tab's own mode held down.
@@ -938,7 +948,8 @@ Clicks / Scrollback control is the way to change a tab that is already open.
 - **Notifications** — whether to notify, whether to stay quiet on the tab you
   are watching, whether to play a sound, and the cards for other tabs.
 - **Git** — how often to re-read status, how many commits history loads, and
-  whether the footer shows the branch's pull request.
+  whether the footer shows the branch's pull request, and whether it may ask
+  GitHub directly when `gh` cannot.
 - **Live edits** — the cards over the terminal, the Activity view, and the
   flash on an edited file's row, each on its own switch.
 - **Session records** — whether to record what sessions print, and how long to

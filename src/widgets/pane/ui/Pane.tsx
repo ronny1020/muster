@@ -194,7 +194,10 @@ export function Pane({
   const pullRequest = usePullRequest(
     cwd,
     git?.repo && !git.detached ? git.branch : '',
-    settings.pullRequests && shown && Boolean(session),
+    {
+      enabled: settings.pullRequests && shown && Boolean(session),
+      publicApi: settings.pullRequestsPublicApi,
+    },
   )
   const historyOpen = tab.historyOpen && Boolean(git?.repo)
   const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })

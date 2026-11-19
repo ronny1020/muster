@@ -83,9 +83,16 @@ export interface Settings {
   /**
    * Whether the footer shows the branch's pull request, asked of the user's
    * own `gh`. On by default because without `gh` and a working login it shows
-   * nothing, and it sends a request only once `gh` holds a login.
+   * nothing, and it sends a request only once `gh` holds a login — unless
+   * `pullRequestsPublicApi` is on.
    */
   pullRequests: boolean
+  /**
+   * Whether a missing or signed-out `gh` falls back to GitHub's public API for
+   * a pushed branch of a public github.com repository. Off by default: it is
+   * a request Muster makes itself, with no gesture, rather than through `gh`.
+   */
+  pullRequestsPublicApi: boolean
   /**
    * A card over the terminal for each file that changes in the tab's
    * working tree: its name, its `+N −M` and the lines written. The three live-edit surfaces share one
@@ -144,6 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gitPollSeconds: 4,
   historyLimit: 60,
   pullRequests: true,
+  pullRequestsPublicApi: false,
   editCards: true,
   editActivity: true,
   editPulse: true,
@@ -243,6 +251,10 @@ export function normalizeSettings(input: unknown): Settings {
       LIMITS.historyLimit,
     ),
     pullRequests: flag(raw.pullRequests, DEFAULT_SETTINGS.pullRequests),
+    pullRequestsPublicApi: flag(
+      raw.pullRequestsPublicApi,
+      DEFAULT_SETTINGS.pullRequestsPublicApi,
+    ),
     editCards: flag(raw.editCards, DEFAULT_SETTINGS.editCards),
     editActivity: flag(raw.editActivity, DEFAULT_SETTINGS.editActivity),
     editPulse: flag(raw.editPulse, DEFAULT_SETTINGS.editPulse),

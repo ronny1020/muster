@@ -388,19 +388,23 @@ export interface PullRequest {
 }
 
 /**
- * What `gh` could say about a directory's branch: `missing` is no `gh`,
+ * What `gh`, or GitHub's public API in its place, could say about a
+ * directory's branch: `missing` is no `gh`,
  * `signedOut` no login for any host, and `absent` nothing to show — no pull
  * request, a host `gh` does not know or holds no working login for, or a
- * request that failed.
+ * request that failed. `superseded` is a merged pull request the branch has
+ * commits past.
  */
 export type PullRequestState =
   | { kind: 'missing' }
   | { kind: 'signedOut' }
   | { kind: 'absent' }
+  | { kind: 'superseded' }
   | ({ kind: 'found' } & PullRequest)
 
-export const pullRequest = (cwd: string) =>
-  invoke<PullRequestState>('pull_request', { cwd })
+/** With `publicApi`, a missing or signed-out `gh` falls back to GitHub's public API. */
+export const pullRequest = (cwd: string, publicApi: boolean) =>
+  invoke<PullRequestState>('pull_request', { cwd, publicApi })
 
 export const gitLog = (cwd: string, limit: number) =>
   invoke<Commit[]>('git_log', { cwd, limit })
