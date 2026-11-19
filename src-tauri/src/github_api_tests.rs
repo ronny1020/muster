@@ -53,7 +53,12 @@ fn pull(state: &str, merged: bool) -> RawPull {
         state: state.into(),
         draft: false,
         merged_at: merged.then(|| "2026-11-01T00:00:00Z".into()),
-        head: RawHead { sha: "abc".into() },
+        head: RawHead {
+            sha: "abc".into(),
+            repo: Some(RawRepo {
+                full_name: "me/fork".into(),
+            }),
+        },
     }
 }
 
@@ -61,9 +66,28 @@ fn pull(state: &str, merged: bool) -> RawPull {
 fn an_open_pull_request_is_preferred_over_a_newer_closed_one() {
     let mut open = pull("open", false);
     open.number = 9;
-    assert_eq!(pick(vec![pull("closed", true), open]).unwrap().number, 9);
-    assert_eq!(pick(vec![pull("closed", true)]).unwrap().number, 7);
-    assert!(pick(Vec::new()).is_none());
+    assert_eq!(
+        pick(vec![pull("closed", true), open], "me/fork")
+            .unwrap()
+            .number,
+        9
+    );
+    assert_eq!(
+        pick(vec![pull("closed", true)], "Me/Fork").unwrap().number,
+        7
+    );
+    assert!(pick(Vec::new(), "me/fork").is_none());
+}
+
+#[test]
+fn a_same_named_branch_in_another_repository_of_the_owner_is_not_ours() {
+    let mut theirs = pull("open", false);
+    theirs.head.repo = Some(RawRepo {
+        full_name: "me/other".into(),
+    });
+    let mut gone = pull("open", false);
+    gone.head.repo = None;
+    assert!(pick(vec![theirs, gone], "me/fork").is_none());
 }
 
 #[test]
@@ -138,6 +162,9 @@ fn scratch_repo(name: &str) -> std::path::PathBuf {
         &["config", "user.name", "Muster Test"],
         &["config", "user.email", "test@example.invalid"],
         &["config", "commit.gpgsign", "false"],
+        // A directory that does not exist: no hook runs, including the
+        // `prepare-commit-msg` that `--no-verify` does not skip.
+        &["config", "core.hooksPath", "no-hooks"],
         &[
             "commit",
             "--quiet",
@@ -182,7 +209,7 @@ fn a_fork_s_branch_is_looked_for_in_the_repository_upstream_names() {
         push_target(&repo),
         Some(Target {
             base: "them/project".into(),
-            owner: "me".into(),
+            head: "me/fork".into(),
             branch: "feat".into(),
         })
     );
@@ -197,7 +224,7 @@ fn a_branch_pushed_without_an_upstream_is_found_by_its_own_name() {
         push_target(&repo),
         Some(Target {
             base: "me/fork".into(),
-            owner: "me".into(),
+            head: "me/fork".into(),
             branch: "feat".into(),
         })
     );
@@ -244,7 +271,7 @@ fn the_head_owner_is_where_the_branch_is_pushed_and_set_default_picks_the_base()
         push_target(&repo),
         Some(Target {
             base: "them/project".into(),
-            owner: "me".into(),
+            head: "me/fork".into(),
             branch: "feat".into(),
         })
     );

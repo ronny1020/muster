@@ -1112,9 +1112,10 @@ That last test is a comparison of the resolved path against the directory, and
 it is currently a prefix match — a path an agent wrote with `../` in it can
 still satisfy it, so treat it as "where the agent said" rather than a boundary.
 
-One thing leaves your machine through Muster itself: resting the pointer on a
-web link fetches that page's title and picture for the hover preview (see
-Privacy above). A web address you open — in the terminal or in a rendered
+Two things leave your machine through Muster itself, both described under
+Privacy above: resting the pointer on a web link fetches that page's title and
+picture for the hover preview, and, with **Without gh, ask GitHub directly**
+on, the footer asks `api.github.com` about the branch. A web address you open — in the terminal or in a rendered
 document — is handed to your browser, and the agents you run are the agents
 you picked.
 

@@ -133,6 +133,9 @@ fn scratch_repo() -> std::path::PathBuf {
         &["config", "user.name", "Muster Test"],
         &["config", "user.email", "test@example.invalid"],
         &["config", "commit.gpgsign", "false"],
+        // A directory that does not exist: no hook runs, including the
+        // `prepare-commit-msg` that `--no-verify` does not skip.
+        &["config", "core.hooksPath", "no-hooks"],
         &[
             "commit",
             "--quiet",
@@ -164,7 +167,8 @@ fn a_merged_head_is_passed_only_once_the_branch_has_commits_beyond_it() {
         ],
     )
     .unwrap();
-    assert!(has_commits_past(&repo, &merged));
+    // A git too old to know `--no-lazy-fetch` refuses it and answers no.
+    assert_eq!(has_commits_past(&repo, &merged), knows_no_lazy_fetch(&repo));
     // Never fetched here, so the branch may only be behind it.
     assert!(!has_commits_past(&repo, &"f".repeat(40)));
     assert!(!has_commits_past(&repo, "--all"));
@@ -205,4 +209,8 @@ fn a_partial_clone_does_not_fetch_a_missing_head_through_a_program_it_names() {
     assert!(!has_commits_past(&repo, &"e".repeat(40)));
     assert!(!marker.exists(), "git ran the repository's ssh command");
     let _ = std::fs::remove_dir_all(&repo);
+}
+
+fn knows_no_lazy_fetch(repo: &std::path::Path) -> bool {
+    git(repo, &["--no-lazy-fetch", "rev-parse", "HEAD"]).is_some()
 }

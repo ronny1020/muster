@@ -36,6 +36,10 @@ const MAX_BODY_BYTES: u64 = 2 * 1024 * 1024;
 
 type Answers = HashMap<String, (Instant, PullRequestState)>;
 
+/// One lookup at a time, so two windows showing the same branch when its
+/// answer expires spend its requests once.
+static ASKING: Mutex<()> = Mutex::new(());
+
 /// Answers already given, by repository and branch. One that never arrived is
 /// not kept, so a dropped connection costs one poll rather than five minutes;
 /// a refusal is.
@@ -48,7 +52,11 @@ pub(super) fn read(cwd: &Path) -> PullRequestState {
     let Some(target) = push_target(cwd) else {
         return PullRequestState::Absent;
     };
-    let key = format!("{}\n{}:{}", target.base, target.owner, target.branch);
+    let key = format!("{}\n{}:{}", target.base, target.head, target.branch);
+    if let Some(state) = remembered(&key) {
+        return state;
+    }
+    let _asking = ASKING.lock().unwrap_or_else(|poison| poison.into_inner());
     if let Some(state) = remembered(&key) {
         return state;
     }
@@ -76,8 +84,8 @@ fn remembered(key: &str) -> Option<PullRequestState> {
 struct Target {
     /// `owner/repo` of the repository the pull request is opened against.
     base: String,
-    /// The owner of the repository the branch is pushed to.
-    owner: String,
+    /// `owner/repo` of the repository the branch is pushed to.
+    head: String,
     /// The branch's name there.
     branch: String,
 }
@@ -109,7 +117,7 @@ fn push_target(cwd: &Path) -> Option<Target> {
     // Never pushed: there is nothing to ask about, and a local branch's name
     // is not sent anywhere.
     git(cwd, &["rev-parse", "--verify", "--quiet", &pushed])?;
-    let (owner, _) = repository_of(&remote_url(cwd, remote, &["--push"])?)?;
+    let (owner, repo) = repository_of(&remote_url(cwd, remote, &["--push"])?)?;
     let remotes = git(cwd, &["remote"])?;
     let marked = git(
         cwd,
@@ -130,7 +138,7 @@ fn push_target(cwd: &Path) -> Option<Target> {
         .find_map(|name| repository_of(&remote_url(cwd, name, &[])?))?;
     Some(Target {
         base: format!("{base_owner}/{base_name}"),
-        owner,
+        head: format!("{owner}/{repo}"),
         branch,
     })
 }
@@ -181,15 +189,16 @@ fn repository_of(url: &str) -> Option<(String, String)> {
 /// What GitHub says about the target, and whether it is settled enough to
 /// keep, or `None` when a request never got an answer.
 fn ask(target: &Target) -> Option<(PullRequestState, bool)> {
+    let owner = target.head.split('/').next().unwrap_or_default();
     let route = format!(
-        "repos/{}/pulls?state=all&per_page=10&head={}",
+        "repos/{}/pulls?state=all&per_page=100&head={}",
         target.base,
-        encode(&format!("{}:{}", target.owner, target.branch))
+        encode(&format!("{owner}:{}", target.branch))
     );
     // A refusal is an answer: a private repository is a 404 and the hour's
     // limit a 403, and asking again each minute would spend the limit on both.
     let pull = match get::<Vec<RawPull>>(&route) {
-        Reply::Body(pulls) => pick(pulls),
+        Reply::Body(pulls) => pick(pulls, &target.head),
         Reply::Refused => None,
         Reply::Failed => return None,
     };
@@ -220,11 +229,22 @@ fn checks_of(base: &str, sha: &str) -> (Option<Checks>, bool) {
     }
 }
 
-/// An open pull request over a closed one, as `gh pr view` prefers it; the
-/// list comes newest first.
-fn pick(pulls: Vec<RawPull>) -> Option<RawPull> {
-    let open = pulls.iter().position(|pull| pull.state == "open");
-    pulls.into_iter().nth(open.unwrap_or(0))
+/// The newest pull request from `head`'s repository, an open one over a
+/// closed one as `gh pr view` prefers it. GitHub filters by owner and branch
+/// only, so a fork in the same organisation with a branch of the same name
+/// answers too; the list comes newest first.
+fn pick(pulls: Vec<RawPull>, head: &str) -> Option<RawPull> {
+    let mut ours: Vec<RawPull> = pulls
+        .into_iter()
+        .filter(|pull| {
+            pull.head
+                .repo
+                .as_ref()
+                .is_some_and(|repo| repo.full_name.eq_ignore_ascii_case(head))
+        })
+        .collect();
+    let open = ours.iter().position(|pull| pull.state == "open");
+    (!ours.is_empty()).then(|| ours.swap_remove(open.unwrap_or(0)))
 }
 
 fn summarize(pull: RawPull, checks: Option<Checks>) -> PullRequest {
@@ -366,6 +386,13 @@ struct RawPull {
 #[derive(Deserialize)]
 struct RawHead {
     sha: String,
+    /// `null` once the fork it came from is deleted.
+    repo: Option<RawRepo>,
+}
+
+#[derive(Deserialize)]
+struct RawRepo {
+    full_name: String,
 }
 
 #[derive(Deserialize)]
