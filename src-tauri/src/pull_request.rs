@@ -1,28 +1,33 @@
 //! The pull request a branch has on GitHub, asked of the user's own `gh`.
 //!
-//! The app holds no GitHub credential and makes no request of its own: `gh`
-//! signs the request with the login the user gave it, and where there is no
-//! `gh` or no login the answer says so rather than failing.
+//! The app holds no GitHub credential: `gh` signs the request with the login
+//! the user gave it, and where there is no `gh` or no login the answer says so
+//! rather than failing — or, when the user allowed it, is asked of GitHub's
+//! public API with no credential at all ([`crate::github_api`]).
 
 use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{platform, sync, workspace::without_repository_overrides};
+use crate::{
+    github_api, platform, sync,
+    workspace::{git_in, without_repository_overrides},
+};
 
 /// What the footer can say about the branch checked out in `cwd`.
 ///
 /// Read by `gh pr view`, which finds the pull request the way `gh` does for the
 /// user — through the branch's push target — so a fork's branch named `main`
-/// is not mistaken for someone else's.
+/// is not mistaken for someone else's. With `public_api`, a missing or
+/// signed-out `gh` falls back to GitHub's public API ([`github_api`]).
 #[tauri::command]
-pub async fn pull_request(cwd: String) -> PullRequestState {
-    tauri::async_runtime::spawn_blocking(move || read(Path::new(&cwd)))
+pub async fn pull_request(cwd: String, public_api: bool) -> PullRequestState {
+    tauri::async_runtime::spawn_blocking(move || read(Path::new(&cwd), public_api))
         .await
         .unwrap_or(PullRequestState::Absent)
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PullRequestState {
     /// No `gh` where the login shell looks.
@@ -34,43 +39,51 @@ pub enum PullRequestState {
     /// Nothing to show. `gh` gives one exit status for no pull request on this
     /// branch, a remote on a host it does not know, and a request that failed.
     Absent,
+    /// The pull request `gh` found is merged and the branch has commits past
+    /// it, which no pull request carries yet. Distinct from
+    /// [`PullRequestState::Absent`] so the footer drops it at once rather than
+    /// holding it through what looks like one failed read.
+    Superseded,
     Found(PullRequest),
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequest {
-    number: u64,
-    title: String,
-    url: String,
-    stage: Stage,
-    review: Option<Review>,
-    /// `None` when `gh pr checks` failed to answer.
-    checks: Option<Checks>,
+    pub(crate) number: u64,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    pub(crate) stage: Stage,
+    pub(crate) review: Option<Review>,
+    /// `None` when the checks could not be read.
+    pub(crate) checks: Option<Checks>,
+    /// The commit the pull request last pointed at, read here and never sent.
+    #[serde(skip)]
+    pub(crate) head: String,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
-enum Stage {
+pub(crate) enum Stage {
     Open,
     Draft,
     Merged,
     Closed,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
-enum Review {
+pub(crate) enum Review {
     Approved,
     ChangesRequested,
     Required,
 }
 
-#[derive(Serialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Debug, PartialEq, Default, Clone, Copy)]
 pub struct Checks {
-    passed: u32,
-    failed: u32,
-    pending: u32,
+    pub(crate) passed: u32,
+    pub(crate) failed: u32,
+    pub(crate) pending: u32,
 }
 
 /// `gh`'s exit status when a command needs a login it does not have.
@@ -87,27 +100,47 @@ const DEADLINE: Duration = Duration::from_secs(20);
 /// does not parse.
 const GH_OVERRIDES: [&str; 4] = ["GH_REPO", "GH_HOST", "GH_FORCE_TTY", "CLICOLOR_FORCE"];
 
-fn read(cwd: &Path) -> PullRequestState {
+fn read(cwd: &Path, public_api: bool) -> PullRequestState {
     // A directory that no longer exists fails the spawn with the same error a
     // missing `gh` does.
     if !cwd.is_dir() {
         return PullRequestState::Absent;
     }
-    let state = match sync::run_bounded(gh(cwd).args(["pr", "view", "--json", FIELDS]), DEADLINE) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => PullRequestState::Missing,
-        Err(_) => PullRequestState::Absent,
-        Ok(out) if out.stopped => PullRequestState::Absent,
-        Ok(out) if out.status.code() == Some(AUTH_REQUIRED) => PullRequestState::SignedOut,
-        Ok(out) if out.status.success() => parse(&out.stdout),
-        Ok(_) => PullRequestState::Absent,
-    };
-    match state {
+    match ask_gh(cwd) {
+        PullRequestState::Missing | PullRequestState::SignedOut if public_api => {
+            match github_api::read(cwd) {
+                PullRequestState::Found(pull_request) if superseded(cwd, &pull_request) => {
+                    PullRequestState::Superseded
+                }
+                other => other,
+            }
+        }
+        PullRequestState::Found(pull_request) if superseded(cwd, &pull_request) => {
+            PullRequestState::Superseded
+        }
         PullRequestState::Found(mut pull_request) => {
             pull_request.checks = read_checks(cwd, &pull_request.url);
             PullRequestState::Found(pull_request)
         }
         other => other,
     }
+}
+
+fn ask_gh(cwd: &Path) -> PullRequestState {
+    match sync::run_bounded(gh(cwd).args(["pr", "view", "--json", FIELDS]), DEADLINE) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => PullRequestState::Missing,
+        Err(_) => PullRequestState::Absent,
+        Ok(out) if out.stopped => PullRequestState::Absent,
+        Ok(out) if out.status.code() == Some(AUTH_REQUIRED) => PullRequestState::SignedOut,
+        Ok(out) if out.status.success() => parse(&out.stdout),
+        Ok(_) => PullRequestState::Absent,
+    }
+}
+
+/// A merged pull request the branch has commits past, which no pull request
+/// carries yet.
+fn superseded(cwd: &Path, pull_request: &PullRequest) -> bool {
+    pull_request.stage == Stage::Merged && has_commits_past(cwd, &pull_request.head)
 }
 
 /// The checks on the pull request at `url`, asked by its URL so that a branch
@@ -125,6 +158,34 @@ fn read_checks(cwd: &Path, url: &str) -> Option<Checks> {
         Ok(out) if reports_no_checks(&out.stderr) => Some(Checks::default()),
         _ => None,
     }
+}
+
+/// Whether `HEAD` carries a commit `head` does not. A `head` that is not a
+/// hex id answers `false` before git sees it, so it cannot reach git as an
+/// option; one this clone has never fetched answers `false` too, since the
+/// branch may only be behind it.
+///
+/// Lazy fetching is off because a partial clone would otherwise fetch a
+/// missing `head` from its promisor remote, running whatever
+/// `core.sshCommand` the repository names, on a poll nobody clicked. A git
+/// too old to know `--no-lazy-fetch` refuses it, and the answer there is
+/// `false`: the merged pull request stays rather than anything being fetched.
+fn has_commits_past(cwd: &Path, head: &str) -> bool {
+    is_sha(head)
+        && git_in(cwd)
+            .args([
+                "--no-lazy-fetch",
+                "rev-list",
+                "--max-count=1",
+                &format!("{head}..HEAD"),
+                "--",
+            ])
+            .output()
+            .is_ok_and(|out| out.status.success() && !out.stdout.trim_ascii().is_empty())
+}
+
+pub(crate) fn is_sha(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn reports_no_checks(stderr: &[u8]) -> bool {
@@ -150,7 +211,7 @@ fn gh(cwd: &Path) -> std::process::Command {
     command
 }
 
-const FIELDS: &str = "number,title,url,state,isDraft,reviewDecision";
+const FIELDS: &str = "number,title,url,state,isDraft,reviewDecision,headRefOid";
 
 fn parse(json: &[u8]) -> PullRequestState {
     serde_json::from_slice::<RawPullRequest>(json)
@@ -169,6 +230,8 @@ struct RawPullRequest {
     is_draft: bool,
     #[serde(default)]
     review_decision: Option<String>,
+    #[serde(default)]
+    head_ref_oid: String,
 }
 
 fn summarize(raw: RawPullRequest) -> PullRequest {
@@ -191,6 +254,7 @@ fn summarize(raw: RawPullRequest) -> PullRequest {
         stage,
         review,
         checks: None,
+        head: raw.head_ref_oid,
     }
 }
 

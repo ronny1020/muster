@@ -168,6 +168,7 @@ building.
 | Commit, pull, push, cancel, and how git writes run                     | `src-tauri/src/sync.rs`                                              |
 | Linked worktrees: layout, nested trees, held branches                  | `src-tauri/src/worktree.rs`                                          |
 | A branch's pull request, asked of the user's `gh`                      | `src-tauri/src/pull_request.rs`                                      |
+| The same, asked of GitHub's public API when `gh` cannot answer         | `src-tauri/src/github_api.rs`                                        |
 | Commands exposed to the frontend                                       | `src-tauri/src/lib.rs`                                               |
 | Typed wrappers over those commands                                     | `src/shared/ipc.ts`                                                  |
 | Tab state, as a pure reducer                                           | `src/entities/tab/model/deck.ts`                                     |

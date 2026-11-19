@@ -138,7 +138,16 @@ several of their keys are programs git runs on a read. The footer polls
 `status` and the live-edit reader diffs with no click at all, so `git_in`
 passes `-c core.fsmonitor=false` to every call and every `diff` carries
 `NO_DRIVERS` (`--no-ext-diff --no-textconv`); the planted-program tests in
-`review_tests.rs` fail if either goes. Three still run, measured against git
+`review_tests.rs` fail if either goes. A read that names a commit someone else
+chose — the merged pull request's head, in `pull_request.rs` — also passes
+`--no-lazy-fetch`, because a partial clone would fetch a missing one from its
+promisor remote through the repository's `core.sshCommand`; its test fails if
+that goes. A git too old to know the option refuses it, and the check then
+answers no rather than retrying without it: deciding which clones cannot fetch
+lazily means listing every setting that makes a promisor remote, and missing
+one runs the program. It is not in
+`git_in`, because the review panel's diffs need the fetch in a blob-less
+clone. Three still run, measured against git
 2.50: a `filter.<name>.clean` (or `process`) the repository assigns runs on
 `status` and `diff` of a file whose stat data moved; a `post-index-change`
 hook runs when `status` refreshes the index; and `log.showSignature` makes

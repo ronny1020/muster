@@ -28,8 +28,9 @@ None of those four is you, and none of them should be able to read a file you
 did not choose or put an argument in front of a program you did not type. The
 network is the exception, twice over and on purpose: hovering a link fetches
 its page for the preview — see "What hovering a link fetches" below — and the
-pull request chip asks GitHub through your own `gh` — see "The pull
-request chip runs your own gh".
+pull request chip asks GitHub through your own `gh`, or, if you allow it,
+GitHub's public API with no login — see "The pull request chip runs your own
+gh".
 
 The last one is worth spelling out, because it is the only inbound channel a
 released build has. A development build asked for with `bun run dev:mcp`
@@ -72,7 +73,12 @@ the history drawer's `log` runs the repository's `gpg.program` for every
 signed commit. Until those are closed, treat a tab open on a repository an
 agent has had unsupervised the way the buttons above ask you to: read
 `.git/config`'s `filter.*`, `log.*` and `gpg.*` entries and `.git/hooks`
-first. The pull request chip's `gh` runs git with no click too, and that git
+first. The pull request chip's own `rev-list`, which checks whether the branch
+has moved past a merged pull request, runs with `--no-lazy-fetch`, so a partial
+clone cannot fetch the missing commit through a `core.sshCommand` it names. A
+git too old to know the option refuses it, and the check then answers no: the
+merged pull request stays rather than anything being fetched. The pull
+request chip's `gh` runs git with no click too, and that git
 is `gh`'s own, without the switches above. What `gh pr view` runs —
 `symbolic-ref`, `config`, `remote -v` and `rev-parse`, traced against gh 2.103 —
 reads no index and writes nothing, and `gh pr checks`, asked by the pull
@@ -113,6 +119,27 @@ asking anything, and `GH_NO_UPDATE_NOTIFIER` and `GH_TELEMETRY=0` from
 checking for a newer `gh` and sending its usage data, which would be requests
 nobody asked for.
 
+**Without gh, ask GitHub directly** is off by default. With it on, a tab whose
+`gh` is missing or signed out has Muster ask `api.github.com` itself
+(`github_api.rs`), and that request carries no login, token or cookie: it can
+read only what anyone can read about a public repository. A private
+repository's name and branch are still sent, and GitHub answers that it has no
+such repository. It is made only for a branch with a remote-tracking ref on a
+github.com remote — one that has been pushed or fetched — so a branch that
+exists only locally is never named; the repository and branch are read from
+`git`, the owner and repository names must be plain ASCII before they reach the
+URL, and the branch name is percent-encoded into the query. No other host is
+asked, whatever a remote names: a redirect is followed only while it stays on
+`api.github.com`, which is how GitHub answers for a renamed repository. Each
+request stops after ten seconds and reads at most 2 MB, and an answer is kept
+five minutes, so a branch on screen costs three requests in that time — more
+for a renamed repository, whose redirects count too. GitHub's refusals are
+kept like any answer: a private repository's 404 and a 403 from the hour's
+limit are not asked again for five minutes. A request that got no answer at
+all is not kept, and is tried again on the next poll. The
+title and link that come back are shown and opened under the same rules as
+`gh`'s.
+
 `GH_REPO` and `GH_HOST`, which name a repository or host over the one a
 directory's remotes do, and `GH_FORCE_TTY` and `CLICOLOR_FORCE`, which colour
 the JSON, are removed
@@ -123,9 +150,10 @@ login for — `github.com` and any GitHub Enterprise host you signed in to — s
 repository that repoints `origin` can choose which of those, and which
 repository on it, but cannot send your login anywhere else. That choice is why
 the tooltip and the spoken label name the repository: a pull request elsewhere
-cannot pass for the tab's own. What comes back is a number, a title, a URL and
-a few counts; the title is drawn as text and the URL opens only if it is `http` or
-`https`.
+cannot pass for the tab's own. What comes back is a number, a title, a URL, a
+commit id and a few counts — the commit id only so that `git rev-list` can drop
+a merged pull request the branch has moved past; the title is drawn as text and
+the URL opens only if it is `http` or `https`.
 
 ## The debugging socket, and why a release build has none
 

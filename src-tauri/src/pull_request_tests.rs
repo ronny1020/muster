@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::git;
 
 fn found(json: &str) -> PullRequest {
     match parse(json.as_bytes()) {
@@ -89,7 +90,7 @@ fn output_that_is_not_a_pull_request_is_absent_rather_than_an_error() {
 #[test]
 fn a_directory_that_no_longer_exists_is_absent_not_a_missing_gh() {
     let gone = std::env::temp_dir().join(format!("muster-gone-{}", std::process::id()));
-    assert_eq!(read(&gone), PullRequestState::Absent);
+    assert_eq!(read(&gone, true), PullRequestState::Absent);
 }
 
 #[test]
@@ -103,4 +104,113 @@ fn the_wire_format_is_tagged_by_kind_with_the_pull_request_inline() {
         serde_json::to_value(PullRequestState::SignedOut).unwrap()["kind"],
         "signedOut"
     );
+    assert_eq!(
+        serde_json::to_value(PullRequestState::Superseded).unwrap()["kind"],
+        "superseded"
+    );
+}
+
+#[test]
+fn the_head_gh_reports_is_kept_and_not_sent() {
+    let json = pull_request_with(r#","headRefOid":"abc123""#);
+    assert_eq!(found(&json).head, "abc123");
+    let wire = serde_json::to_value(parse(json.as_bytes())).unwrap();
+    assert!(wire.get("head").is_none());
+}
+
+/// A repository of its own under the temp dir, with throwaway commits that do
+/// not depend on the developer's identity, signing key or hooks.
+fn scratch_repo() -> std::path::PathBuf {
+    let repo = std::env::temp_dir().join(format!(
+        "muster-pr-head-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).expect("mkdir");
+    for args in [
+        &["init", "--quiet"][..],
+        &["config", "user.name", "Muster Test"],
+        &["config", "user.email", "test@example.invalid"],
+        &["config", "commit.gpgsign", "false"],
+        // A directory that does not exist: no hook runs, including the
+        // `prepare-commit-msg` that `--no-verify` does not skip.
+        &["config", "core.hooksPath", "no-hooks"],
+        &[
+            "commit",
+            "--quiet",
+            "--no-verify",
+            "--allow-empty",
+            "-m",
+            "merged",
+        ],
+    ] {
+        assert!(git(&repo, args).is_some(), "git {args:?} failed");
+    }
+    repo
+}
+
+#[test]
+fn a_merged_head_is_passed_only_once_the_branch_has_commits_beyond_it() {
+    let repo = scratch_repo();
+    let merged = git(&repo, &["rev-parse", "HEAD"]).unwrap();
+    assert!(!has_commits_past(&repo, &merged));
+    git(
+        &repo,
+        &[
+            "commit",
+            "--quiet",
+            "--no-verify",
+            "--allow-empty",
+            "-m",
+            "new",
+        ],
+    )
+    .unwrap();
+    // A git too old to know `--no-lazy-fetch` refuses it and answers no.
+    assert_eq!(has_commits_past(&repo, &merged), knows_no_lazy_fetch(&repo));
+    // Never fetched here, so the branch may only be behind it.
+    assert!(!has_commits_past(&repo, &"f".repeat(40)));
+    assert!(!has_commits_past(&repo, "--all"));
+    assert!(!has_commits_past(&repo, ""));
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_partial_clone_does_not_fetch_a_missing_head_through_a_program_it_names() {
+    let repo = scratch_repo();
+    let marker = repo.join("fetched");
+    // Quoted when configured: git runs it through a shell, and the scratch
+    // path carries the thread id's parentheses.
+    let program = repo.join("ssh.sh");
+    std::fs::write(
+        &program,
+        format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+    )
+    .expect("write the program");
+    std::fs::set_permissions(
+        &program,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("make it executable");
+    for args in [
+        &["config", "extensions.partialClone", "origin"][..],
+        &["config", "remote.origin.url", "ssh://example.invalid/x"],
+        &["config", "remote.origin.promisor", "true"],
+        &[
+            "config",
+            "core.sshCommand",
+            &format!("'{}'", program.display()),
+        ],
+    ] {
+        assert!(git(&repo, args).is_some(), "git {args:?} failed");
+    }
+    assert!(!has_commits_past(&repo, &"e".repeat(40)));
+    assert!(!marker.exists(), "git ran the repository's ssh command");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+fn knows_no_lazy_fetch(repo: &std::path::Path) -> bool {
+    git(repo, &["--no-lazy-fetch", "rev-parse", "HEAD"]).is_some()
 }

@@ -104,6 +104,13 @@ test('a failed read keeps the pull request it had, but a signed-out gh does not'
   ).toEqual({ kind: 'absent' })
 })
 
+test('a merged pull request the branch has moved past goes on the first read', () => {
+  const merged = { state: found({ stage: 'merged' }), misses: 0 }
+  const next = withLastKnown({ kind: 'superseded' }, merged)
+  expect(next).toEqual({ state: { kind: 'superseded' }, misses: 0 })
+  expect(pullRequestChip(next.state, t)).toBeNull()
+})
+
 test('a second failed read in a row shows what gh said', () => {
   const once = withLastKnown({ kind: 'absent' }, shown)
   expect(withLastKnown({ kind: 'absent' }, once).state).toEqual({

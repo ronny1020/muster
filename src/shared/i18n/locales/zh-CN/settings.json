@@ -112,7 +112,11 @@
   "historyLimit": "历史长度",
   "pullRequests": {
     "label": "页脚显示拉取请求",
-    "hint": "显示此分支的拉取请求及其检查，由你自己的 GitHub CLI 在标签页显示时每分钟查询一次。请安装 gh（cli.github.com）并运行 gh auth login 才会显示；没有的话不显示此项。"
+    "hint": "显示此分支的拉取请求及其检查，由你自己的 GitHub CLI 在标签页显示时每分钟查询一次。请安装 gh（cli.github.com）并运行 gh auth login 才会显示；没有的话不显示此项，除非打开了下方的设置。"
+  },
+  "pullRequestsPublicApi": {
+    "label": "没有 gh 时直接询问 GitHub",
+    "hint": "当 gh 未安装或未登录时，改向 GitHub 的公开 API 查询 github.com 公开仓库中已推送的分支。请求由 Muster 自己发出，不附带任何登录信息；GitHub 每小时只允许 60 次此类请求，因此每次的结果会保留五分钟，且不显示审查结论。私有仓库的名称和分支同样会发出，GitHub 不会返回任何内容。"
   },
   "editCards": {
     "label": "在终端上显示编辑卡片",

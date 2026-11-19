@@ -397,6 +397,18 @@ export function SettingsPane() {
               label={t('pullRequests.label')}
             />
           </Row>
+          <Row
+            label={t('pullRequestsPublicApi.label')}
+            hint={t('pullRequestsPublicApi.hint')}
+          >
+            <Toggle
+              checked={settings.pullRequestsPublicApi}
+              onChange={(pullRequestsPublicApi) =>
+                update({ pullRequestsPublicApi })
+              }
+              label={t('pullRequestsPublicApi.label')}
+            />
+          </Row>
         </Group>
 
         <Group title={t('groups.edits')}>
