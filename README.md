@@ -1041,6 +1041,14 @@ will go on reporting success without installing anything. Repair it with `brew
 reinstall --cask ronny1020/tap/muster`, then clear the quarantine attribute as
 above.
 
+**The Dock icon is blank after updating or restarting.** The Dock tile followed
+an old copy into the Trash: a pinned app is tracked as that copy, not as its
+path, so emptying the Trash or restarting leaves the tile pointing at nothing.
+Drag the blank tile out of the Dock and pin `/Applications/Muster.app` again.
+To keep it from coming back, update with `brew update && brew upgrade --cask
+muster` and never move the app to the Trash yourself — Homebrew never puts the
+old copy there, so the tile goes on finding the app in Applications.
+
 **Still the old version after updating.** A running copy keeps the version it
 started with, so quit Muster and open it again. To see which version is on disk,
 run `defaults read /Applications/Muster.app/Contents/Info.plist
