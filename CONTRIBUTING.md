@@ -178,6 +178,7 @@ building.
 | The drag itself: reorder, tear-off, carrying a window                  | `src/widgets/tab-strip/model/useTabDrag.ts`                          |
 | The label that follows a torn-off tab                                  | `src-tauri/src/ghost.rs`, `src/widgets/tab-strip/ui/DragGhost.tsx`   |
 | Resizing columns by the line between them                              | `src/app/ColumnEdges.tsx`, `src/app/edges.ts`                        |
+| Columns on one tree sharing a footer and panels                        | `src/app/trees.ts`, `src/widgets/pane/model/treeview.ts`             |
 | Checking a tab that arrives from another window                        | `src/entities/tab/model/moved.ts`                                    |
 | Opening, restoring and handing tabs to windows                         | `src-tauri/src/window.rs`                                            |
 | A session's output stream and its backlog                              | `src-tauri/src/output.rs`                                            |

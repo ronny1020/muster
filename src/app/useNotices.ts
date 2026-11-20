@@ -19,6 +19,7 @@ import {
   worthRaising,
 } from '../features/notices/model/notices'
 import { useKeyChange } from '../shared/lib/useKeyChange'
+import type { TreeView } from '../widgets/pane/model/treeview'
 
 /**
  * The window's one list of notices, and the glue between it and the collision
@@ -29,12 +30,15 @@ export function useNotices({
   settings,
   current,
   dispatch,
+  openPanels,
 }: {
   deck: Deck
   settings: Settings
   /** The same two, as of the last commit, for a raise arriving between renders. */
   current: RefObject<{ deck: Deck; settings: Settings }>
   dispatch: (action: DeckAction) => void
+  /** Opens a tab's panels, wherever its columns keep them. */
+  openPanels: (tabId: string, panels: Partial<TreeView>) => void
 }) {
   const [notices, setNotices] = useState<Notice[]>([])
   const ids = useRef(0)
@@ -141,12 +145,11 @@ export function useNotices({
         return
       case 'committed':
       case 'gitFailed':
-        dispatch({ type: 'setHistory', id, open: true })
+        openPanels(id, { history: true })
         return
       case 'conflict':
       case 'collision':
-        dispatch({ type: 'setReviewView', id, view: 'changes' })
-        dispatch({ type: 'setReview', id, open: true })
+        openPanels(id, { view: 'changes', review: true })
         return
     }
   }

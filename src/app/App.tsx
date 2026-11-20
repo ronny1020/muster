@@ -62,6 +62,9 @@ import { decideBellResponse, notify } from '../shared/lib/notify'
 import type { Settings } from '../entities/preferences/model/settings'
 import { runningAgent } from '../entities/agent/model/agents'
 import { i18n } from '../shared/i18n/i18n'
+import { useKeyChange } from '../shared/lib/useKeyChange'
+import type { PaneChrome, TreeView } from '../widgets/pane/model/treeview'
+import { footerOwners, joinSyncs, panelLeads, type TreeRun } from './trees'
 
 /**
  * Tab ids, which also key the backend's PTY map.
@@ -173,17 +176,6 @@ export function App({ adopted }: AppProps) {
   useLayoutEffect(() => {
     current.current = { deck, settings }
   }, [deck, settings])
-
-  const {
-    cards,
-    raise,
-    openNotice,
-    dismissNotice,
-    markNoticesSeen,
-    onCollisions,
-    reveal,
-    clearReveal,
-  } = useNotices({ deck, settings, current, dispatch })
 
   const open = useCallback(
     () => dispatch({ type: 'open', id: nextTabId() }),
@@ -349,14 +341,80 @@ export function App({ adopted }: AppProps) {
     () => dispatch({ type: 'openSettings', id: nextTabId() }),
     [],
   )
-  const toggleHistory = useCallback(
-    () => dispatch({ type: 'toggleHistory', id: deck.activeId }),
-    [deck.activeId],
+  /** Each tab's tree, as its pane last read it. */
+  const [roots, setRoots] = useState<Record<string, string>>({})
+  const onRoot = useCallback(
+    (id: string, root: string) =>
+      setRoots((known) =>
+        known[id] === root ? known : { ...known, [id]: root },
+      ),
+    [],
   )
-  const toggleReview = useCallback(
-    () => dispatch({ type: 'toggleReview', id: deck.activeId }),
-    [deck.activeId],
+  const latestRoots = useRef(roots)
+  useLayoutEffect(() => {
+    latestRoots.current = roots
+  }, [roots])
+  const chromes = useRef(new Map<string, PaneChrome>())
+  const register = useCallback((id: string, chrome: PaneChrome | null) => {
+    if (chrome) chromes.current.set(id, chrome)
+    else chromes.current.delete(id)
+  }, [])
+  /**
+   * Writes a panel change to the tab and to every other column showing its
+   * tree, so the columns stay alike. The tab's own column is skipped because
+   * a card is about to bring the tab forward there. Each pane keeps its own
+   * copy, so a column that leaves the tree keeps what was on screen.
+   */
+  const writePanels = useCallback((id: string, patch: Partial<TreeView>) => {
+    const { deck } = current.current
+    const known = latestRoots.current
+    const root = known[id] ?? ''
+    const column = deck.tabs.find((tab) => tab.id === id)?.column
+    const others = root
+      ? deck.shown.filter(
+          (shownId, at) => at !== column && known[shownId] === root,
+        )
+      : []
+    for (const target of [id, ...others]) {
+      chromes.current.get(target)?.adopt(patch)
+    }
+  }, [])
+  const focus = focusedColumn(deck)
+  /** Puts a path in front of the session with the keyboard, if it is live. */
+  const sendToKeyboard = useCallback(
+    (path: string, suffix?: string) =>
+      chromes.current.get(current.current.deck.activeId)?.send(path, suffix) ??
+      false,
+    [],
   )
+  const togglePanel = useCallback(
+    (panel: 'history' | 'review') => {
+      const { deck } = current.current
+      const tab = deck.tabs.find((entry) => entry.id === deck.activeId)
+      if (!tab) return
+      const open = panel === 'history' ? tab.historyOpen : tab.reviewOpen
+      writePanels(tab.id, { [panel]: !open })
+    },
+    [writePanels],
+  )
+  const toggleHistory = useCallback(() => togglePanel('history'), [togglePanel])
+  const toggleReview = useCallback(() => togglePanel('review'), [togglePanel])
+  const {
+    cards,
+    raise,
+    openNotice,
+    dismissNotice,
+    markNoticesSeen,
+    onCollisions,
+    reveal,
+    clearReveal,
+  } = useNotices({
+    deck,
+    settings,
+    current,
+    dispatch,
+    openPanels: writePanels,
+  })
   const find = useCallback(
     () => dispatch({ type: 'setFind', id: deck.activeId, open: true }),
     [deck.activeId],
@@ -486,8 +544,59 @@ export function App({ adopted }: AppProps) {
       },
     })
 
+  /** Each shown tab's tree as of the last pass, to tell who was there first. */
+  const previousRoots = useRef(new Map<string, string>())
+  /** The tab that last had the keyboard on each shared tree. */
+  const [holders, setHolders] = useState<Record<string, string>>({})
+  // A column arriving on a tree another column shows takes that column's view,
+  // so the tree's columns stay alike. A layout effect because the views are
+  // the panes' own state, and the arrival must not paint with its old one.
+  useLayoutEffect(() => {
+    const now = new Map(deck.shown.map((id) => [id, roots[id] ?? '']))
+    const syncs = joinSyncs({
+      now,
+      previous: previousRoots.current,
+      activeId: deck.activeId,
+    })
+    previousRoots.current = now
+    for (const { from, to } of syncs) {
+      const view = chromes.current.get(from)?.read()
+      if (!view) continue
+      for (const id of to) chromes.current.get(id)?.adopt(view)
+    }
+  }, [deck.shown, deck.activeId, roots])
+  const activeRoot = roots[deck.activeId] ?? ''
+  useKeyChange([deck.activeId, activeRoot], () => {
+    if (activeRoot) {
+      setHolders((known) => ({ ...known, [activeRoot]: deck.activeId }))
+    }
+  })
+
+  /** Where each run's footer is drawn, by `slotKey`. */
+  const [slots, setSlots] = useState<Record<string, HTMLElement>>({})
+  const onSlot = useCallback(
+    (key: string, node: HTMLElement | null) =>
+      setSlots((known) => {
+        if (node) return known[key] === node ? known : { ...known, [key]: node }
+        const { [key]: _gone, ...rest } = known
+        return rest
+      }),
+    [],
+  )
+
+  const columnsNow = {
+    shown: deck.shown,
+    roots: deck.shown.map((id) => roots[id] ?? ''),
+    focus,
+  }
+  const leads = panelLeads(columnsNow, holders)
+  const owners = footerOwners(columnsNow)
+  /** Where each tab that draws a footer draws it. */
+  const footers = new Map(
+    owners.map(({ run, owner }) => [owner, slots[slotKey(run)] ?? null]),
+  )
+
   const columns = deck.shown.length
-  const focus = focusedColumn(deck)
   useStripReport(panes)
   /**
    * The widths a column edge being dragged would leave, while one is. A
@@ -572,7 +681,7 @@ export function App({ adopted }: AppProps) {
               `minmax(min(${MIN_COLUMN_PX}px, ${100 / columns}%), ${width / Math.min(...widths)}fr)`,
           )
           .join(' '),
-        gridTemplateRows: 'auto minmax(0, 1fr)',
+        gridTemplateRows: 'auto minmax(0, 1fr) auto',
       }}
     >
       {deck.shown.map((shownId, column) => (
@@ -629,27 +738,46 @@ export function App({ adopted }: AppProps) {
         pollSeconds={settings.gitPollSeconds}
         onChange={onCollisions}
       >
-        {byId(deck.tabs).map((tab) => (
-          <Pane
-            key={tab.id}
-            tab={tab}
-            active={tab.id === deck.activeId}
-            shown={deck.shown[tab.column] === tab.id}
-            onActivate={() => dispatch({ type: 'activate', id: tab.id })}
-            onLaunch={launch(tab.id)}
-            onOpenSettings={openSettings}
-            dispatch={dispatch}
-            onNotice={raise}
-            notices={
-              tab.id === deck.activeId
-                ? { cards, onOpen: openNotice, onDismiss: dismissNotice }
-                : undefined
-            }
-            reveal={reveal?.tabId === tab.id ? reveal : null}
-            onRevealed={clearReveal}
-          />
-        ))}
+        {byId(deck.tabs).map((tab) => {
+          const shown = deck.shown[tab.column] === tab.id
+          const root = shown ? (roots[tab.id] ?? '') : ''
+          const lead = leads.get(root)
+          const drawsPanels = !lead || lead === tab.id
+          return (
+            <Pane
+              key={tab.id}
+              tab={tab}
+              active={tab.id === deck.activeId}
+              shown={shown}
+              onActivate={() => dispatch({ type: 'activate', id: tab.id })}
+              onLaunch={launch(tab.id)}
+              onOpenSettings={openSettings}
+              dispatch={dispatch}
+              onNotice={raise}
+              notices={
+                tab.id === deck.activeId
+                  ? { cards, onOpen: openNotice, onDismiss: dismissNotice }
+                  : undefined
+              }
+              reveal={reveal?.tabId === tab.id ? reveal : null}
+              onRevealed={clearReveal}
+              panels={drawsPanels}
+              panelKeys={
+                tab.id === deck.activeId ||
+                (drawsPanels && Boolean(root) && root === activeRoot)
+              }
+              writePanels={writePanels}
+              sendToKeyboard={sendToKeyboard}
+              footer={footers.get(tab.id) ?? null}
+              onRoot={onRoot}
+              register={register}
+            />
+          )
+        })}
       </CollisionProvider>
+      {owners.map(({ run }) => (
+        <FooterSlot key={slotKey(run)} run={run} onSlot={onSlot} />
+      ))}
       <ColumnEdges
         grid={panes}
         widths={widths}
@@ -745,6 +873,30 @@ function DropZone({
       aria-hidden="true"
       style={{ gridColumn: place.column + 1, gridRow: 2 }}
       className={`pointer-events-none z-10 border-2 border-primary bg-primary/10 ${half}`}
+    />
+  )
+}
+
+const slotKey = (run: TreeRun) => `${run.first}:${run.last}`
+
+/** Where a run's footer is drawn, across every column in the run. */
+function FooterSlot({
+  run,
+  onSlot,
+}: {
+  run: TreeRun
+  onSlot: (key: string, node: HTMLElement | null) => void
+}) {
+  const key = slotKey(run)
+  const ref = useCallback(
+    (node: HTMLDivElement | null) => onSlot(key, node),
+    [onSlot, key],
+  )
+  return (
+    <div
+      ref={ref}
+      style={{ gridColumn: `${run.first + 1} / ${run.last + 2}`, gridRow: 3 }}
+      className={`min-w-0 ${run.first > 0 ? 'border-l border-line' : ''}`}
     />
   )
 }

@@ -88,8 +88,10 @@ export function ColumnEdges({
           onDoubleClick={() => onResize()}
           onKeyDown={(event) => nudge(edge, event)}
           // Straddles the line between the columns, so the grab area is the
-          // line you would aim at.
-          style={{ gridColumn: edge + 1, gridRow: '1 / -1' }}
+          // line you would aim at. Stops above the footers, the third of the
+          // rows `App` sets: one can run across the line, and the handle
+          // would sit on its chips.
+          style={{ gridColumn: edge + 1, gridRow: '1 / 3' }}
           className={`relative z-20 -mr-1 w-2 cursor-col-resize justify-self-end ${
             dragging === edge ? 'bg-primary/60' : 'hover:bg-primary/40'
           } focus-visible:bg-primary/60 focus-visible:outline-none`}

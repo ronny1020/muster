@@ -163,6 +163,12 @@ shows, and `header[data-column="N"]` is that column's strip, its
 `aria-selected` tab the same one. The column with the keyboard is the one
 whose selected tab draws the accent bar.
 
+The status bar is **not** inside the section: every footer is a slot in the
+grid's third row, one per run of neighbouring columns on one tree, and the
+pane portals its bar there. Find a column's footer as the `main > div` whose
+`style.gridRow` is `3` and whose `gridColumn` span covers that column, never
+under `section[data-column]`.
+
 **`element.click()` is not reliable here; the React handler is.** Some
 controls answer it, some do not, and the tab strip is on `onMouseDown` so a
 click never reaches it. Read the props off the fibre and call the handler:
