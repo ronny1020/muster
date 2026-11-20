@@ -1045,9 +1045,14 @@ above.
 an old copy into the Trash: a pinned app is tracked as that copy, not as its
 path, so emptying the Trash or restarting leaves the tile pointing at nothing.
 Drag the blank tile out of the Dock and pin `/Applications/Muster.app` again.
-To keep it from coming back, update with `brew update && brew upgrade --cask
-muster` and never move the app to the Trash yourself — Homebrew never puts the
-old copy there, so the tile goes on finding the app in Applications.
+To keep it from coming back on a Homebrew install, never move the app to the
+Trash yourself, and update with
+`brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app`.
+Homebrew never puts the old copy there. It replaces the app in place when the
+terminal running it has the _App Management_ or _Full Disk Access_ permission
+(System Settings → Privacy & Security), and the tile keeps its spot; without
+either, it removes the app and installs it again, and macOS may drop the tile
+from the Dock.
 
 **Still the old version after updating.** A running copy keeps the version it
 started with, so quit Muster and open it again. To see which version is on disk,

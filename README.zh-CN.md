@@ -417,7 +417,7 @@ Muster 会记住每个窗口的大小、位置、是否最大化以及其中的�
 
 **`brew install` 提示“already installed”，但应用并不存在。** 应用是被手动删除的，所以 Homebrew 的记录与磁盘不一致，`brew install` 会一直报告成功却什么也不装。用 `brew reinstall --cask ronny1020/tap/muster` 修复，然后照上文清除隔离属性。
 
-**更新或重启后，程序坞上的图标变成空白。** 程序坞的图标跟着旧副本进了废纸篓：固定的应用是按那一份副本跟踪的，而不是按它的路径，所以清倒废纸篓或重启之后，这个图标就指向了不存在的东西。把空白图标拖出程序坞，再重新固定 `/Applications/Muster.app`。要避免再次发生，请用 `brew update && brew upgrade --cask muster` 更新，并且不要自己把应用移到废纸篓——Homebrew 从不把旧副本放进废纸篓，所以图标会一直找到“应用程序”里的应用。
+**更新或重启后，程序坞上的图标变成空白。** 程序坞的图标跟着旧副本进了废纸篓：固定的应用是按那一份副本跟踪的，而不是按它的路径，所以清倒废纸篓或重启之后，这个图标就指向了不存在的东西。把空白图标拖出程序坞，再重新固定 `/Applications/Muster.app`。用 Homebrew 安装的话，要避免再次发生，请用 `brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app` 更新，并且不要自己把应用移到废纸篓。Homebrew 从不把旧副本放进废纸篓。运行它的终端拥有“App 管理”或“完全磁盘访问权限”（系统设置 → 隐私与安全性）时，它会就地替换应用，图标也会留在原位；两者都没有时，它会移除应用再重新安装，macOS 可能会把图标从程序坞中移除。
 
 **更新后仍是旧版本。** 正在运行的应用会保持它启动时的版本，所以请退出 Muster 再重新打开。要查看磁盘上的版本，运行 `defaults read /Applications/Muster.app/Contents/Info.plist CFBundleShortVersionString`，并与 [Releases 页面](https://github.com/ronny1020/muster/releases)对照。如果两者一致而应用看起来仍是旧的，说明你打开的是另一份副本：Spotlight 也会找到磁盘上其他位置的构建，例如本仓库 checkout 里的那份。请打开“应用程序”里的那一份。
 

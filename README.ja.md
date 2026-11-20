@@ -417,7 +417,7 @@ Chrome と同じく、タブをドラッグするとタブ列の順番を変え�
 
 **`brew install` が「already installed」と表示するのに、アプリがない。** アプリが手動で削除されたため、Homebrew の記録とディスクの内容が食い違っており、`brew install` は何もインストールせずに成功を報告し続けます。`brew reinstall --cask ronny1020/tap/muster` で修復し、その後、上記と同じように quarantine 属性を消去してください。
 
-**アップデートや再起動のあと、Dock のアイコンが空白になる。** Dock のアイコンが古いコピーを追ってゴミ箱に入っています。Dock に固定したアプリはパスではなくそのコピー自体で追跡されるため、ゴミ箱を空にするか再起動すると、アイコンは何も指さなくなります。空白のアイコンを Dock の外へドラッグし、`/Applications/Muster.app` を固定し直してください。再発を防ぐには、`brew update && brew upgrade --cask muster` でアップデートし、アプリを自分でゴミ箱に移さないでください。Homebrew は古いコピーをゴミ箱に入れないので、アイコンは「アプリケーション」のアプリを見つけ続けます。
+**アップデートや再起動のあと、Dock のアイコンが空白になる。** Dock のアイコンが古いコピーを追ってゴミ箱に入っています。Dock に固定したアプリはパスではなくそのコピー自体で追跡されるため、ゴミ箱を空にするか再起動すると、アイコンは何も指さなくなります。空白のアイコンを Dock の外へドラッグし、`/Applications/Muster.app` を固定し直してください。Homebrew でインストールした場合、再発を防ぐには `brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app` でアップデートし、アプリを自分でゴミ箱に移さないでください。Homebrew は古いコピーをゴミ箱に入れません。Homebrew を実行するターミナルに「アプリ管理」または「フルディスクアクセス」の権限（システム設定 → プライバシーとセキュリティ）があれば、アプリはその場で置き換えられ、アイコンも同じ位置に残ります。どちらもない場合はアプリを削除してから入れ直すため、macOS が Dock からアイコンを外すことがあります。
 
 **更新したのに古いバージョンのまま。** 起動中のアプリは起動したときのバージョンのままなので、Muster を終了してから開き直してください。ディスク上のバージョンは `defaults read /Applications/Muster.app/Contents/Info.plist CFBundleShortVersionString` で確認し、[Releases ページ](https://github.com/ronny1020/muster/releases)と比べます。一致しているのにアプリが古く見える場合は、別のコピーを開いています。Spotlight はディスク上の別の場所にあるビルド、たとえばこのリポジトリのチェックアウト内のものも見つけます。「アプリケーション」にあるものを開いてください。
 

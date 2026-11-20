@@ -417,7 +417,7 @@ Muster 會記住每個視窗的大小、位置、是否最大化，以及其中�
 
 **`brew install` 說「already installed」，但 App 並不存在。** App 被手動刪除了，所以 Homebrew 的紀錄和磁碟上的實際狀況不一致，而 `brew install` 會一直回報成功，卻什麼都沒安裝。請用 `brew reinstall --cask ronny1020/tap/muster` 修復，然後照上面的說明清除隔離屬性。
 
-**更新或重新開機後，Dock 上的圖示變成空白。** Dock 的圖示跟著舊副本進了垃圾桶：釘選的 App 是以那一份副本來追蹤，而不是以它的路徑，所以清空垃圾桶或重新開機後，這個圖示就指向不存在的東西。把空白的圖示拖出 Dock，再重新釘選 `/Applications/Muster.app`。要避免再次發生，請用 `brew update && brew upgrade --cask muster` 更新，並且不要自己把 App 移到垃圾桶——Homebrew 從不把舊副本放進垃圾桶，所以圖示會一直找得到「應用程式」裡的 App。
+**更新或重新開機後，Dock 上的圖示變成空白。** Dock 的圖示跟著舊副本進了垃圾桶：釘選的 App 是以那一份副本來追蹤，而不是以它的路徑，所以清空垃圾桶或重新開機後，這個圖示就指向不存在的東西。把空白的圖示拖出 Dock，再重新釘選 `/Applications/Muster.app`。以 Homebrew 安裝的話，要避免再次發生，請用 `brew update && brew upgrade --cask muster && xattr -cr /Applications/Muster.app` 更新，並且不要自己把 App 移到垃圾桶。Homebrew 從不把舊副本放進垃圾桶。執行它的終端機有「App 管理」或「完整磁碟取用權限」（系統設定 → 隱私權與安全性）時，它會就地替換 App，圖示也會留在原位；兩者都沒有時，它會移除 App 再重新安裝，macOS 可能會把圖示從 Dock 拿掉。
 
 **更新後還是舊版本。** 執行中的 App 會維持它啟動時的版本，所以請結束 Muster 再重新開啟。要查看磁碟上的版本，執行 `defaults read /Applications/Muster.app/Contents/Info.plist CFBundleShortVersionString`，並和 [Releases 頁面](https://github.com/ronny1020/muster/releases)比對。如果兩者一致而 App 看起來仍是舊的，表示你開啟的是另一份副本：Spotlight 也會找到磁碟上其他位置的建置，例如這個儲存庫 checkout 裡的那份。請開啟「應用程式」裡的那一份。
 
