@@ -134,12 +134,9 @@ export type DeckAction =
       branch: string
       dirty: boolean
     }
-  | { type: 'toggleHistory'; id: string }
   | { type: 'toggleJournal'; id: string }
-  | { type: 'toggleReview'; id: string }
   | { type: 'setHistory'; id: string; open: boolean }
   | { type: 'setReview'; id: string; open: boolean }
-  | { type: 'showReview'; id: string; view: ReviewView }
   | { type: 'setReviewView'; id: string; view: ReviewView }
   | { type: 'setFind'; id: string; open: boolean }
   | { type: 'attention'; id: string }
@@ -453,13 +450,8 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
           : { status: action.status },
       )
 
-    case 'toggleHistory':
-      return patch(deck, action.id, (tab) => ({
-        historyOpen: !tab.historyOpen,
-      }))
-
-    // Set rather than toggled, for a click on something that says "show me
-    // these": a chip counting commits must not close the drawer listing them.
+    // Set, never flipped: the caller decides the next state, so every column
+    // on a tree can be written the same value.
     case 'setHistory':
       return patch(deck, action.id, () => ({ historyOpen: action.open }))
 
@@ -468,30 +460,8 @@ export function deckReducer(deck: Deck, action: DeckAction): Deck {
         journalOpen: !tab.journalOpen,
       }))
 
-    case 'toggleReview':
-      return patch(deck, action.id, (tab) => ({
-        reviewOpen: !tab.reviewOpen,
-      }))
-
-    // Set rather than toggled, because a click on a changed path in the output
-    // must open the panel whether or not it was already open.
     case 'setReview':
       return patch(deck, action.id, () => ({ reviewOpen: action.open }))
-
-    /**
-     * A control that names a view: the directory shows the tree, the change
-     * counts show the changes.
-     *
-     * Naming the view already on screen closes the drawer, because the control
-     * has nothing left to say the second time — but naming the other one
-     * switches rather than closing, which is the difference between this and a
-     * toggle.
-     */
-    case 'showReview':
-      return patch(deck, action.id, (tab) => ({
-        reviewOpen: !(tab.reviewOpen && tab.reviewView === action.view),
-        reviewView: action.view,
-      }))
 
     // The drawer's own tabs switch and nothing else: you are already looking
     // at the drawer, so clicking the view you are on cannot mean "close".

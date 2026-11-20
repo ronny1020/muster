@@ -255,17 +255,21 @@ test('history starts closed', () => {
   expect(initialDeck('tab-1').tabs[0].historyOpen).toBe(false)
 })
 
-test("toggling history flips only that tab's drawer", () => {
+test("setting history moves only that tab's drawer", () => {
   let deck = deckOf(2)
-  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
   expect(deck.tabs.map((tab) => tab.historyOpen)).toEqual([true, false])
 
-  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: false })
   expect(deck.tabs[0].historyOpen).toBe(false)
 })
 
 test('an open drawer survives switching tabs and workspace polls', () => {
-  let deck = deckReducer(deckOf(2), { type: 'toggleHistory', id: 'tab-1' })
+  let deck = deckReducer(deckOf(2), {
+    type: 'setHistory',
+    id: 'tab-1',
+    open: true,
+  })
   deck = deckReducer(deck, { type: 'activate', id: 'tab-2' })
   deck = deckReducer(deck, {
     type: 'workspace',
@@ -454,7 +458,7 @@ test('going back to the launcher clears everything the dead session left', () =>
     branch: 'main',
     dirty: true,
   })
-  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
   deck = deckReducer(deck, { type: 'exited', id: 'tab-1', code: 130 })
   deck = deckReducer(deck, { type: 'attention', id: 'tab-1' })
   deck = deckReducer(deck, { type: 'relaunch', id: 'tab-1' })
@@ -495,7 +499,7 @@ test('opening search on an already-open bar leaves it open, so the shortcut refo
 
 test('closing search leaves the history drawer alone', () => {
   let deck = initialDeck('tab-1')
-  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
   deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: true })
   deck = deckReducer(deck, { type: 'setFind', id: 'tab-1', open: false })
   expect(deck.tabs[0].findOpen).toBe(false)
@@ -567,12 +571,12 @@ test('the review panel starts closed', () => {
   expect(initialDeck('tab-1').tabs[0].reviewOpen).toBe(false)
 })
 
-test("toggling review flips only that tab's panel", () => {
+test("setting review moves only that tab's panel", () => {
   let deck = deckOf(2)
-  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: true })
   expect(deck.tabs.map((tab) => tab.reviewOpen)).toEqual([true, false])
 
-  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: false })
   expect(deck.tabs[0].reviewOpen).toBe(false)
 })
 
@@ -587,8 +591,8 @@ test('a changed path clicked in the output opens the panel, open or not', () => 
 
 test('review and history are independent drawers', () => {
   let deck = initialDeck('tab-1')
-  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
-  deck = deckReducer(deck, { type: 'toggleHistory', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: true })
+  deck = deckReducer(deck, { type: 'setHistory', id: 'tab-1', open: true })
   expect(deck.tabs[0]).toMatchObject({ reviewOpen: true, historyOpen: true })
 })
 
@@ -601,7 +605,7 @@ test('a review panel left open does not follow a relaunched tab', () => {
     session,
     title: 'repo',
   })
-  deck = deckReducer(deck, { type: 'toggleReview', id: 'tab-1' })
+  deck = deckReducer(deck, { type: 'setReview', id: 'tab-1', open: true })
   deck = deckReducer(deck, { type: 'relaunch', id: 'tab-1' })
   expect(deck.tabs[0].reviewOpen).toBe(false)
 })
@@ -614,50 +618,11 @@ test('a status chip opens its drawer whether or not it was open', () => {
   expect(deck.tabs[0].historyOpen).toBe(true)
 })
 
-test('a control that names a view opens the drawer on it', () => {
-  const deck = deckReducer(initialDeck('tab-1'), {
-    type: 'showReview',
-    id: 'tab-1',
-    view: 'files',
-  })
-
-  expect(deck.tabs[0]).toMatchObject({ reviewOpen: true, reviewView: 'files' })
-})
-
-test('naming the other view switches rather than closing', () => {
-  // This is the difference between these controls and a toggle: the directory
-  // and the change counts each say "show me this", not "flip the drawer".
-  let deck = deckReducer(initialDeck('tab-1'), {
-    type: 'showReview',
-    id: 'tab-1',
-    view: 'files',
-  })
-  deck = deckReducer(deck, { type: 'showReview', id: 'tab-1', view: 'changes' })
-
-  expect(deck.tabs[0]).toMatchObject({
-    reviewOpen: true,
-    reviewView: 'changes',
-  })
-})
-
-test('naming the view already on screen closes the drawer', () => {
-  let deck = deckReducer(initialDeck('tab-1'), {
-    type: 'showReview',
-    id: 'tab-1',
-    view: 'files',
-  })
-  deck = deckReducer(deck, { type: 'showReview', id: 'tab-1', view: 'files' })
-
-  expect(deck.tabs[0].reviewOpen).toBe(false)
-  // The view is remembered, so reopening lands where you left it.
-  expect(deck.tabs[0].reviewView).toBe('files')
-})
-
 test("the drawer's own tabs switch without ever closing it", () => {
   let deck = deckReducer(initialDeck('tab-1'), {
-    type: 'showReview',
+    type: 'setReview',
     id: 'tab-1',
-    view: 'changes',
+    open: true,
   })
   deck = deckReducer(deck, {
     type: 'setReviewView',

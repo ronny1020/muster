@@ -285,6 +285,15 @@ after that, a split halves the column it splits. A new column needs room for
 about 40 terminal columns, so the split button greys out in a window too narrow
 for another.
 
+**Columns side by side in one working tree share their chrome.** One footer runs
+under all of them, and one review panel, history drawer and file column open at
+their right edge, whichever column you clicked a path in. Clicking in them
+leaves the keyboard in the column you were typing in, and sending a path from
+them puts it in front of that column's agent. Switch one of them to
+a tab elsewhere and it takes its own footer back; the rest keep the file you
+had open. A tree split by a column in between shows its panels once, beside the
+columns you last worked in.
+
 **The tabs are the title bar.** On macOS they sit inside the system one, behind
 the traffic lights; on Windows there is no system title bar at all, and the
 minimize, maximize and close buttons are drawn at the right of the strip — so

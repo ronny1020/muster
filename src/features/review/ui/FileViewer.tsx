@@ -31,7 +31,10 @@ export interface FileViewerProps {
   base: string
   /** Changes whenever the tree may have moved, which re-reads the diff. */
   revision: string
-  /** Only the tab on screen may answer Escape; every pane stays mounted. */
+  /**
+   * Whether Escape is this column's to answer: the keyboard is on the tree
+   * whose panels it is. Every pane stays mounted, so only one may.
+   */
   active: boolean
   opener: LineOpener | null
   /** A link in a rendered document was clicked. */
@@ -122,7 +125,8 @@ export function FileViewer({
   const rendered = renderable && preview
 
   /**
-   * Escape closes the column — but only in the tab you are looking at.
+   * Escape closes the column — but only on the tree the keyboard is on,
+   * whichever of its columns has it.
    *
    * Panes stay mounted for every tab, so mounting only while a file is open
    * narrows this without fixing it: with a file open in two tabs, one Escape

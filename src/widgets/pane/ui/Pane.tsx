@@ -2,9 +2,12 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type SyntheticEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -22,6 +25,7 @@ import { i18n } from '../../../shared/i18n/i18n'
 import { useSettings } from '../../../entities/preferences/model/useSettings'
 import { preferredEditor, useEditors } from '../../../shared/lib/useEditors'
 import { useHomeDir } from '../model/useHomeDir'
+import { type PaneChrome, showReview, type TreeView } from '../model/treeview'
 import { useWorkspace } from '../../../features/workspace/model/useWorkspace'
 import { usePullRequest } from '../../../features/workspace/model/usePullRequest'
 import {
@@ -138,6 +142,26 @@ export interface PaneProps {
   /** A command a card asked this tab's terminal to scroll to. */
   reveal: { block: number } | null
   onRevealed: () => void
+  /**
+   * Whether this pane draws its panels. Columns showing one tree keep the same
+   * view, and only one of them draws it.
+   */
+  panels: boolean
+  /**
+   * Whether keys typed now are meant for this pane's panels: it has the
+   * keyboard, or it draws the panels of the tree the keyboard is on.
+   */
+  panelKeys: boolean
+  /** Sets this tab's panels, and those of every column showing its tree. */
+  writePanels: (tabId: string, patch: Partial<TreeView>) => void
+  /** Puts a path in front of the live session with the keyboard. */
+  sendToKeyboard: (path: string, suffix?: string) => boolean
+  /** Where to draw the footer, when this pane is the one that draws it. */
+  footer: HTMLElement | null
+  /** The tree this tab is in, or `''`, as its own poll reads it. */
+  onRoot: (tabId: string, root: string) => void
+  /** Lets `App` read and set this pane's view, to keep a tree's columns alike. */
+  register: (tabId: string, chrome: PaneChrome | null) => void
 }
 
 /**
@@ -156,6 +180,13 @@ export function Pane({
   notices,
   reveal,
   onRevealed,
+  panels,
+  panelKeys,
+  writePanels,
+  sendToKeyboard,
+  footer,
+  onRoot,
+  register,
 }: PaneProps) {
   const { t } = useTranslation('chrome')
   const { t: tWorkspace } = useTranslation('workspace')
@@ -199,8 +230,58 @@ export function Pane({
       publicApi: settings.pullRequestsPublicApi,
     },
   )
-  const historyOpen = tab.historyOpen && Boolean(git?.repo)
-  const toggleHistory = () => dispatch({ type: 'toggleHistory', id: tab.id })
+  const root = session && git?.repo ? git.root : ''
+  // Reported up rather than read down: only this pane polls its tree, and
+  // `App` groups the columns by it. Cleared when the tab goes. A layout effect
+  // because the pane resets its view in the same render the root changes, and
+  // the columns must not paint grouped by the old one.
+  useLayoutEffect(() => {
+    onRoot(tab.id, root)
+    return () => onRoot(tab.id, '')
+  }, [onRoot, tab.id, root])
+
+  /**
+   * What the content column is showing.
+   *
+   * Held here rather than in the drawer because the column is the drawer's
+   * sibling, not its child: a file needs width the drawer does not have.
+   */
+  const [viewed, setViewed] = useState<Viewed | null>(null)
+  /** Which branch the drawer and the column compare against. */
+  const [base, setBase] = useState('')
+  const view: TreeView = useMemo(
+    () => ({
+      viewed,
+      base,
+      review: tab.reviewOpen,
+      view: tab.reviewView,
+      history: tab.historyOpen,
+    }),
+    [viewed, base, tab.reviewOpen, tab.reviewView, tab.historyOpen],
+  )
+  const adopt = useCallback(
+    (patch: Partial<TreeView>) => {
+      if (patch.viewed !== undefined) setViewed(patch.viewed)
+      if (patch.base !== undefined) setBase(patch.base)
+      if (patch.review !== undefined) {
+        dispatch({ type: 'setReview', id: tab.id, open: patch.review })
+      }
+      if (patch.view !== undefined) {
+        dispatch({ type: 'setReviewView', id: tab.id, view: patch.view })
+      }
+      if (patch.history !== undefined) {
+        dispatch({ type: 'setHistory', id: tab.id, open: patch.history })
+      }
+    },
+    [dispatch, tab.id],
+  )
+  const update = useCallback(
+    (patch: Partial<TreeView>) => writePanels(tab.id, patch),
+    [writePanels, tab.id],
+  )
+
+  const historyOpen = view.history && Boolean(git?.repo)
+  const toggleHistory = () => update({ history: !view.history })
   const closeFind = useCallback(
     () => dispatch({ type: 'setFind', id: tab.id, open: false }),
     [dispatch, tab.id],
@@ -359,34 +440,14 @@ export function Pane({
   const resumeFromJournal = (agent: Agent, args: string[]) =>
     resumeHere({ agent, args })
 
-  const reviewOpen = tab.reviewOpen
+  const reviewOpen = view.review
   // A view remembered from before Activity was switched off. Mapped here, so
   // the drawer and the status bar's chips name the same view.
   const reviewView =
-    tab.reviewView === 'activity' && !settings.editActivity
-      ? 'changes'
-      : tab.reviewView
-  const toggleReview = () => dispatch({ type: 'toggleReview', id: tab.id })
-  /** A control naming a view: open it, switch to it, or close it. */
-  const showReview = (view: ReviewView) => {
-    // The reducer toggles against the stored view, so a stored Activity that
-    // is drawn as Changes is stored as Changes first.
-    if (tab.reviewView !== reviewView) {
-      dispatch({ type: 'setReviewView', id: tab.id, view: reviewView })
-    }
-    dispatch({ type: 'showReview', id: tab.id, view })
-  }
-  /**
-   * What the content column is showing.
-   *
-   * Held here rather than in the drawer because the column is the drawer's
-   * sibling, not its child: a file needs width the drawer does not have, and
-   * covering the terminal to show one would defeat the point of reading it
-   * next to the agent that wrote it.
-   */
-  const [viewed, setViewed] = useState<Viewed | null>(null)
-  /** Which branch the drawer and the column compare against. */
-  const [base, setBase] = useState('')
+    view.view === 'activity' && !settings.editActivity ? 'changes' : view.view
+  const toggleReview = () => update({ review: !view.review })
+  const showReviewView = (next: ReviewView) =>
+    update(showReview({ review: view.review, view: reviewView }, next))
   /** Changes when the working tree does, which is what re-reads git. */
   const revision = treeRevision(cwd, git ?? null)
   // A failure is news unless a drawer that shows it is in front of the reader
@@ -394,7 +455,9 @@ export function Pane({
   const gitRun = useGitRun(refresh, (text) => {
     // The review drawer shows git's answer on its Changes view alone.
     const inDrawer =
-      shown && (historyOpen || (tab.reviewOpen && reviewView === 'changes'))
+      shown &&
+      panels &&
+      (historyOpen || (reviewOpen && reviewView === 'changes'))
     if (!(inDrawer && document.hasFocus())) raise({ kind: 'gitFailed', text })
   })
   const { edits, nudge } = useEdits({
@@ -418,23 +481,25 @@ export function Pane({
     const line =
       edit.lines.find((row) => row.kind === 'add' && row.newLine !== null)
         ?.newLine ?? null
-    setViewed(
-      edit.status === null
-        ? { kind: 'file', absolute, line }
-        : {
-            kind: 'diff',
-            relative: edit.path,
-            absolute,
-            line,
-            oldPath: edit.oldPath,
-          },
-    )
+    update({
+      viewed:
+        edit.status === null
+          ? { kind: 'file', absolute, line }
+          : {
+              kind: 'diff',
+              relative: edit.path,
+              absolute,
+              line,
+              oldPath: edit.oldPath,
+            },
+    })
   }
 
-  // A session that `cd`s elsewhere is looking at another tree: a file from the
-  // last one, and a base branch that may not exist in this one, are both stale
-  // rather than merely old.
-  useKeyChange([cwd], () => {
+  // A session that `cd`s into another tree is looking at something else: a
+  // file from the last one, and a base branch that may not exist in this one,
+  // are both stale rather than merely old. A move inside the tree is not, and
+  // keeps the columns showing it alike. Outside git the directory is the tree.
+  useKeyChange([root || cwd], () => {
     setViewed(null)
     setBase('')
   })
@@ -484,10 +549,12 @@ export function Pane({
   /** Read through refs: `onPath` is built once, these move under it. */
   const cwdRef = useRef(cwd)
   const baseRef = useRef(base)
+  const treeRef = useRef(root || cwd)
   useLayoutEffect(() => {
     cwdRef.current = cwd
     baseRef.current = base
-  }, [cwd, base])
+    treeRef.current = root || cwd
+  }, [cwd, base, root])
 
   /**
    * A path clicked in the output.
@@ -504,21 +571,29 @@ export function Pane({
    */
   const onPath = useCallback(
     (path: string, line?: number) => {
+      // An answer arriving after the session moved to another tree is about
+      // the one it left, and would be written to the columns of this one.
+      const asked = treeRef.current
+      const moved = () => treeRef.current !== asked
       void changedFile(cwdRef.current, path, baseRef.current).then(
         (changed) => {
+          if (moved()) return
           if (changed) {
-            setViewed({ kind: 'diff', ...changed, line: line ?? null })
             // Named, not just opened: the drawer keeps whichever view it was
             // last on, and the file tree is not what you asked for by
             // clicking a changed path.
-            dispatch({ type: 'setReviewView', id: tab.id, view: 'changes' })
-            dispatch({ type: 'setReview', id: tab.id, open: true })
+            update({
+              viewed: { kind: 'diff', ...changed, line: line ?? null },
+              view: 'changes',
+              review: true,
+            })
             return
           }
           // A folder belongs in the file manager, not an editor — and only the
           // filesystem can say which one a path is.
           void pathKind(path).then(
             (kind) => {
+              if (moved()) return
               if (kind === 'directory') {
                 void revealItemInDir(path).catch(report)
                 return
@@ -536,9 +611,11 @@ export function Pane({
                 !isImagePath(path) &&
                 isUnder(path, cwdRef.current)
               ) {
-                setViewed({ kind: 'file', absolute: path, line: line ?? null })
-                dispatch({ type: 'setReviewView', id: tab.id, view: 'files' })
-                dispatch({ type: 'setReview', id: tab.id, open: true })
+                update({
+                  viewed: { kind: 'file', absolute: path, line: line ?? null },
+                  view: 'files',
+                  review: true,
+                })
                 return
               }
               openFile(path, line)
@@ -548,7 +625,7 @@ export function Pane({
         },
       )
     },
-    [dispatch, openFile, tab.id],
+    [openFile, update],
   )
 
   /**
@@ -565,6 +642,42 @@ export function Pane({
     },
     [session?.backend],
   )
+  useLayoutEffect(() => {
+    // An ended session cannot take a path, so the panels keep their own.
+    const live = tab.exitCode === null
+    register(tab.id, {
+      read: () => view,
+      adopt,
+      send: (path, suffix) => {
+        if (live) sendPath(path, suffix)
+        return live
+      },
+    })
+    return () => register(tab.id, null)
+  }, [register, tab.id, view, adopt, sendPath, tab.exitCode])
+  /**
+   * Where the panels send a path: the session with the keyboard, which is
+   * another column's when this one draws the panels for its tree — unless
+   * that one has ended, when this column's own takes it.
+   */
+  const panelSend =
+    panelKeys && !active
+      ? (path: string, suffix?: string) => {
+          if (!sendToKeyboard(path, suffix)) sendPath(path, suffix)
+        }
+      : sendPath
+  /**
+   * Makes this tab the active one — except for a click in panels it draws for
+   * a column that has the keyboard, which would hand that column's typing to
+   * this tab's agent.
+   */
+  const activate = (event: SyntheticEvent) => {
+    const { target } = event
+    if (panelKeys && target instanceof Element) {
+      if (target.closest('[data-tree-panel]')) return
+    }
+    onActivate()
+  }
 
   /**
    * A URL clicked in the output or a document: the system browser opens it —
@@ -704,8 +817,8 @@ export function Pane({
       style={{ gridColumn: tab.column + 1, gridRow: 2 }}
       // Capture, so the click that lands on a terminal or a control in
       // another column both focuses its tab and does what it was aimed at.
-      onPointerDownCapture={active ? undefined : onActivate}
-      onFocusCapture={active ? undefined : onActivate}
+      onPointerDownCapture={active ? undefined : activate}
+      onFocusCapture={active ? undefined : activate}
       className={`relative min-h-0 min-w-0 flex-col overflow-hidden ${shown ? 'flex' : 'hidden'} ${
         tab.column > 0 ? 'border-l border-line' : ''
       }`}
@@ -788,80 +901,76 @@ export function Pane({
                     onOpen={openEdit}
                     onShowAll={
                       settings.editActivity
-                        ? () => {
+                        ? () =>
                             // Opened, never toggled: the drawer may already be
                             // on Activity, and this click asks to see it.
-                            dispatch({
-                              type: 'setReviewView',
-                              id: tab.id,
-                              view: 'activity',
-                            })
-                            dispatch({
-                              type: 'setReview',
-                              id: tab.id,
-                              open: true,
-                            })
-                          }
+                            update({ view: 'activity', review: true })
                         : undefined
                     }
                   />
                 )}
               </div>
             </div>
-            {viewed && (
-              <FileViewer
-                viewed={viewed}
-                cwd={cwd}
-                base={base}
-                revision={revision}
-                active={active}
-                opener={lineOpener(editor, viewed.absolute)}
-                onUrl={onUrl}
-                onView={setViewed}
-                onSend={session?.backend ? sendPath : undefined}
-                onClose={() => setViewed(null)}
-              />
+            {viewed && panels && (
+              <div className="contents" data-tree-panel>
+                <FileViewer
+                  viewed={viewed}
+                  cwd={cwd}
+                  base={base}
+                  revision={revision}
+                  active={panelKeys}
+                  opener={lineOpener(editor, viewed.absolute)}
+                  onUrl={onUrl}
+                  onView={(next) => update({ viewed: next })}
+                  onSend={session?.backend ? panelSend : undefined}
+                  onClose={() => update({ viewed: null })}
+                />
+              </div>
             )}
-            {reviewOpen && (
-              <ReviewPanel
-                cwd={cwd}
-                revision={revision}
-                base={base}
-                onBase={setBase}
-                footer={
-                  git?.repo && (
-                    <GitActions
-                      cwd={cwd}
-                      git={git}
-                      gitRun={gitRun}
-                      withCommit
-                    />
-                  )
-                }
-                view={reviewView}
-                onView={(view) =>
-                  dispatch({ type: 'setReviewView', id: tab.id, view })
-                }
-                viewed={viewed}
-                onOpenDiff={(file, root) =>
-                  setViewed({
-                    kind: 'diff',
-                    relative: file.path,
-                    absolute: absolutePath(root, file.path),
-                    line: null,
-                    oldPath: file.oldPath ?? undefined,
-                  })
-                }
-                onOpenFile={(path) =>
-                  setViewed({ kind: 'file', absolute: path, line: null })
-                }
-                onSend={sendPath}
-                onClose={toggleReview}
-                edits={edits}
-                activity={settings.editActivity}
-                pulse={settings.editPulse}
-                onOpenEdit={openEdit}
-              />
+            {reviewOpen && panels && (
+              <div className="contents" data-tree-panel>
+                <ReviewPanel
+                  cwd={cwd}
+                  revision={revision}
+                  base={base}
+                  onBase={(next) => update({ base: next })}
+                  footer={
+                    git?.repo && (
+                      <GitActions
+                        cwd={cwd}
+                        git={git}
+                        gitRun={gitRun}
+                        withCommit
+                      />
+                    )
+                  }
+                  view={reviewView}
+                  onView={(next) => update({ view: next })}
+                  viewed={viewed}
+                  onOpenDiff={(file, root) =>
+                    update({
+                      viewed: {
+                        kind: 'diff',
+                        relative: file.path,
+                        absolute: absolutePath(root, file.path),
+                        line: null,
+                        oldPath: file.oldPath ?? undefined,
+                      },
+                    })
+                  }
+                  onOpenFile={(path) =>
+                    update({
+                      viewed: { kind: 'file', absolute: path, line: null },
+                    })
+                  }
+                  onSend={panelSend}
+                  onClose={toggleReview}
+                  edits={edits}
+                  activity={settings.editActivity}
+                  pulse={settings.editPulse}
+                  onOpenEdit={openEdit}
+                />
+              </div>
             )}
             {journalOpen && (
               <JournalPanel
@@ -880,43 +989,47 @@ export function Pane({
                 onClose={toggleJournal}
               />
             )}
-            {historyOpen && git && (
-              <HistoryPanel
-                cwd={cwd}
-                git={git}
-                limit={settings.historyLimit}
-                revision={revision}
-                onClose={toggleHistory}
-                onSwitched={refresh}
-                busy={gitRun.running !== null}
-                runGit={gitRun.run}
-                files={(commit) => (
-                  <CommitFiles
-                    cwd={cwd}
-                    commit={commit}
-                    viewed={viewed}
-                    onOpen={(file, root) =>
-                      setViewed({
-                        kind: 'diff',
-                        relative: file.path,
-                        absolute: absolutePath(root, file.path),
-                        line: null,
-                        commit,
-                        oldPath: file.oldPath ?? undefined,
-                        root,
-                      })
-                    }
-                  />
-                )}
-                sync={
-                  <GitActions
-                    cwd={cwd}
-                    git={git}
-                    gitRun={gitRun}
-                    withCommit={false}
-                  />
-                }
-              />
+            {historyOpen && git && panels && (
+              <div className="contents" data-tree-panel>
+                <HistoryPanel
+                  cwd={cwd}
+                  git={git}
+                  limit={settings.historyLimit}
+                  revision={revision}
+                  onClose={toggleHistory}
+                  onSwitched={refresh}
+                  busy={gitRun.running !== null}
+                  runGit={gitRun.run}
+                  files={(commit) => (
+                    <CommitFiles
+                      cwd={cwd}
+                      commit={commit}
+                      viewed={viewed}
+                      onOpen={(file, root) =>
+                        update({
+                          viewed: {
+                            kind: 'diff',
+                            relative: file.path,
+                            absolute: absolutePath(root, file.path),
+                            line: null,
+                            commit,
+                            oldPath: file.oldPath ?? undefined,
+                            root,
+                          },
+                        })
+                      }
+                    />
+                  )}
+                  sync={
+                    <GitActions
+                      cwd={cwd}
+                      git={git}
+                      gitRun={gitRun}
+                      withCommit={false}
+                    />
+                  }
+                />
+              </div>
             )}
           </div>
           <ImagePreview
@@ -939,36 +1052,41 @@ export function Pane({
           on `session` rather than on their own values: `useWorkspace` keeps its
           last snapshot when its session goes away — Relaunch does exactly that —
           so the start screen would otherwise draw the dead session's directory
-          and branch as controls opening drawers this block no longer renders. */}
-      <StatusBar
-        cwd={session ? cwd : ''}
-        workspace={session ? workspace : null}
-        pullRequest={pullRequest}
-        tracked={session ? tracked : false}
-        agentName={runningName ?? ''}
-        state={tab.exitCode === null ? '' : tabDetail(tab, t)}
-        exited={tab.exitCode !== null && tab.exitCode !== 0}
-        historyOpen={historyOpen}
-        reviewOpen={reviewOpen}
-        editor={session ? editor : null}
-        collision={session ? collisionSummary(collisions, tWorkspace) : ''}
-        mode={
-          session && switchMode
-            ? { scrollback: session.scrollback, onSwitch: switchMode }
-            : null
-        }
-        journal={Boolean(journalCwd)}
-        journalOpen={journalOpen}
-        onToggleJournal={toggleJournal}
-        reviewView={reviewView}
-        onToggleHistory={toggleHistory}
-        onShowReview={showReview}
-        // Toggles, like the branch button beside it and the review
-        // groups: every control in the bar names a surface, and a second
-        // click on the one you are looking at closes it.
-        onShowHistory={toggleHistory}
-        onOpenSettings={onOpenSettings}
-      />
+          and branch as controls opening drawers this block no longer renders.
+          Drawn into `App`'s footer row, so columns sharing a tree share one. */}
+      {footer &&
+        createPortal(
+          <StatusBar
+            cwd={session ? cwd : ''}
+            workspace={session ? workspace : null}
+            pullRequest={pullRequest}
+            tracked={session ? tracked : false}
+            agentName={runningName ?? ''}
+            state={tab.exitCode === null ? '' : tabDetail(tab, t)}
+            exited={tab.exitCode !== null && tab.exitCode !== 0}
+            historyOpen={historyOpen}
+            reviewOpen={reviewOpen}
+            editor={session ? editor : null}
+            collision={session ? collisionSummary(collisions, tWorkspace) : ''}
+            mode={
+              session && switchMode
+                ? { scrollback: session.scrollback, onSwitch: switchMode }
+                : null
+            }
+            journal={Boolean(journalCwd)}
+            journalOpen={journalOpen}
+            onToggleJournal={toggleJournal}
+            reviewView={reviewView}
+            onToggleHistory={toggleHistory}
+            onShowReview={showReviewView}
+            // Toggles, like the branch button beside it and the review
+            // groups: every control in the bar names a surface, and a second
+            // click on the one you are looking at closes it.
+            onShowHistory={toggleHistory}
+            onOpenSettings={onOpenSettings}
+          />,
+          footer,
+        )}
     </section>
   )
 }

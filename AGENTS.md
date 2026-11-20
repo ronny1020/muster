@@ -136,10 +136,28 @@ move, and a remount ends the session. A pane's `active` is the tab with the
 keyboard; `shown` is the one its column draws, and what is measured off the
 screen follows that instead.
 
-The consequence, which is easy to miss: a timer or subscription in a pane runs
-in _every_ tab, forever, visible or not. `useWorkspace` already git-polls on
-that basis, at a user-set interval. Anything ticking faster — a per-second
-clock, an animation — needs to check whether its pane is shown first.
+Footers follow from the mount rule too. They are a third grid row, one slot per
+run of neighbouring columns on one working tree (`src/app/trees.ts`), and a
+pane _portals_ its status bar into its run's slot rather than drawing it inside
+its own cell — a bar spanning columns cannot live in one of them, and moving it
+must never move the pane. Columns showing one tree keep one view between them
+(`TreeView`: the open file, the base, which panels are open), and only one of
+them draws the panels. Each pane still holds its own copy — `App` writes a
+change to every column on the tree, and a column arriving on it is synced from
+one already there (`joinSyncs`) — so a tab that leaves the tree, switched out
+of its column or torn off, keeps what was on screen. A `cd` into another tree
+is the exception: the file and the base belong to the tree it left, so they are
+cleared. The column that draws the panels need not hold the keyboard, so what
+they answer to the keyboard — Escape on the file column — follows `panelKeys`,
+never `active`. A click inside them (`data-tree-panel`) does not activate
+their column either, and a path they send goes to the session with the
+keyboard: activating would hand that column's typing to another agent.
+
+The consequence of mounted panes, which is easy to miss: a timer or
+subscription in a pane runs in _every_ tab, forever, visible or not.
+`useWorkspace` already git-polls on that basis, at a user-set interval.
+Anything ticking faster — a per-second clock, an animation — needs to check
+whether its pane is shown first.
 
 **A card about a tab is raised by that tab and drawn by the one with the
 keyboard.** Each pane reports only its own tab's news through `onNotice`, so
@@ -309,9 +327,10 @@ default here, where VS Code may pick one by language.
 **Nothing may put a control at the strip's far right.** That corner is close —
 drawn by Windows before this app took the frame off, and by `WindowControls`
 after — so a gear or a menu one pixel from it is a misclick that quits the app.
-Settings sits at the end of the status bar instead, which is also why that bar
-renders on every tab: a launcher tab has no session, and would otherwise have no
-way to reach settings but the shortcut. The bar's own last item needs
+Settings sits at the end of the status bar instead, which is also why a bar
+renders under every column — one per run of columns on one tree — whatever it
+shows: a launcher tab has no session, and would otherwise have no way to reach
+settings but the shortcut. The bar's own last item needs
 `flex-none`, and something before it needs `min-w-0`, or a long branch name
 pushes settings past the edge at the window's 620px floor.
 
